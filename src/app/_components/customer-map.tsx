@@ -1,4 +1,3 @@
-
 'use client';
 
 import * as React from 'react';
@@ -94,8 +93,9 @@ function CurrentLocationButton() {
 }
 
 function MapErrorDisplay({ error }: { error: any }) {
-  const isApiNotActivated = error?.message?.includes('ApiNotActivatedMapError');
-  const isAuthOrRefererError = /AuthFailure|RefererNotAllowedMapError/i.test(error?.message || '');
+  const errorMessage = error?.message || '';
+  const isApiNotActivated = errorMessage.includes('ApiNotActivatedMapError');
+  const isAuthOrRefererError = /AuthFailure|RefererNotAllowedMapError/i.test(errorMessage);
   
   if (isAuthOrRefererError) {
     return (
@@ -146,7 +146,7 @@ function MapErrorDisplay({ error }: { error: any }) {
           An unexpected error occurred while loading the map.
         </p>
         <pre className="mt-2 text-xs text-left bg-muted p-2 rounded-md overflow-auto">
-          {error?.message || 'No error message available.'}
+          {errorMessage || 'No error message available.'}
         </pre>
       </div>
   );

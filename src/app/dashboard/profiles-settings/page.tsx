@@ -124,16 +124,17 @@ class MapErrorBoundary extends React.Component<
 
 function MapErrorDisplay({ error }: { error: any }) {
     const message = error?.message || '';
-    const isAuthFailure = /AuthFailure|RefererNotAllowedMapError/i.test(message);
+    const isAuthOrRefererError = /AuthFailure|RefererNotAllowedMapError/i.test(message);
     const isApiNotActivated = message.includes('ApiNotActivatedMapError');
 
-    if (isAuthFailure) {
+    if (isAuthOrRefererError) {
         return (
             <div className="flex flex-col items-center justify-center h-full p-4 text-center bg-destructive/10">
                 <AlertCircle className="h-10 w-10 text-destructive mb-2" />
                 <h3 className="text-base font-semibold text-destructive">Google Maps API Key Error</h3>
                 <p className="text-xs text-destructive/80 mt-1">
                     The API key is missing, invalid, or not authorized for this URL.
+                     Go to your Google Cloud Console, find your Maps API Key, and add your preview URL to the list of allowed "Website restrictions".
                 </p>
                 <a 
                     href="https://console.cloud.google.com/google/maps-apis/credentials" 
@@ -670,7 +671,7 @@ export default function ProfilesSettingsPage() {
                         </div>
                          <div className="space-y-2">
                             <Label htmlFor="registered-mobile">Contact Phone *</Label>
-                            <Input id="registered-mobile" type="tel" placeholder="+91 98765 43210" value={mobile} onChange={(e) => setMobile(e.target.value)} required/>
+                            <Input id="registered-mobile" type="tel" placeholder="+91 1234567890" value={mobile} onChange={(e) => setMobile(e.target.value)} required/>
                         </div>
                      </div>
                       <div className="pt-4">
