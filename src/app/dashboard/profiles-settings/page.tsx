@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -138,13 +137,13 @@ function AddressDialog({ open, onOpenChange, onSave, initialData }: { open: bool
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-w-4xl h-full md:h-auto flex flex-col">
+            <DialogContent className="max-w-4xl h-full md:h-[80vh] flex flex-col">
                 <DialogHeader>
                     <DialogTitle>{initialData ? 'Edit Address' : 'Add New Address'}</DialogTitle>
                     <DialogDescription>Fill in the details for the address. Pinpoint on the map for accuracy.</DialogDescription>
                 </DialogHeader>
                  <div className="flex-1 grid md:grid-cols-2 gap-6 overflow-hidden">
-                    <ScrollArea className="h-full pr-4">
+                    <ScrollArea className="h-full pr-4 -mr-4">
                         <div className="grid gap-4 py-4">
                             <div className="space-y-2">
                                 <Label htmlFor="address-type">Address Type</Label>
