@@ -4,6 +4,7 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
@@ -27,7 +28,7 @@ import {
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
-import { useAuth } from '@/firebase';
+import { useAuth, useFirestore, useDoc } from '@/firebase';
 import { Chrome, Loader2 } from 'lucide-react';
 import {
   Dialog,
@@ -40,6 +41,7 @@ import {
   DialogClose,
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
+import { doc } from 'firebase/firestore';
 
 const formSchema = z.object({
   email: z.string().email({ message: 'Please enter a valid email.' }),
@@ -134,7 +136,10 @@ export default function LoginPage() {
   const { toast } = useToast();
   const router = useRouter();
   const auth = useAuth();
+  const firestore = useFirestore();
   const [isLoading, setIsLoading] = React.useState(false);
+  const companyInfoRef = doc(firestore, 'company', 'info');
+  const { data: companyInfo } = useDoc<{ logo?: string }>(companyInfoRef);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -187,66 +192,70 @@ export default function LoginPage() {
     }
   };
 
-
   return (
-    <div className="flex items-center justify-center min-h-full">
-    <Card className="mx-auto max-w-sm">
-      <CardHeader>
-        <CardTitle className="text-2xl">Login</CardTitle>
-        <CardDescription>
-          Enter your email below to login to your account
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            <FormField
-              control={form.control}
-              name="email"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Email</FormLabel>
-                  <FormControl>
-                    <Input placeholder="m@example.com" {...field} disabled={isLoading} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="password"
-              render={({ field }) => (
-                <FormItem>
-                  <div className="flex justify-between items-center">
-                    <FormLabel>Password</FormLabel>
-                    <ForgotPasswordDialog />
-                  </div>
-                  <FormControl>
-                    <Input type="password" {...field} disabled={isLoading} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <Button type="submit" className="w-full" disabled={isLoading}>
-              {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Login
-            </Button>
-             <Button variant="outline" type="button" className="w-full" onClick={handleGoogleSignIn} disabled={isLoading}>
-              <Chrome className="mr-2 h-4 w-4" />
-              Login with Google
-            </Button>
-          </form>
-        </Form>
-        <div className="mt-4 text-center text-sm">
-          Don&apos;t have an account?{' '}
-          <Link href="/signup" className="underline">
-            Sign up
-          </Link>
-        </div>
-      </CardContent>
-    </Card>
+    <div className="flex items-center justify-center p-4 min-h-screen">
+      <Card className="mx-auto max-w-sm w-full">
+        <CardHeader className="text-center">
+            {companyInfo?.logo && (
+                <Link href="/" className="flex justify-center mb-4">
+                    <Image src={companyInfo.logo} alt="Company Logo" width={140} height={32} />
+                </Link>
+            )}
+            <CardTitle className="text-2xl">Login</CardTitle>
+            <CardDescription>
+                Enter your email below to login to your account
+            </CardDescription>
+        </CardHeader>
+        <CardContent>
+            <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                <FormField
+                control={form.control}
+                name="email"
+                render={({ field }) => (
+                    <FormItem>
+                    <FormLabel>Email</FormLabel>
+                    <FormControl>
+                        <Input placeholder="m@example.com" {...field} disabled={isLoading} />
+                    </FormControl>
+                    <FormMessage />
+                    </FormItem>
+                )}
+                />
+                <FormField
+                control={form.control}
+                name="password"
+                render={({ field }) => (
+                    <FormItem>
+                    <div className="flex justify-between items-center">
+                        <FormLabel>Password</FormLabel>
+                        <ForgotPasswordDialog />
+                    </div>
+                    <FormControl>
+                        <Input type="password" {...field} disabled={isLoading} />
+                    </FormControl>
+                    <FormMessage />
+                    </FormItem>
+                )}
+                />
+                <Button type="submit" className="w-full" disabled={isLoading}>
+                {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Login
+                </Button>
+                <Button variant="outline" type="button" className="w-full" onClick={handleGoogleSignIn} disabled={isLoading}>
+                <Chrome className="mr-2 h-4 w-4" />
+                Login with Google
+                </Button>
+            </form>
+            </Form>
+            <div className="mt-4 text-center text-sm">
+            Don&apos;t have an account?{' '}
+            <Link href="/signup" className="underline">
+                Sign up
+            </Link>
+            </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

@@ -4,11 +4,12 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
+import Image from 'next/image';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { createUserWithEmailAndPassword, updateProfile, GoogleAuthProvider, signInWithPopup, sendEmailVerification } from 'firebase/auth';
-import { setDoc, doc, collection, query, where, getDocs, writeBatch, addDoc, serverTimestamp, updateDoc } from 'firebase/firestore';
+import { setDoc, doc, collection, query, where, getDocs, writeBatch, serverTimestamp, updateDoc } from 'firebase/firestore';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -28,7 +29,7 @@ import {
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
-import { useAuth, useFirestore } from '@/firebase';
+import { useAuth, useFirestore, useDoc } from '@/firebase';
 import { Chrome, Loader2 } from 'lucide-react';
 import type { UserRole, CoaNature, CoaLedger, PartyType, Party, UserProfile } from '@/lib/types';
 
@@ -48,6 +49,8 @@ export default function SignupPage() {
   const auth = useAuth();
   const firestore = useFirestore();
   const [isLoading, setIsLoading] = React.useState(false);
+  const companyInfoRef = doc(firestore, 'company', 'info');
+  const { data: companyInfo } = useDoc<{ logo?: string }>(companyInfoRef);
   
   const refId = searchParams.get('ref');
   const referredByMobile = searchParams.get('mobile');
@@ -146,7 +149,7 @@ export default function SignupPage() {
         title: 'Account Created & Verification Email Sent',
         description: "You've been successfully signed up! Please check your email to verify your account.",
       });
-      router.push('/dashboard/profiles-settings');
+      router.push('/dashboard');
     } catch (error: any) {
       console.error(error);
       toast({
@@ -172,7 +175,7 @@ export default function SignupPage() {
         title: 'Sign Up Successful',
         description: 'Welcome!',
       });
-      router.push('/dashboard/profiles-settings');
+      router.push('/dashboard');
     } catch (error: any) {
       console.error(error);
       toast({
@@ -188,9 +191,14 @@ export default function SignupPage() {
   const ADMIN_EMAILS = ['care@jxnindia.com', 'appjxn@gmail.com'];
 
   return (
-    <div className="flex items-center justify-center min-h-full">
-      <Card className="mx-auto max-w-sm">
-        <CardHeader>
+    <div className="flex items-center justify-center p-4 min-h-screen">
+      <Card className="mx-auto max-w-sm w-full">
+        <CardHeader className="text-center">
+            {companyInfo?.logo && (
+                <Link href="/" className="flex justify-center mb-4">
+                    <Image src={companyInfo.logo} alt="Company Logo" width={140} height={32} />
+                </Link>
+            )}
           <CardTitle className="text-2xl">Sign Up</CardTitle>
           <CardDescription>
             Enter your information to create an account
@@ -265,7 +273,8 @@ export default function SignupPage() {
                 )}
               />
               <Button type="submit" className="w-full" disabled={isLoading}>
-                {isLoading ? 'Creating account...' : 'Create an account'}
+                {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Create an account
               </Button>
               <Button variant="outline" type="button" className="w-full" onClick={handleGoogleSignIn} disabled={isLoading}>
                 <Chrome className="mr-2 h-4 w-4" />
