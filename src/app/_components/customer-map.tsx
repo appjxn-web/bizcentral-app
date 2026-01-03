@@ -1,4 +1,3 @@
-
 'use client';
 
 import * as React from 'react';
@@ -11,6 +10,27 @@ import { LocateFixed, Loader2, AlertCircle, Building, Handshake } from 'lucide-r
 import { useToast } from '@/hooks/use-toast';
 import { getFirestore } from 'firebase/firestore';
 import { initializeFirebase } from '@/firebase';
+
+class MapErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean; error: any }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: any) {
+    return { hasError: true, error };
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return <MapErrorDisplay error={this.state.error} />;
+    }
+    return this.props.children;
+  }
+}
 
 function CurrentLocationButton() {
   const map = useMap();
@@ -67,7 +87,6 @@ function CurrentLocationButton() {
 
 function MapErrorDisplay({ error }: { error: any }) {
   const isApiNotActivated = error?.message?.includes('ApiNotActivatedMapError');
-  // Explicitly check for AuthFailure or RefererNotAllowedMapError using a case-insensitive regex
   const isAuthOrRefererError = /AuthFailure|RefererNotAllowedMapError/i.test(error?.message || '');
   
   if (isAuthOrRefererError) {
@@ -131,7 +150,6 @@ export function CustomerMap() {
   const [locations, setLocations] = React.useState<(Location & { isPartner?: boolean })[]>([]);
   const [locationsLoading, setLocationsLoading] = React.useState(true);
   const [locationsError, setLocationsError] = React.useState<any>(null);
-  const [mapError, setMapError] = React.useState<any>(null);
 
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
@@ -190,10 +208,6 @@ export function CustomerMap() {
   
   const zoom = !locations || locations.length === 0 ? 4 : 5;
   
-  const handleApiLoadError = React.useCallback((error: any) => {
-    setMapError(error);
-  }, []);
-
   return (
     <div className="space-y-4 text-center">
       <h2 className="text-2xl font-bold tracking-tight">Where Our Machines Run</h2>
@@ -211,49 +225,51 @@ export function CustomerMap() {
           </div>
         ) : locationsLoading ? (
            <div className="flex items-center justify-center h-full"><Loader2 className="h-8 w-8 animate-spin" /></div>
-        ) : mapError || locationsError ? (
-           <MapErrorDisplay error={mapError || locationsError} />
+        ) : locationsError ? (
+           <MapErrorDisplay error={locationsError} />
         ) : (
-          <APIProvider apiKey={apiKey} onApiLoadError={handleApiLoadError}>
-            <Map
-              style={{ width: '100%', height: '100%' }}
-              defaultCenter={center}
-              defaultZoom={zoom}
-              gestureHandling={'cooperative'}
-              disableDefaultUI={true}
-              mapId={'f9d3a95f7a52e6a3'}
-              onClick={() => setSelectedLocation(null)}
-            >
-              {locations?.map((location) => (
-                    location.latitude && location.longitude && (
-                        <AdvancedMarker
-                            key={location.id}
-                            position={{ lat: location.latitude, lng: location.longitude }}
-                            onClick={() => setSelectedLocation(location)}
-                        >
-                           {location.isPartner ? (
-                                <Handshake className="h-6 w-6 text-green-600 drop-shadow-lg" />
-                            ) : (
-                                <Building className="h-6 w-6 text-primary drop-shadow-lg" />
-                            )}
-                        </AdvancedMarker>
-                    )
-              ))}
+          <MapErrorBoundary>
+            <APIProvider apiKey={apiKey}>
+              <Map
+                style={{ width: '100%', height: '100%' }}
+                defaultCenter={center}
+                defaultZoom={zoom}
+                gestureHandling={'cooperative'}
+                disableDefaultUI={true}
+                mapId={'f9d3a95f7a52e6a3'}
+                onClick={() => setSelectedLocation(null)}
+              >
+                {locations?.map((location) => (
+                      location.latitude && location.longitude && (
+                          <AdvancedMarker
+                              key={location.id}
+                              position={{ lat: location.latitude, lng: location.longitude }}
+                              onClick={() => setSelectedLocation(location)}
+                          >
+                            {location.isPartner ? (
+                                  <Handshake className="h-6 w-6 text-green-600 drop-shadow-lg" />
+                              ) : (
+                                  <Building className="h-6 w-6 text-primary drop-shadow-lg" />
+                              )}
+                          </AdvancedMarker>
+                      )
+                ))}
 
-              {selectedLocation && (
-                <InfoWindow
-                  position={{ lat: selectedLocation.latitude!, lng: selectedLocation.longitude! }}
-                  onCloseClick={() => setSelectedLocation(null)}
-                >
-                  <div className="p-1 font-medium">
-                    <p>{selectedLocation.name}</p>
-                    {selectedLocation.isPartner && <p className="text-xs text-green-600">Partner Location</p>}
-                  </div>
-                </InfoWindow>
-              )}
-            </Map>
-            <CurrentLocationButton />
-          </APIProvider>
+                {selectedLocation && (
+                  <InfoWindow
+                    position={{ lat: selectedLocation.latitude!, lng: selectedLocation.longitude! }}
+                    onCloseClick={() => setSelectedLocation(null)}
+                  >
+                    <div className="p-1 font-medium">
+                      <p>{selectedLocation.name}</p>
+                      {selectedLocation.isPartner && <p className="text-xs text-green-600">Partner Location</p>}
+                    </div>
+                  </InfoWindow>
+                )}
+              </Map>
+              <CurrentLocationButton />
+            </APIProvider>
+          </MapErrorBoundary>
         )}
       </div>
     </div>

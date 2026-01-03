@@ -1,5 +1,3 @@
-
-
 'use client';
 
 import * as React from 'react';
@@ -96,6 +94,33 @@ function getDashboardPathForRole(role: UserRole): string {
             return '/dashboard/my-account'; // A safe default
     }
 }
+
+class MapErrorBoundary extends React.Component<
+  { children: React.ReactNode; onError: (error: any) => void },
+  { hasError: boolean }
+> {
+  constructor(props: { children: React.ReactNode; onError: (error: any) => void }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(error: any) {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: any, errorInfo: any) {
+    this.props.onError(error);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      // The parent component will render the error UI
+      return null;
+    }
+    return this.props.children;
+  }
+}
+
 
 function MapErrorDisplay({ error }: { error: any }) {
     const message = error?.message || '';
@@ -279,16 +304,18 @@ function AddressDialog({ open, onOpenChange, onSave, initialData }: { open: bool
                     <div className="space-y-2 flex flex-col min-h-[250px] md:min-h-0">
                         <Label>Pinpoint Location</Label>
                         <div className="w-full flex-grow bg-muted rounded-lg relative overflow-hidden border">
+                           <MapErrorBoundary onError={setMapError}>
                             {mapError ? (
                                 <MapErrorDisplay error={mapError} />
                             ) : (
-                                <APIProvider apiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY!} onApiLoadError={(error) => setMapError(error)}>
+                                <APIProvider apiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY!}>
                                     <AddressMap 
                                         initialPosition={{lat: addressData.latitude || 20.5937, lng: addressData.longitude || 78.9629}}
                                         onPositionChange={(pos) => { handleInputChange('latitude', pos.lat); handleInputChange('longitude', pos.lng); }} 
                                     />
                                 </APIProvider>
                             )}
+                           </MapErrorBoundary>
                         </div>
                     </div>
                 </div>
