@@ -1,4 +1,3 @@
-
 'use client';
 
 import * as React from 'react';
@@ -387,11 +386,11 @@ export default function CartPage() {
                 </div>
              </div>
           </CardContent>
-          <CardFooter className="flex justify-between pt-6">
-             <Button size="lg" variant="outline" asChild>
+          <CardFooter className="flex flex-col sm:flex-row gap-2 pt-6">
+             <Button size="lg" variant="outline" asChild className="w-full sm:w-auto">
                 <Link href="/">Continue Shopping</Link>
             </Button>
-             <Button size="lg" asChild>
+             <Button size="lg" asChild className="w-full sm:w-auto">
                 <Link href="/checkout">Proceed to Checkout</Link>
             </Button>
           </CardFooter>
