@@ -67,10 +67,10 @@ function CurrentLocationButton() {
 
 function MapErrorDisplay({ error }: { error: any }) {
   const isApiNotActivated = error?.message?.includes('ApiNotActivatedMapError');
-  // Explicitly check for AuthFailure using a case-insensitive regex
-  const isAuthFailure = /AuthFailure/i.test(error?.message || '');
+  // Explicitly check for AuthFailure or RefererNotAllowedMapError using a case-insensitive regex
+  const isAuthOrRefererError = /AuthFailure|RefererNotAllowedMapError/i.test(error?.message || '');
   
-  if (isAuthFailure) {
+  if (isAuthOrRefererError) {
     return (
         <div className="flex flex-col items-center justify-center h-full p-4 text-center">
             <AlertCircle className="h-12 w-12 text-destructive mb-4" />
