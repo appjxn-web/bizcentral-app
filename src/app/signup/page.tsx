@@ -42,6 +42,8 @@ const formSchema = z.object({
   password: z.string().min(6, { message: 'Password must be at least 6 characters.' }),
 });
 
+const ADMIN_EMAILS = ['care@jxnindia.com', 'appjxn@gmail.com'];
+
 export default function SignupPage() {
   const { toast } = useToast();
   const router = useRouter();
@@ -69,55 +71,56 @@ export default function SignupPage() {
   });
 
   const createUserProfile = async (userId: string, contactName: string, email: string | null, businessName: string, mobile: string | null) => {
-    const ADMIN_EMAILS = ['care@jxnindia.com', 'appjxn@gmail.com'];
-    const userRole: UserRole = email && ADMIN_EMAILS.includes(email) ? 'Admin' : 'Customer';
+    let userRole: UserRole = 'Customer';
+    if (email && ADMIN_EMAILS.includes(email)) {
+      userRole = 'Admin';
+    }
+
     const batch = writeBatch(firestore);
-    
-    // REQUIREMENT: Use Business Name for the Ledger
     const ledgerName = businessName || contactName;
 
-    // 1. Create Ledger Account
+    // 1. Ledger
     const newLedgerRef = doc(collection(firestore, 'coa_ledgers'));
-    const newLedgerData: Omit<CoaLedger, 'id' | 'createdAt' | 'updatedAt'> = {
+    batch.set(newLedgerRef, {
+        id: newLedgerRef.id,
         name: ledgerName,
-        groupId: '1.1.2', // Trade Receivables
+        groupId: '1.1.2',
         nature: 'ASSET' as CoaNature,
         type: 'RECEIVABLE',
-        posting: { isPosting: true, normalBalance: 'DEBIT', isSystem: false, allowManualJournal: true },
-        openingBalance: { amount: 0, drCr: 'DR', asOf: new Date().toISOString() },
         status: 'ACTIVE',
-    };
-    batch.set(newLedgerRef, {...newLedgerData, id: newLedgerRef.id});
+        openingBalance: { amount: 0, drCr: 'DR', asOf: new Date().toISOString() },
+        posting: { isPosting: true, normalBalance: 'DEBIT', isSystem: false, allowManualJournal: true },
+        createdAt: new Date().toISOString(),
+    });
 
-    // 2. Create User Profile
+    // 2. User Profile (CRITICAL: Set role and status here)
     const userProfileRef = doc(firestore, 'users', userId);
-    const profileData: any = {
+    const profileData: Partial<UserProfile> = {
         uid: userId,
         displayName: contactName,
-        name: ledgerName,
         businessName: businessName,
-        email,
-        mobile,
+        name: ledgerName,
+        email: email,
+        mobile: mobile,
         role: userRole,
         status: 'Active',
-        createdAt: new Date().toISOString(),
         coaLedgerId: newLedgerRef.id,
+        createdAt: new Date().toISOString(),
     };
     
-    // 3. Create Party record
+    // 3. Party
     const partyRef = doc(firestore, 'parties', userId);
-    const partyData: Omit<Party, 'id'> = {
+    batch.set(partyRef, {
+        id: userId,
         name: ledgerName,
         contactPerson: contactName,
         type: 'Customer' as PartyType,
-        email: email || '',
         phone: mobile || '',
+        email: email || '',
         status: 'Active',
-        createdAt: new Date().toISOString(),
-        createdBy: 'Self-Signup',
         coaLedgerId: newLedgerRef.id,
-    };
-    batch.set(partyRef, { ...partyData, id: userId });
+        createdAt: new Date().toISOString(),
+    });
 
     // 4. Handle referral update
     if (refId && mobile) {
@@ -131,7 +134,7 @@ export default function SignupPage() {
             profileData.referredBy = refId;
         }
     }
-    
+
     batch.set(userProfileRef, profileData, { merge: true });
 
     try {
@@ -148,7 +151,6 @@ export default function SignupPage() {
       const userCredential = await createUserWithEmailAndPassword(auth, values.email, values.password);
       await updateProfile(userCredential.user, { displayName: values.contactPerson });
       
-      // Create profile and ledger
       await createUserProfile(
         userCredential.user.uid, 
         values.contactPerson, 
@@ -164,7 +166,6 @@ export default function SignupPage() {
         description: "Welcome! We've sent a verification email.",
       });
 
-      // ISSUE 1 FIX: Redirect to specific profile settings page
       router.push('/dashboard/profiles-settings');
       
     } catch (error: any) {
@@ -186,8 +187,6 @@ export default function SignupPage() {
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
       
-      // For Google, we use the display name as the business name initially 
-      // since the popup doesn't provide a business name field.
       await createUserProfile(user.uid, user.displayName || 'User', user.email, user.displayName || 'Business', user.phoneNumber);
 
       toast({
@@ -195,7 +194,6 @@ export default function SignupPage() {
         description: 'Welcome!',
       });
       
-      // ISSUE 1 FIX: Redirect to specific profile settings page
       router.push('/dashboard/profiles-settings');
     } catch (error: any) {
       console.error(error);
@@ -208,8 +206,6 @@ export default function SignupPage() {
       setIsLoading(false);
     }
   };
-
-  const ADMIN_EMAILS = ['care@jxnindia.com', 'appjxn@gmail.com'];
 
   return (
     <div className="flex items-center justify-center p-4 min-h-screen">
