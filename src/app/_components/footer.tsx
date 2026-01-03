@@ -64,7 +64,7 @@ export function Footer() {
   const { data: companyInfo } = useDoc<CompanyInfo>(companyInfoRef);
 
   const logo = companyInfo?.logo || null;
-  const companyName = companyInfo?.companyName || 'BizCentral';
+  const companyName = companyInfo?.companyName || 'jxnPlus';
   const socials = companyInfo?.socials || {};
   const contactEmail = companyInfo?.contactEmail || 'contact@example.com';
   const contactNumber = companyInfo?.contactNumber || '+1 (123) 456-7890';

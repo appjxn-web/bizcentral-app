@@ -68,7 +68,7 @@ export function Header({ showSidebarTrigger = true }: { showSidebarTrigger?: boo
   const { data: companyInfo, loading: companyInfoLoading } = useDoc<{ logo?: string, companyName?: string }>(companyInfoRef);
 
   const logo = companyInfo?.logo;
-  const companyName = companyInfo?.companyName || 'BizCentral';
+  const companyName = companyInfo?.companyName || 'jxnPlus';
   
     React.useEffect(() => {
     if (user && firestore) {

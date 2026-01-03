@@ -1,3 +1,4 @@
+
 'use client';
 
 import * as React from 'react';
@@ -69,7 +70,7 @@ export function AppSidebar() {
           <Button variant="ghost" size="icon" className="shrink-0">
              <Briefcase className="h-5 w-5 text-primary" />
           </Button>
-          <h1 className="text-lg font-semibold tracking-tight">BizCentral</h1>
+          <h1 className="text-lg font-semibold tracking-tight">jxnPlus</h1>
         </div>
       </SidebarHeader>
       <SidebarContent>

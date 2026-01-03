@@ -35,7 +35,7 @@ export function Header() {
           className="flex items-center gap-2 text-lg font-semibold"
         >
           <Briefcase className="h-6 w-6 text-primary" />
-          <span className="font-bold">BizCentral</span>
+          <span className="font-bold">jxnPlus</span>
         </Link>
         <div className="ml-auto flex items-center gap-4">
           {user ? (

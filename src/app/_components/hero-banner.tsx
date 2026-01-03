@@ -30,7 +30,7 @@ export function HeroBanner() {
   const banner = companyInfo?.customHomepageBanner;
 
   const bannerImageUrl = banner?.desktopImageUrl || "https://images.unsplash.com/photo-1522071820081-009f0129c71c?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHwyfHx0ZWFtJTIwbWVldGluZ3xlbnwwfHx8fDE3MjE4OTc0NDB8MA&ixlib=rb-4.1.0&q=80&w=1920";
-  const headline = banner?.headline || 'Welcome to BizCentral';
+  const headline = banner?.headline || 'Welcome to jxnPlus';
   const subheadline = banner?.subheadline || 'Your all-in-one solution for modern business management.';
 
   const positionClasses = {

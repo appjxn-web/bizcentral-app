@@ -1,4 +1,4 @@
-# BizCentral Application Business Flows
+# jxnPlus Application Business Flows
 
 This document outlines the major end-to-end business processes supported by the application.
 

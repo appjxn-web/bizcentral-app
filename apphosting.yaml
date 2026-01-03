@@ -8,6 +8,6 @@ runConfig:
 entryPoint: npm run start
 env:
   - variable: NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
-    value: AIzaSyACRiDv9BMFT6vCIqI2uciMLSyGbAlu76M
+    value: "PASTE_YOUR_API_KEY_HERE"
 backendId: studio
 region: us-west1
