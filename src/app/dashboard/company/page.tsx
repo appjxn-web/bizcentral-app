@@ -1,3 +1,4 @@
+
 'use client';
 
 import * as React from 'react';
@@ -1042,9 +1043,12 @@ function AddressDialog({
 
   const [addressData, setAddressData] = React.useState<AddressFormState>(empty);
   const [mapError, setMapError] = React.useState<any>(null);
+  const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+
 
   React.useEffect(() => {
     if (open) {
+      setMapError(null);
       if (initialData) {
         const { id, ...rest } = initialData;
         setAddressData({
@@ -1130,20 +1134,30 @@ function AddressDialog({
             </ScrollArea>
              <div className="space-y-2 flex flex-col min-h-[250px] md:min-h-0">
                 <Label>Pinpoint Location</Label>
-                <div className="w-full flex-grow bg-muted rounded-lg relative overflow-hidden border">
-                <MapErrorBoundary onError={setMapError}>
-                  {mapError ? (
-                    <MapErrorDisplay error={mapError} />
-                  ) : (
-                      <APIProvider apiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY!}>
-                          <AddressMap 
-                              initialPosition={{lat: addressData.latitude || 20.5937, lng: addressData.longitude || 78.9629}}
-                              onPositionChange={(pos) => { handleInputChange('latitude', pos.lat); handleInputChange('longitude', pos.lng); }} 
-                          />
-                      </APIProvider>
-                  )}
-                </MapErrorBoundary>
-                </div>
+                 <div className="w-full flex-grow bg-muted rounded-lg relative overflow-hidden border">
+                    {!apiKey ? (
+                       <div className="flex flex-col items-center justify-center h-full p-4 text-center">
+                          <AlertCircle className="h-10 w-10 text-destructive mb-2" />
+                          <h3 className="text-base font-semibold text-destructive">API Key Missing</h3>
+                          <p className="text-xs text-destructive/80 mt-1">
+                              Please provide a Google Maps API key to use this feature.
+                          </p>
+                      </div>
+                    ) : (
+                      <MapErrorBoundary onError={setMapError}>
+                        {mapError ? (
+                          <MapErrorDisplay error={mapError} />
+                        ) : (
+                            <APIProvider apiKey={apiKey}>
+                                <AddressMap 
+                                    initialPosition={{lat: addressData.latitude || 20.5937, lng: addressData.longitude || 78.9629}}
+                                    onPositionChange={(pos) => { handleInputChange('latitude', pos.lat); handleInputChange('longitude', pos.lng); }} 
+                                />
+                            </APIProvider>
+                        )}
+                      </MapErrorBoundary>
+                    )}
+                 </div>
             </div>
         </div>
         <DialogFooter className="mt-4 pt-4 border-t">
@@ -1210,5 +1224,3 @@ function PersonnelDialog({ open, onOpenChange, onSave, initialData }: { open: bo
 export default function CompanyPage() {
     return <CompanyPageContent />;
 }
-
-    

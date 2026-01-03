@@ -1,3 +1,4 @@
+
 'use client';
 
 import * as React from 'react';
@@ -216,6 +217,20 @@ export function CustomerMap() {
   
   const zoom = !locations || locations.length === 0 ? 4 : 5;
   
+  if (!apiKey) {
+    return (
+      <div className="relative w-full h-[75vh] md:h-[500px] bg-muted md:rounded-lg overflow-hidden border">
+        <div className="flex flex-col items-center justify-center h-full p-4 text-center">
+            <AlertCircle className="h-12 w-12 text-destructive mb-4" />
+            <h3 className="text-lg font-semibold">API Key Missing</h3>
+            <p className="text-muted-foreground">
+              Google Maps API key is missing. Please add `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` to your .env file to display the map.
+            </p>
+        </div>
+      </div>
+    );
+  }
+
   if (mapError) {
       return (
         <div className="relative w-full h-[75vh] md:h-[500px] bg-muted md:rounded-lg overflow-hidden border">
@@ -231,15 +246,7 @@ export function CustomerMap() {
         A look at our customer and partner locations across the map.
       </p>
       <div className="relative w-full h-[75vh] md:h-[500px] bg-muted md:rounded-lg overflow-hidden border">
-        {!apiKey ? (
-          <div className="flex flex-col items-center justify-center h-full p-4 text-center">
-            <AlertCircle className="h-12 w-12 text-destructive mb-4" />
-            <h3 className="text-lg font-semibold">API Key Missing</h3>
-            <p className="text-muted-foreground">
-              Google Maps API key is missing. Please add `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` to your .env file to display the map.
-            </p>
-          </div>
-        ) : locationsLoading ? (
+        {locationsLoading ? (
            <div className="flex items-center justify-center h-full"><Loader2 className="h-8 w-8 animate-spin" /></div>
         ) : (
           <MapErrorBoundary onCatch={setMapError}>
