@@ -98,62 +98,50 @@ function getDashboardPathForRole(role: UserRole): string {
 }
 
 function MapErrorDisplay({ error }: { error: any }) {
-  const isApiNotActivated = error?.message?.includes('ApiNotActivatedMapError');
-  const isAuthOrRefererError = /AuthFailure|RefererNotAllowedMapError/i.test(error?.message || '');
-  
-  if (isAuthOrRefererError) {
+    const message = error?.message || '';
+    const isAuthFailure = /AuthFailure|RefererNotAllowedMapError/i.test(message);
+    const isApiNotActivated = message.includes('ApiNotActivatedMapError');
+
+    if (isAuthFailure) {
+        return (
+            <div className="flex flex-col items-center justify-center h-full p-4 text-center bg-destructive/10">
+                <AlertCircle className="h-10 w-10 text-destructive mb-2" />
+                <h3 className="text-base font-semibold text-destructive">Google Maps API Key Error</h3>
+                <p className="text-xs text-destructive/80 mt-1">
+                    The API key is missing, invalid, or not authorized for this URL.
+                </p>
+                <a 
+                    href="https://console.cloud.google.com/google/maps-apis/credentials" 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                >
+                    <Button variant="link" className="text-xs h-auto p-0 mt-2">Go to Google Cloud Credentials</Button>
+                </a>
+            </div>
+        );
+    }
+
+    if (isApiNotActivated) {
+        return (
+            <div className="flex flex-col items-center justify-center h-full p-4 text-center bg-destructive/10">
+                <AlertCircle className="h-10 w-10 text-destructive mb-2" />
+                <h3 className="text-base font-semibold text-destructive">Google Maps API Not Enabled</h3>
+                <p className="text-xs text-destructive/80 mt-1">
+                    The "Maps JavaScript API" needs to be enabled in your Google Cloud project.
+                </p>
+            </div>
+        );
+    }
+
     return (
         <div className="flex flex-col items-center justify-center h-full p-4 text-center">
-            <AlertCircle className="h-12 w-12 text-destructive mb-4" />
-            <h3 className="text-lg font-semibold">Google Maps API Key Error</h3>
-            <p className="text-muted-foreground mb-4">
-                The map failed to load due to an authentication issue. This usually happens when the API key is not authorized for the current website URL.
+            <AlertCircle className="h-10 w-10 text-muted-foreground mb-2" />
+            <h3 className="text-base font-semibold">Map Unavailable</h3>
+            <p className="text-xs text-muted-foreground mt-1">
+                Could not load the map. Please ensure the API key is correctly configured.
             </p>
-             <p className="text-sm text-muted-foreground mb-4">
-               To fix this, go to your Google Cloud Console, find your Maps API Key, and add your preview URL to the list of allowed "Website restrictions".
-            </p>
-            <a 
-            href="https://console.cloud.google.com/google/maps-apis/credentials" 
-            target="_blank" 
-            rel="noopener noreferrer"
-            >
-                <Button>Go to Google Cloud Credentials</Button>
-            </a>
-      </div>
-    )
-  }
-
-  if (isApiNotActivated) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full p-4 text-center">
-        <AlertCircle className="h-12 w-12 text-destructive mb-4" />
-        <h3 className="text-lg font-semibold">Google Maps API Not Activated</h3>
-        <p className="text-muted-foreground mb-4">
-          The "Maps JavaScript API" is not enabled for your project. Please enable it in the Google Cloud Console to display the map.
-        </p>
-        <a 
-          href="https://console.cloud.google.com/google/maps-apis/overview" 
-          target="_blank" 
-          rel="noopener noreferrer"
-        >
-            <Button>Enable Maps API</Button>
-        </a>
-      </div>
+        </div>
     );
-  }
-
-  return (
-      <div className="flex flex-col items-center justify-center h-full p-4 text-center">
-        <AlertCircle className="h-12 w-12 text-destructive mb-4" />
-        <h3 className="text-lg font-semibold">Map Loading Error</h3>
-        <p className="text-muted-foreground">
-          An unexpected error occurred while loading the map.
-        </p>
-        <pre className="mt-2 text-xs text-left bg-muted p-2 rounded-md overflow-auto">
-          {error?.message || 'No error message available.'}
-        </pre>
-      </div>
-  );
 }
 
 function AddressMap({ onPositionChange, initialPosition }: { onPositionChange: (pos: { lat: number; lng: number }) => void, initialPosition: { lat: number, lng: number }}) {
@@ -288,7 +276,7 @@ function AddressDialog({ open, onOpenChange, onSave, initialData }: { open: bool
                             </div>
                         </div>
                     </ScrollArea>
-                    <div className="space-y-4 flex flex-col min-h-[250px] md:min-h-0">
+                    <div className="space-y-2 flex flex-col min-h-[250px] md:min-h-0">
                         <Label>Pinpoint Location</Label>
                         <div className="w-full flex-grow bg-muted rounded-lg relative overflow-hidden border">
                             {mapError ? (
