@@ -138,13 +138,13 @@ function AddressDialog({ open, onOpenChange, onSave, initialData }: { open: bool
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-4xl">
+            <DialogContent className="max-w-4xl h-full md:h-auto flex flex-col">
                 <DialogHeader>
                     <DialogTitle>{initialData ? 'Edit Address' : 'Add New Address'}</DialogTitle>
                     <DialogDescription>Fill in the details for the address. Pinpoint on the map for accuracy.</DialogDescription>
                 </DialogHeader>
-                 <div className="grid md:grid-cols-2 gap-6">
-                    <ScrollArea className="max-h-[70vh] pr-4">
+                 <div className="flex-1 grid md:grid-cols-2 gap-6 overflow-hidden">
+                    <ScrollArea className="h-full pr-4">
                         <div className="grid gap-4 py-4">
                             <div className="space-y-2">
                                 <Label htmlFor="address-type">Address Type</Label>
@@ -180,9 +180,9 @@ function AddressDialog({ open, onOpenChange, onSave, initialData }: { open: bool
                             </div>
                         </div>
                     </ScrollArea>
-                    <div className="space-y-4">
+                    <div className="space-y-4 flex flex-col">
                         <Label>Pinpoint Location</Label>
-                        <div className="aspect-[4/3] w-full bg-muted rounded-lg relative overflow-hidden border">
+                        <div className="w-full flex-grow bg-muted rounded-lg relative overflow-hidden border">
                             <GoogleMapsProvider>
                                <Map
                                     style={{ width: '100%', height: '100%' }}
@@ -217,7 +217,7 @@ function AddressDialog({ open, onOpenChange, onSave, initialData }: { open: bool
                         </div>
                     </div>
                 </div>
-                <DialogFooter>
+                <DialogFooter className="mt-4 pt-4 border-t">
                     <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
                     <Button type="button" onClick={handleSubmit}>Save Address</Button>
                 </DialogFooter>
