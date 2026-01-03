@@ -6,7 +6,7 @@ import * as React from 'react';
 import { doc, setDoc, updateDoc, writeBatch, collection, addDoc, query, where, getDocs } from 'firebase/firestore';
 import { updateProfile }from 'firebase/auth';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { Map, AdvancedMarker } from '@vis.gl/react-google-maps';
+import { Map, AdvancedMarker, APIProvider, useMap } from '@vis.gl/react-google-maps';
 import { useRouter, useSearchParams } from 'next/navigation';
 
 import { PageHeader } from '@/components/page-header';
@@ -43,7 +43,7 @@ import {
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { PlusCircle, MapPin, LocateFixed, Loader2, FileUp, Camera, Edit, Save } from 'lucide-react';
+import { PlusCircle, MapPin, LocateFixed, Loader2, FileUp, Camera, Edit, Save, AlertCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useTheme } from 'next-themes';
 import { useFirestore, useUser, useDoc, useStorage, useAuth, useCollection } from '@/firebase';
@@ -97,12 +97,135 @@ function getDashboardPathForRole(role: UserRole): string {
     }
 }
 
+function MapErrorDisplay({ error }: { error: any }) {
+  const isApiNotActivated = error?.message?.includes('ApiNotActivatedMapError');
+  const isAuthOrRefererError = /AuthFailure|RefererNotAllowedMapError/i.test(error?.message || '');
+  
+  if (isAuthOrRefererError) {
+    return (
+        <div className="flex flex-col items-center justify-center h-full p-4 text-center">
+            <AlertCircle className="h-12 w-12 text-destructive mb-4" />
+            <h3 className="text-lg font-semibold">Google Maps API Key Error</h3>
+            <p className="text-muted-foreground mb-4">
+                The map failed to load due to an authentication issue. This usually happens when the API key is not authorized for the current website URL.
+            </p>
+             <p className="text-sm text-muted-foreground mb-4">
+               To fix this, go to your Google Cloud Console, find your Maps API Key, and add your preview URL to the list of allowed "Website restrictions".
+            </p>
+            <a 
+            href="https://console.cloud.google.com/google/maps-apis/credentials" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            >
+                <Button>Go to Google Cloud Credentials</Button>
+            </a>
+      </div>
+    )
+  }
+
+  if (isApiNotActivated) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full p-4 text-center">
+        <AlertCircle className="h-12 w-12 text-destructive mb-4" />
+        <h3 className="text-lg font-semibold">Google Maps API Not Activated</h3>
+        <p className="text-muted-foreground mb-4">
+          The "Maps JavaScript API" is not enabled for your project. Please enable it in the Google Cloud Console to display the map.
+        </p>
+        <a 
+          href="https://console.cloud.google.com/google/maps-apis/overview" 
+          target="_blank" 
+          rel="noopener noreferrer"
+        >
+            <Button>Enable Maps API</Button>
+        </a>
+      </div>
+    );
+  }
+
+  return (
+      <div className="flex flex-col items-center justify-center h-full p-4 text-center">
+        <AlertCircle className="h-12 w-12 text-destructive mb-4" />
+        <h3 className="text-lg font-semibold">Map Loading Error</h3>
+        <p className="text-muted-foreground">
+          An unexpected error occurred while loading the map.
+        </p>
+        <pre className="mt-2 text-xs text-left bg-muted p-2 rounded-md overflow-auto">
+          {error?.message || 'No error message available.'}
+        </pre>
+      </div>
+  );
+}
+
+function AddressMap({ onPositionChange, initialPosition }: { onPositionChange: (pos: { lat: number; lng: number }) => void, initialPosition: { lat: number, lng: number }}) {
+  const map = useMap();
+  const [markerPosition, setMarkerPosition] = React.useState(initialPosition);
+
+  React.useEffect(() => {
+    if (initialPosition.lat !== markerPosition.lat || initialPosition.lng !== markerPosition.lng) {
+      setMarkerPosition(initialPosition);
+    }
+  }, [initialPosition, markerPosition.lat, markerPosition.lng]);
+
+  const handleGetCurrentLocation = () => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const newPos = { lat: position.coords.latitude, lng: position.coords.longitude };
+          setMarkerPosition(newPos);
+          onPositionChange(newPos);
+          if (map) map.moveCamera({ center: newPos, zoom: 15 });
+        },
+        () => alert('Could not fetch location.')
+      );
+    } else {
+      alert('Geolocation not supported.');
+    }
+  };
+
+  const onMarkerDragEnd = (e: google.maps.MapMouseEvent) => {
+    const newPos = { lat: e.latLng!.lat(), lng: e.latLng!.lng() };
+    setMarkerPosition(newPos);
+    onPositionChange(newPos);
+  };
+
+  return (
+    <div className="w-full h-full bg-muted rounded-lg relative overflow-hidden border">
+      <Map
+        center={initialPosition}
+        zoom={initialPosition.lat === 20.5937 ? 4 : 15}
+        gestureHandling={'greedy'}
+        disableDefaultUI={true}
+        mapId={'f9d3a95f7a52e6a3'}
+        className="w-full h-full"
+      >
+        <AdvancedMarker
+          position={markerPosition}
+          draggable={true}
+          onDragEnd={onMarkerDragEnd}
+        >
+          <MapPin className="h-8 w-8 text-primary" />
+        </AdvancedMarker>
+      </Map>
+      <Button
+        type="button"
+        variant="secondary"
+        size="icon"
+        className="absolute bottom-2 right-2 shadow-lg"
+        onClick={handleGetCurrentLocation}
+      >
+        <LocateFixed className="h-5 w-5" />
+      </Button>
+    </div>
+  );
+}
+
 function AddressDialog({ open, onOpenChange, onSave, initialData }: { open: boolean, onOpenChange: (open: boolean) => void, onSave: (data: Omit<Address, 'id'>) => void, initialData: Address | null }) {
     const emptyAddress: Omit<Address, 'id'> = {
         type: 'Home', line1: '', line2: '', city: '', district: '', state: '', country: 'India', pin: '', digitalPin: '',
         isPickupPoint: false, latitude: 20.5937, longitude: 78.9629,
     };
     const [addressData, setAddressData] = React.useState<Omit<Address, 'id'>>(emptyAddress);
+    const [mapError, setMapError] = React.useState<any>(null);
 
     React.useEffect(() => {
         if(initialData) {
@@ -117,21 +240,6 @@ function AddressDialog({ open, onOpenChange, onSave, initialData }: { open: bool
         setAddressData(prev => ({...prev, [field]: value}));
     };
 
-    const handleGetCurrentLocation = () => {
-        if (navigator.geolocation) {
-          navigator.geolocation.getCurrentPosition(
-            (position) => {
-              setAddressData(prev => ({
-                ...prev,
-                latitude: position.coords.latitude,
-                longitude: position.coords.longitude
-              }));
-            },
-            () => alert('Could not fetch location.')
-          );
-        }
-      };
-
     const handleSubmit = () => {
         onSave(addressData);
     };
@@ -143,7 +251,7 @@ function AddressDialog({ open, onOpenChange, onSave, initialData }: { open: bool
                     <DialogTitle>{initialData ? 'Edit Address' : 'Add New Address'}</DialogTitle>
                     <DialogDescription>Fill in the details for the address. Pinpoint on the map for accuracy.</DialogDescription>
                 </DialogHeader>
-                 <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-6 overflow-hidden">
+                 <div className="flex-1 grid md:grid-cols-2 gap-6 overflow-hidden">
                     <ScrollArea className="h-full pr-4 -mr-4">
                         <div className="grid gap-4 py-4">
                             <div className="space-y-2">
@@ -183,37 +291,16 @@ function AddressDialog({ open, onOpenChange, onSave, initialData }: { open: bool
                     <div className="space-y-4 flex flex-col min-h-[250px] md:min-h-0">
                         <Label>Pinpoint Location</Label>
                         <div className="w-full flex-grow bg-muted rounded-lg relative overflow-hidden border">
-                            <GoogleMapsProvider>
-                               <Map
-                                    style={{ width: '100%', height: '100%' }}
-                                    defaultCenter={{ lat: addressData.latitude || 20.5937, lng: addressData.longitude || 78.9629 }}
-                                    defaultZoom={addressData.latitude ? 15 : 4}
-                                    gestureHandling={'greedy'}
-                                    disableDefaultUI={true}
-                                    mapId={'f9d3a95f7a52e6a3'}
-                                >
-                                    <AdvancedMarker
-                                        position={{ lat: addressData.latitude || 20.5937, lng: addressData.longitude || 78.9629 }}
-                                        draggable={true}
-                                        onDragEnd={(e) => {
-                                            const newPos = { lat: e.latLng!.lat(), lng: e.latLng!.lng() };
-                                            handleInputChange('latitude', newPos.lat);
-                                            handleInputChange('longitude', newPos.lng);
-                                        }}
-                                    >
-                                      <MapPin className="h-8 w-8 text-primary" />
-                                    </AdvancedMarker>
-                                </Map>
-                            </GoogleMapsProvider>
-                             <Button
-                                type="button"
-                                variant="secondary"
-                                size="icon"
-                                className="absolute bottom-2 right-2 shadow-lg"
-                                onClick={handleGetCurrentLocation}
-                            >
-                                <LocateFixed className="h-5 w-5" />
-                            </Button>
+                            {mapError ? (
+                                <MapErrorDisplay error={mapError} />
+                            ) : (
+                                <APIProvider apiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY!} onApiLoadError={(error) => setMapError(error)}>
+                                    <AddressMap 
+                                        initialPosition={{lat: addressData.latitude || 20.5937, lng: addressData.longitude || 78.9629}}
+                                        onPositionChange={(pos) => { handleInputChange('latitude', pos.lat); handleInputChange('longitude', pos.lng); }} 
+                                    />
+                                </APIProvider>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -703,5 +790,7 @@ export default function ProfilesSettingsPage() {
     </>
   );
 }
+
+    
 
     

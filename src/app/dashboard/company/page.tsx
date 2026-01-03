@@ -39,7 +39,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { PlusCircle, FileUp, Paperclip, Sparkles, Loader2, Youtube, Instagram, Facebook, Linkedin, Twitter, Trash2, Edit, Save, MapPin, LocateFixed, Database, RefreshCw } from 'lucide-react';
+import { PlusCircle, FileUp, Paperclip, Sparkles, Loader2, Youtube, Instagram, Facebook, Linkedin, Twitter, Trash2, Edit, Save, MapPin, LocateFixed, Database, RefreshCw, AlertCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import {
   Table,
@@ -60,7 +60,7 @@ import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { GoogleMapsProvider } from '@/app/_components/google-map-provider';
-import { Map, AdvancedMarker, useMap } from '@vis.gl/react-google-maps';
+import { Map, AdvancedMarker, useMap, APIProvider } from '@vis.gl/react-google-maps';
 import { collection, getDocs, query, where } from "firebase/firestore";
 
 
@@ -276,7 +276,7 @@ function CompanyPageContent() {
             const taxDocRef = ref(storage, `company/taxDocs/${field}/${file.name}`);
             const snapshot = await uploadBytes(taxDocRef, file);
             const fileUrl = await getDownloadURL(snapshot.ref);
-            setTaxInfo(prev => ({ ...prev, [field]: { ...prev[field], id: field, fileUrl } }));
+            setTaxInfo(prev => ({ ...prev, [field]: { ...prev[field], fileUrl } }));
             toast({
                 title: `${field} Document Uploaded`,
                 description: file.name,
@@ -888,6 +888,67 @@ function CompanyPageContent() {
 
 type AddressFormState = Partial<Omit<Address, 'id'>>;
 
+function MapErrorDisplay({ error }: { error: any }) {
+  const isApiNotActivated = error?.message?.includes('ApiNotActivatedMapError');
+  // Explicitly check for AuthFailure or RefererNotAllowedMapError using a case-insensitive regex
+  const isAuthOrRefererError = /AuthFailure|RefererNotAllowedMapError/i.test(error?.message || '');
+  
+  if (isAuthOrRefererError) {
+    return (
+        <div className="flex flex-col items-center justify-center h-full p-4 text-center">
+            <AlertCircle className="h-12 w-12 text-destructive mb-4" />
+            <h3 className="text-lg font-semibold">Google Maps API Key Error</h3>
+            <p className="text-muted-foreground mb-4">
+                The map failed to load due to an authentication issue. This usually happens when the API key is not authorized for the current website URL.
+            </p>
+             <p className="text-sm text-muted-foreground mb-4">
+               To fix this, go to your Google Cloud Console, find your Maps API Key, and add your preview URL to the list of allowed "Website restrictions".
+            </p>
+            <a 
+            href="https://console.cloud.google.com/google/maps-apis/credentials" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            >
+                <Button>Go to Google Cloud Credentials</Button>
+            </a>
+      </div>
+    )
+  }
+
+  if (isApiNotActivated) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full p-4 text-center">
+        <AlertCircle className="h-12 w-12 text-destructive mb-4" />
+        <h3 className="text-lg font-semibold">Google Maps API Not Activated</h3>
+        <p className="text-muted-foreground mb-4">
+          The "Maps JavaScript API" is not enabled for your project. Please enable it in the Google Cloud Console to display the map.
+        </p>
+        <a 
+          href="https://console.cloud.google.com/google/maps-apis/overview" 
+          target="_blank" 
+          rel="noopener noreferrer"
+        >
+            <Button>Enable Maps API</Button>
+        </a>
+      </div>
+    );
+  }
+
+  return (
+      <div className="flex flex-col items-center justify-center h-full p-4 text-center">
+        <AlertCircle className="h-12 w-12 text-destructive mb-4" />
+        <h3 className="text-lg font-semibold">Map Loading Error</h3>
+        <p className="text-muted-foreground">
+          An unexpected error occurred while loading the map.
+        </p>
+        <pre className="mt-2 text-xs text-left bg-muted p-2 rounded-md overflow-auto">
+          {error?.message || 'No error message available.'}
+        </pre>
+      </div>
+  );
+}
+
+
 function AddressMap({ onPositionChange, initialPosition }: { onPositionChange: (pos: { lat: number; lng: number }) => void, initialPosition: { lat: number, lng: number }}) {
   const map = useMap();
   const [markerPosition, setMarkerPosition] = React.useState(initialPosition);
@@ -922,10 +983,10 @@ function AddressMap({ onPositionChange, initialPosition }: { onPositionChange: (
   };
 
   return (
-    <div className="aspect-[4/3] w-full bg-muted rounded-lg relative overflow-hidden border">
+    <div className="w-full h-full bg-muted rounded-lg relative overflow-hidden border">
       <Map
-        defaultCenter={initialPosition}
-        defaultZoom={initialPosition.lat === 20.5937 ? 4 : 15}
+        center={initialPosition}
+        zoom={initialPosition.lat === 20.5937 ? 4 : 15}
         gestureHandling={'greedy'}
         disableDefaultUI={true}
         mapId={'f9d3a95f7a52e6a3'}
@@ -969,6 +1030,7 @@ function AddressDialog({
   };
 
   const [addressData, setAddressData] = React.useState<AddressFormState>(empty);
+  const [mapError, setMapError] = React.useState<any>(null);
 
   React.useEffect(() => {
     if (open) {
@@ -999,13 +1061,13 @@ function AddressDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl">
+      <DialogContent className="max-w-4xl h-full md:h-auto md:max-h-[80vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>{initialData ? 'Edit Address' : 'Add New Address'}</DialogTitle>
-          <DialogDescription>Fill in the details for the address.</DialogDescription>
+          <DialogDescription>Fill in the details for the address. Pinpoint on the map for accuracy.</DialogDescription>
         </DialogHeader>
-        <div className="grid md:grid-cols-2 gap-6">
-            <ScrollArea className="max-h-[70vh] pr-4">
+        <div className="flex-1 grid md:grid-cols-2 gap-6 overflow-hidden">
+            <ScrollArea className="h-full pr-4 -mr-4">
               <form className="grid gap-4 py-4" onSubmit={(e) => e.preventDefault()}>
                 <div className="space-y-2">
                     <Label htmlFor="address-type">Address Type</Label>
@@ -1056,11 +1118,18 @@ function AddressDialog({
               </form>
             </ScrollArea>
              <div className="space-y-4">
-                 <GoogleMapsProvider>
-                   <AddressMap 
-                    initialPosition={{lat: addressData.latitude || 20.5937, lng: addressData.longitude || 78.9629}}
-                    onPositionChange={(pos) => { handleInputChange('latitude', pos.lat); handleInputChange('longitude', pos.lng); }} />
-                 </GoogleMapsProvider>
+                 <div className="w-full h-full bg-muted rounded-lg relative overflow-hidden border">
+                    {mapError ? (
+                        <MapErrorDisplay error={mapError} />
+                    ) : (
+                        <APIProvider apiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY!} onApiLoadError={(error) => setMapError(error)}>
+                            <AddressMap 
+                                initialPosition={{lat: addressData.latitude || 20.5937, lng: addressData.longitude || 78.9629}}
+                                onPositionChange={(pos) => { handleInputChange('latitude', pos.lat); handleInputChange('longitude', pos.lng); }} 
+                            />
+                        </APIProvider>
+                    )}
+                </div>
             </div>
         </div>
         <DialogFooter className="mt-4 pt-4 border-t">
@@ -1127,3 +1196,5 @@ function PersonnelDialog({ open, onOpenChange, onSave, initialData }: { open: bo
 export default function CompanyPage() {
     return <CompanyPageContent />;
 }
+
+    
