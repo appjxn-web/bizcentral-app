@@ -128,7 +128,7 @@ service cloud.firestore {
 
     // --- PARTIES ---
     match /parties/{partyId} {
-      // Allow user to create their own party document if the ID matches their auth UID.
+      // Allow party creation during signup for the corresponding user
       allow create: if signedIn() && request.auth.uid == partyId;
       allow list, get: if signedIn();
       allow write: if isAdmin();

@@ -49,6 +49,7 @@ export default function SignupPage() {
   const auth = useAuth();
   const firestore = useFirestore();
   const [isLoading, setIsLoading] = React.useState(false);
+  
   const companyInfoRef = doc(firestore, 'company', 'info');
   const { data: companyInfo } = useDoc<{ logo?: string }>(companyInfoRef);
   
@@ -67,17 +68,19 @@ export default function SignupPage() {
     },
   });
 
-  const createUserProfile = async (userId: string, name: string, email: string | null, businessName?: string | null, mobile?: string | null) => {
+  const createUserProfile = async (userId: string, contactName: string, email: string | null, businessName: string, mobile: string | null) => {
+    const ADMIN_EMAILS = ['care@jxnindia.com', 'appjxn@gmail.com'];
     const userRole: UserRole = email && ADMIN_EMAILS.includes(email) ? 'Admin' : 'Customer';
     const batch = writeBatch(firestore);
     
-    const ledgerName = businessName || name;
+    // REQUIREMENT: Use Business Name for the Ledger
+    const ledgerName = businessName || contactName;
 
-    // 1. Create a new Ledger account for the customer under Trade Receivables
+    // 1. Create Ledger Account
     const newLedgerRef = doc(collection(firestore, 'coa_ledgers'));
     const newLedgerData: Omit<CoaLedger, 'id' | 'createdAt' | 'updatedAt'> = {
         name: ledgerName,
-        groupId: '1.1.2', // Trade Receivables group ID
+        groupId: '1.1.2', // Trade Receivables
         nature: 'ASSET' as CoaNature,
         type: 'RECEIVABLE',
         posting: { isPosting: true, normalBalance: 'DEBIT', isSystem: false, allowManualJournal: true },
@@ -86,26 +89,26 @@ export default function SignupPage() {
     };
     batch.set(newLedgerRef, {...newLedgerData, id: newLedgerRef.id});
 
-    // 2. Create the user profile with the new ledger ID
+    // 2. Create User Profile
     const userProfileRef = doc(firestore, 'users', userId);
     const profileData: any = {
         uid: userId,
-        displayName: name,
+        displayName: contactName,
         name: ledgerName,
+        businessName: businessName,
         email,
+        mobile,
         role: userRole,
         status: 'Active',
         createdAt: new Date().toISOString(),
         coaLedgerId: newLedgerRef.id,
     };
-    if (businessName) profileData.businessName = businessName;
-    if (mobile) profileData.mobile = mobile;
     
-    // 3. Create a corresponding Party record
+    // 3. Create Party record
     const partyRef = doc(firestore, 'parties', userId);
     const partyData: Omit<Party, 'id'> = {
         name: ledgerName,
-        contactPerson: name,
+        contactPerson: contactName,
         type: 'Customer' as PartyType,
         email: email || '',
         phone: mobile || '',
@@ -116,23 +119,27 @@ export default function SignupPage() {
     };
     batch.set(partyRef, { ...partyData, id: userId });
 
-    // 4. Handle referral logic
-    if (refId && referredByMobile && mobile === referredByMobile) {
+    // 4. Handle referral update
+    if (refId && mobile) {
         const referralsRef = collection(firestore, 'users', refId, 'referrals');
-        const q = query(referralsRef, where('mobile', '==', referredByMobile), where('status', '==', 'Pending'));
+        const q = query(referralsRef, where('mobile', '==', mobile), where('status', '==', 'Pending'));
         const querySnapshot = await getDocs(q);
 
         if (!querySnapshot.empty) {
-            const referralDoc = querySnapshot.docs[0];
-            batch.update(referralDoc.ref, { status: 'Signed Up' });
+            const referralDocToUpdate = querySnapshot.docs[0];
+            batch.update(referralDocToUpdate.ref, { status: 'Signed Up' });
             profileData.referredBy = refId;
         }
     }
     
     batch.set(userProfileRef, profileData, { merge: true });
 
-    // 5. Commit all operations
-    await batch.commit();
+    try {
+        await batch.commit();
+    } catch (err) {
+        console.error("Batch Commit Error:", err);
+        throw new Error("Failed to create ledger/profile. Please check Firestore Rules.");
+    }
   };
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
@@ -141,15 +148,25 @@ export default function SignupPage() {
       const userCredential = await createUserWithEmailAndPassword(auth, values.email, values.password);
       await updateProfile(userCredential.user, { displayName: values.contactPerson });
       
+      // Create profile and ledger
+      await createUserProfile(
+        userCredential.user.uid, 
+        values.contactPerson, 
+        values.email, 
+        values.businessName, 
+        values.mobile
+      );
+      
       await sendEmailVerification(userCredential.user);
 
-      await createUserProfile(userCredential.user.uid, values.contactPerson, values.email, values.businessName, values.mobile);
-      
       toast({
-        title: 'Account Created & Verification Email Sent',
-        description: "You've been successfully signed up! Please check your email to verify your account.",
+        title: 'Account Created',
+        description: "Welcome! We've sent a verification email.",
       });
-      router.push('/dashboard');
+
+      // ISSUE 1 FIX: Redirect to specific profile settings page
+      router.push('/dashboard/profiles-settings');
+      
     } catch (error: any) {
       console.error(error);
       toast({
@@ -169,13 +186,17 @@ export default function SignupPage() {
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
       
-      await createUserProfile(user.uid, user.displayName || 'Google User', user.email, user.displayName || 'Google User', user.phoneNumber);
+      // For Google, we use the display name as the business name initially 
+      // since the popup doesn't provide a business name field.
+      await createUserProfile(user.uid, user.displayName || 'User', user.email, user.displayName || 'Business', user.phoneNumber);
 
       toast({
         title: 'Sign Up Successful',
         description: 'Welcome!',
       });
-      router.push('/dashboard');
+      
+      // ISSUE 1 FIX: Redirect to specific profile settings page
+      router.push('/dashboard/profiles-settings');
     } catch (error: any) {
       console.error(error);
       toast({
