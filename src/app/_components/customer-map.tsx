@@ -166,7 +166,7 @@ export function CustomerMap() {
         
         const [locationsSnapshot, pickupPointsSnapshot] = await Promise.all([
             getDocs(locationsQuery),
-            getDocs(pickupPointsSnapshot)
+            getDocs(pickupPointsQuery)
         ]);
 
         const fetchedCustomerLocations = locationsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Location[];
