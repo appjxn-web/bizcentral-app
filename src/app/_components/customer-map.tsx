@@ -148,7 +148,7 @@ export function CustomerMap() {
         
         const [locationsSnapshot, pickupPointsSnapshot] = await Promise.all([
             getDocs(locationsQuery),
-            getDocs(pickupPointsQuery)
+            getDocs(pickupPointsSnapshot)
         ]);
 
         const fetchedCustomerLocations = locationsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Location[];
@@ -190,6 +190,10 @@ export function CustomerMap() {
   
   const zoom = !locations || locations.length === 0 ? 4 : 5;
   
+  const handleApiLoadError = React.useCallback((error: any) => {
+    setMapError(error);
+  }, []);
+
   return (
     <div className="space-y-4 text-center">
       <h2 className="text-2xl font-bold tracking-tight">Where Our Machines Run</h2>
@@ -205,12 +209,12 @@ export function CustomerMap() {
               Google Maps API key is missing. Please add `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` to your .env file to display the map.
             </p>
           </div>
-        ) : mapError || locationsError ? (
-           <MapErrorDisplay error={mapError || locationsError} />
         ) : locationsLoading ? (
            <div className="flex items-center justify-center h-full"><Loader2 className="h-8 w-8 animate-spin" /></div>
+        ) : mapError || locationsError ? (
+           <MapErrorDisplay error={mapError || locationsError} />
         ) : (
-          <APIProvider apiKey={apiKey} onApiLoadError={(error) => setMapError(error)}>
+          <APIProvider apiKey={apiKey} onApiLoadError={handleApiLoadError}>
             <Map
               style={{ width: '100%', height: '100%' }}
               defaultCenter={center}
