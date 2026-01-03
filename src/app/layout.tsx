@@ -33,8 +33,8 @@ export default function RootLayout({
       <head>
           <title>BizCentral</title>
           <meta name="description" content="A comprehensive mobile app for business management" />
-          <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-          <link rel="apple-touch-icon" href="/apple-icon.png" />
+          <link rel="icon" href="https://firebasestorage.googleapis.com/v0/b/bizcentral1-31429890-418b0.appspot.com/o/Green%20Leaves%20Icon%20Nature%20Logo.svg?alt=media" type="image/svg+xml" />
+          <link rel="apple-touch-icon" href="https://firebasestorage.googleapis.com/v0/b/bizcentral1-31429890-418b0.appspot.com/o/Green%20Leaves%20Icon%20Nature%20Logo.svg?alt=media" />
       </head>
       <body
         className={cn(
