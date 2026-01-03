@@ -1,3 +1,4 @@
+
 'use client';
 
 import * as React from 'react';
@@ -12,21 +13,28 @@ import { getFirestore } from 'firebase/firestore';
 import { initializeFirebase } from '@/firebase';
 
 class MapErrorBoundary extends React.Component<
-  { children: React.ReactNode },
-  { hasError: boolean; error: any }
+  { children: React.ReactNode; onCatch: (error: any) => void },
+  { hasError: boolean }
 > {
-  constructor(props: { children: React.ReactNode }) {
+  constructor(props: { children: React.ReactNode; onCatch: (error: any) => void }) {
     super(props);
-    this.state = { hasError: false, error: null };
+    this.state = { hasError: false };
   }
 
   static getDerivedStateFromError(error: any) {
-    return { hasError: true, error };
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: any, errorInfo: React.ErrorInfo) {
+    console.error("Map Error Boundary Caught:", error, errorInfo);
+    this.props.onCatch(error);
   }
 
   render() {
     if (this.state.hasError) {
-      return <MapErrorDisplay error={this.state.error} />;
+      // The parent component will now render the error UI.
+      // This boundary just catches the error.
+      return null;
     }
     return this.props.children;
   }
@@ -149,7 +157,7 @@ export function CustomerMap() {
   const [selectedLocation, setSelectedLocation] = React.useState<(Location & { isPartner?: boolean }) | null>(null);
   const [locations, setLocations] = React.useState<(Location & { isPartner?: boolean })[]>([]);
   const [locationsLoading, setLocationsLoading] = React.useState(true);
-  const [locationsError, setLocationsError] = React.useState<any>(null);
+  const [mapError, setMapError] = React.useState<any>(null);
 
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
@@ -186,7 +194,7 @@ export function CustomerMap() {
 
       } catch (error) {
         console.error("Error fetching locations:", error);
-        setLocationsError(error);
+        setMapError(error);
       } finally {
         setLocationsLoading(false);
       }
@@ -208,6 +216,14 @@ export function CustomerMap() {
   
   const zoom = !locations || locations.length === 0 ? 4 : 5;
   
+  if (mapError) {
+      return (
+        <div className="relative w-full h-[75vh] md:h-[500px] bg-muted md:rounded-lg overflow-hidden border">
+            <MapErrorDisplay error={mapError} />
+        </div>
+      );
+  }
+
   return (
     <div className="space-y-4 text-center">
       <h2 className="text-2xl font-bold tracking-tight">Where Our Machines Run</h2>
@@ -225,10 +241,8 @@ export function CustomerMap() {
           </div>
         ) : locationsLoading ? (
            <div className="flex items-center justify-center h-full"><Loader2 className="h-8 w-8 animate-spin" /></div>
-        ) : locationsError ? (
-           <MapErrorDisplay error={locationsError} />
         ) : (
-          <MapErrorBoundary>
+          <MapErrorBoundary onCatch={setMapError}>
             <APIProvider apiKey={apiKey}>
               <Map
                 style={{ width: '100%', height: '100%' }}
