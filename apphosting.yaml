@@ -6,5 +6,8 @@ runConfig:
   # more instances in response to increased traffic.
   maxInstances: 1
 entryPoint: npm run start
+env:
+  - variable: NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
+    value: "PASTE_YOUR_API_KEY_HERE"
 backendId: studio
 region: us-west1
