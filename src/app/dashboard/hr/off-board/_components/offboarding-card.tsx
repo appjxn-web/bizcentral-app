@@ -1,0 +1,90 @@
+'use client';
+
+import * as React from 'react';
+import { useSortable } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import type { OffboardingEmployee } from '@/lib/types';
+import { cn } from '@/lib/utils';
+import { GripVertical, ClipboardCheck } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { ChecklistDialog } from './checklist-dialog';
+
+
+interface OffboardingCardProps {
+  employee: OffboardingEmployee;
+  isOverlay?: boolean;
+}
+
+export function OnboardingCard({ employee, isOverlay }: OffboardingCardProps) {
+  const [isChecklistOpen, setIsChecklistOpen] = React.useState(false);
+
+  const {
+    setNodeRef,
+    attributes,
+    listeners,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
+    id: employee.id,
+    data: {
+      type: 'Employee',
+      employee,
+    },
+    disabled: isChecklistOpen || employee.status === 'Separated',
+  });
+
+  const style = {
+    transition,
+    transform: CSS.Transform.toString(transform),
+  };
+
+  if (isDragging) {
+    return (
+      <Card ref={setNodeRef} style={style} className="h-[124px] w-full opacity-50 bg-muted border-dashed" />
+    );
+  }
+
+  return (
+    <>
+      <Card
+        ref={setNodeRef}
+        style={style}
+        className={cn("touch-none", isOverlay && "shadow-lg", employee.status === 'Separated' && "opacity-75")}
+      >
+        <CardContent className="p-3">
+          <div className="flex justify-between items-start">
+              <div className="flex items-center gap-3">
+                  <Avatar className="w-10 h-10 rounded-md">
+                      <AvatarImage src={employee.avatar} alt={employee.name} />
+                      <AvatarFallback>{employee.name[0]}</AvatarFallback>
+                  </Avatar>
+                  <div>
+                      <CardTitle className="text-base font-medium">{employee.name}</CardTitle>
+                      <p className="text-sm text-muted-foreground">{employee.position}</p>
+                      <p className="text-xs text-muted-foreground">Last day: {employee.lastDay}</p>
+                  </div>
+              </div>
+               <button {...attributes} {...listeners} disabled={employee.status === 'Separated'} className="p-1 text-muted-foreground/50 hover:text-muted-foreground transition-colors cursor-grab active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-30">
+                  <GripVertical className="h-5 w-5" />
+               </button>
+          </div>
+           <div className="mt-3 pt-3 border-t flex justify-end">
+                <Button variant="ghost" size="sm" className="h-auto px-2 py-1 text-xs" onClick={() => setIsChecklistOpen(true)}>
+                    <ClipboardCheck className="h-3 w-3 mr-1.5" />
+                    View Checklist
+                </Button>
+            </div>
+        </CardContent>
+      </Card>
+      <ChecklistDialog 
+        employee={employee}
+        open={isChecklistOpen}
+        onOpenChange={setIsChecklistOpen}
+      />
+    </>
+  );
+}

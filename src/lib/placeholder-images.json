@@ -1,0 +1,52 @@
+{
+  "placeholderImages": [
+    {
+      "id": "prod_1",
+      "description": "A modern, ergonomic office chair.",
+      "imageUrl": "https://images.unsplash.com/photo-1688578735122-f37256f1b8b0?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHwxMHx8b2ZmaWNlJTIwY2hhaXJ8ZW58MHx8fHwxNzY1NTU5NzUwfDA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "office chair"
+    },
+    {
+      "id": "prod_2",
+      "description": "A sleek, minimalist desk lamp.",
+      "imageUrl": "https://images.unsplash.com/photo-1617363020293-62faac14783d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHw3fHxkZXNrJTIwbGFtcHxlbnwwfHx8fDE3NjU2MjM0NDN8MA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "desk lamp"
+    },
+    {
+      "id": "prod_3",
+      "description": "A high-performance mechanical keyboard.",
+      "imageUrl": "https://images.unsplash.com/photo-1626958390898-162d3577f293?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHwyfHxtZWNoYW5pY2FsJTIwa2V5Ym9hcmR8ZW58MHx8fHwxNzY1NTkyMjA0fDA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "mechanical keyboard"
+    },
+    {
+      "id": "prod_4",
+      "description": "An ultra-wide curved monitor for productivity.",
+      "imageUrl": "https://images.unsplash.com/photo-1666771410140-0573b232426e?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHw1fHxjdXJ2ZWQlMjBtb25pdG9yfGVufDB8fHx8MTc2NTY0ODk4NXww&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "curved monitor"
+    },
+    {
+      "id": "prod_5",
+      "description": "A noise-cancelling wireless headset.",
+      "imageUrl": "https://images.unsplash.com/photo-1627989580309-bfaf3e58af6f?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHw3fHx3aXJlbGVzcyUyMGhlYWRzZXR8ZW58MHx8fHwxNzY1NjQ4OTg1fDA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "wireless headset"
+    },
+    {
+      "id": "prod_6",
+      "description": "A smart notebook for digital note-taking.",
+      "imageUrl": "https://images.unsplash.com/photo-1585744637268-fd01d7bd7f07?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHw0fHxzbWFydCUyMG5vdGVib29rfGVufDB8fHx8MTc2NTY0ODk4NXww&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "smart notebook"
+    },
+    {
+      "id": "prod_7",
+      "description": "An adjustable standing desk for better ergonomics.",
+      "imageUrl": "https://images.unsplash.com/photo-1623679799651-ad774745c6fa?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHwxMHx8c3RhbmRpbmclMjBkZXNrfGVufDB8fHx8MTc2NTY0ODk4NXww&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "standing desk"
+    },
+    {
+      "id": "prod_8",
+      "description": "A powerful and compact business laptop.",
+      "imageUrl": "https://images.unsplash.com/photo-1499951360447-b19be8fe80f5?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHwxMHx8YnVzaW5lc3MlMjBsYXB0b3B8ZW58MHx8fHwxNzY1NjQ4OTg1fDA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "business laptop"
+    }
+  ]
+}
