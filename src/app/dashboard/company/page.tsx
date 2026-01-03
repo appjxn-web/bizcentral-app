@@ -915,10 +915,10 @@ type AddressFormState = Partial<Omit<Address, 'id'>>;
 
 function MapErrorDisplay({ error }: { error: any }) {
     const message = error?.message || '';
-    const isAuthFailure = /AuthFailure|RefererNotAllowedMapError/i.test(message);
+    const isAuthOrRefererError = /AuthFailure|RefererNotAllowedMapError/i.test(message);
     const isApiNotActivated = message.includes('ApiNotActivatedMapError');
 
-    if (isAuthFailure) {
+    if (isAuthOrRefererError) {
         return (
             <div className="flex flex-col items-center justify-center h-full p-4 text-center bg-destructive/10">
                 <AlertCircle className="h-10 w-10 text-destructive mb-2" />
