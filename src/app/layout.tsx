@@ -2,7 +2,6 @@
 'use client';
 
 import * as React from 'react';
-import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
 import { Toaster } from '@/components/ui/toaster';
@@ -34,6 +33,8 @@ export default function RootLayout({
       <head>
           <title>BizCentral</title>
           <meta name="description" content="A comprehensive mobile app for business management" />
+          <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+          <link rel="apple-touch-icon" href="/apple-icon.png" />
       </head>
       <body
         className={cn(
