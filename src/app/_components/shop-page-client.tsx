@@ -17,7 +17,7 @@ import {
 } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
-import { ApplyForJobDialog } from './apply-for-job-dialog';
+import { ApplyForJobDialog } from '../dashboard/shop/_components/apply-for-job-dialog';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import type { Product, Vacancy, User } from '@/lib/types';
 import { Input } from '@/components/ui/input';
@@ -59,12 +59,6 @@ interface Post {
 
 interface CartItem extends Product {
   quantity: number;
-}
-
-
-interface ShopPageClientProps {
-    saleableProducts: Product[];
-    openVacancies: Vacancy[];
 }
 
 function MediaViewerDialog({ mediaUrl, mediaType, alt, open, onOpenChange }: { mediaUrl: string; mediaType: 'image' | 'video'; alt: string; open: boolean; onOpenChange: (open: boolean) => void; }) {
@@ -110,10 +104,12 @@ const formatIndianCurrency = (num: number) => {
   }).format(num);
 };
 
-export default function ShopPageClient({ saleableProducts, openVacancies }: ShopPageClientProps) {
+export default function ShopPageClient() {
   const firestore = useFirestore();
+  const [saleableProducts, setSaleableProducts] = React.useState<Product[]>([]);
+  const [openVacancies, setOpenVacancies] = React.useState<Vacancy[]>([]);
   const [posts, setPosts] = React.useState<Post[] | null>(null);
-  const [postsLoading, setPostsLoading] = React.useState(true);
+  const [loading, setLoading] = React.useState(true);
 
   const [searchTerm, setSearchTerm] = React.useState('');
   const [categoryFilter, setCategoryFilter] = React.useState('All');
@@ -125,7 +121,26 @@ export default function ShopPageClient({ saleableProducts, openVacancies }: Shop
   React.useEffect(() => {
     if (!firestore) return;
 
-    setPostsLoading(true);
+    setLoading(true);
+    const fetchInitialData = async () => {
+        try {
+            const productsQuery = query(collection(firestore, 'products'), where('saleable', '==', true));
+            const productsSnapshot = await getDocs(productsQuery);
+            const products = productsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Product[];
+            setSaleableProducts(products);
+
+            const vacanciesQuery = query(collection(firestore, 'vacancies'), where('status', '==', 'Open'));
+            const vacanciesSnapshot = await getDocs(vacanciesQuery);
+            const vacancies = vacanciesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Vacancy[];
+            setOpenVacancies(vacancies);
+        } catch (error) {
+            console.error("Error fetching shop data:", error);
+            toast({ variant: 'destructive', title: 'Error', description: 'Could not load shop data.' });
+        }
+    };
+    
+    fetchInitialData();
+    
     const postsQuery = query(
         collection(firestore, 'posts'), 
         where('status', '==', 'Approved'),
@@ -135,14 +150,14 @@ export default function ShopPageClient({ saleableProducts, openVacancies }: Shop
     const unsubscribe = onSnapshot(postsQuery, (snapshot) => {
         const approvedPosts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Post[];
         setPosts(approvedPosts);
-        setPostsLoading(false);
+        setLoading(false);
     }, (error) => {
         console.error("Error fetching posts:", error);
-        setPostsLoading(false);
+        setLoading(false);
     });
 
     return () => unsubscribe();
-  }, [firestore]);
+  }, [firestore, toast]);
 
 
   const handleLike = async (postId: string, type: 'like' | 'dislike') => {
@@ -176,7 +191,6 @@ export default function ShopPageClient({ saleableProducts, openVacancies }: Shop
         }
     }
 
-    // Optimistically update the UI
     setPosts(prevPosts =>
       prevPosts!.map(post => {
         if (post.id === postId) {
@@ -186,7 +200,6 @@ export default function ShopPageClient({ saleableProducts, openVacancies }: Shop
       })
     );
 
-    // Persist the change to Firestore
     try {
       await updateDoc(postRef, {
         likes: increment(likesIncrement),
@@ -194,7 +207,6 @@ export default function ShopPageClient({ saleableProducts, openVacancies }: Shop
       });
     } catch (error) {
       console.error("Error updating likes:", error);
-      // Revert the UI change on error
       setPosts(prevPosts =>
         prevPosts!.map(post => {
           if (post.id === postId) {
@@ -250,7 +262,6 @@ export default function ShopPageClient({ saleableProducts, openVacancies }: Shop
 
   const sortedPosts = React.useMemo(() => {
     if (!posts) return [];
-    // Data is already sorted by query
     return posts;
   }, [posts]);
 
@@ -272,10 +283,61 @@ export default function ShopPageClient({ saleableProducts, openVacancies }: Shop
     });
   };
 
+  if (loading) {
+    return (
+        <div className="flex items-center justify-center h-64">
+            <Loader2 className="h-12 w-12 animate-spin" />
+        </div>
+    );
+  }
 
   return (
     <>
-      <div className="space-y-8 pt-8">
+      <div className="space-y-8">
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <Briefcase className="h-6 w-6" />
+            <h2 className="text-2xl font-bold tracking-tight">Job Openings</h2>
+          </div>
+          {openVacancies && openVacancies.length > 0 ? (
+            <Carousel
+              opts={{
+                align: "start",
+              }}
+              className="w-full"
+            >
+              <CarouselContent>
+                {openVacancies.map((vacancy) => (
+                  <CarouselItem key={vacancy.id} className="md:basis-1/2 lg:basis-1/3">
+                    <div className="p-1">
+                      <Card className="h-full flex flex-col">
+                        <CardHeader>
+                          <CardTitle>{vacancy.title}</CardTitle>
+                          <CardDescription>{vacancy.department} &middot; {vacancy.location}</CardDescription>
+                        </CardHeader>
+                        <CardContent className="flex-grow">
+                          <p className="text-sm text-muted-foreground line-clamp-3">{vacancy.description}</p>
+                        </CardContent>
+                        <CardFooter className="flex justify-between">
+                          <Badge variant="secondary">{vacancy.type}</Badge>
+                          <ApplyForJobDialog vacancy={vacancy} />
+                        </CardFooter>
+                      </Card>
+                    </div>
+                  </CarouselItem>
+                ))}
+              </CarouselContent>
+              <CarouselPrevious className="ml-12" />
+              <CarouselNext className="mr-12"/>
+            </Carousel>
+          ) : (
+             <Card>
+                <CardContent className="p-6 text-center text-muted-foreground">
+                    No open job positions at the moment.
+                </CardContent>
+            </Card>
+          )}
+        </div>
         {topProducts.length > 0 && (
           <div>
             <h2 className="text-2xl font-bold tracking-tight mb-4">Top Selling Products</h2>
@@ -318,9 +380,7 @@ export default function ShopPageClient({ saleableProducts, openVacancies }: Shop
         <Separator className="my-8" />
         <div className="space-y-4">
             <h2 className="text-2xl font-bold tracking-tight">Community Posts</h2>
-            {postsLoading ? (
-                 <div className="flex items-center justify-center h-48"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>
-            ) : sortedPosts.length > 0 ? (
+            {sortedPosts.length > 0 ? (
                 <Carousel
                     opts={{ align: "start" }}
                     className="w-full"
