@@ -173,7 +173,7 @@ export default function CreateInvoicePage() {
                 const estimateInput = {
                     items: machineryItems.map(item => ({
                         productId: item.productId,
-                        quantity: item.qty, // Corrected from `quantity` to `qty`
+                        quantity: item.qty,
                         category: item.category,
                     }))
                 };
