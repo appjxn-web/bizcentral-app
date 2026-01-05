@@ -114,7 +114,7 @@ export const handleOrderCreation = onDocumentCreated("orders/{orderId}", async (
             transaction.set(jvRef, {
                 id: jvRef.id,
                 date: new Date().toISOString().split("T")[0],
-                narration: `[V7-FINAL] Advance for Order #${orderNumber} via UPI`,
+                narration: `Advance for Order #${orderNumber} via UPI`,
                 voucherType: "Receipt Voucher",
                 entries: [
                     { accountId: bankAccountId, debit: pR, credit: 0 },
@@ -299,3 +299,5 @@ export const onMilestoneUpdate = onDocumentWritten("goals/{goalId}/milestones/{m
     });
 });
 export const onGoalUpdate = onDocumentCreated("goalUpdates/{updateId}", async () => {});
+
+    
