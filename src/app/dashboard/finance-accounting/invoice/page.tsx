@@ -272,6 +272,7 @@ function CompanyPickupDetails() {
 
 function OrderRow({ order, onGenerateInvoice, onUpdateStatus, pickupPoints, dynamicStatus, allProducts, getOrderInHand, allSalesInvoices, onViewInvoice }: { order: Order, onGenerateInvoice: (order: Order) => void, onUpdateStatus: (orderId: string, status: OrderStatus) => void, pickupPoints: PickupPoint[] | null, dynamicStatus: OrderStatus, allProducts: Product[] | null, getOrderInHand: (productId: string) => number, allSalesInvoices: SalesInvoice[] | null, onViewInvoice: (invoiceId: string) => void }) {
   const [isOpen, setIsOpen] = React.useState(false);
+  const router = useRouter();
   const orderStatuses: OrderStatus[] = ['Manufacturing', 'Ready for Dispatch', 'Awaiting Payment', 'Shipped', 'Delivered'];
   
   const existingInvoice = allSalesInvoices?.find(inv => inv.orderNumber === order.orderNumber);
@@ -321,7 +322,10 @@ function OrderRow({ order, onGenerateInvoice, onUpdateStatus, pickupPoints, dyna
                     <Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4"/></Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent>
-                    <DropdownMenuLabel>Change Status</DropdownMenuLabel>
+                    <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                     <DropdownMenuItem onClick={() => router.push(`/dashboard/sales/orders/view?id=${order.id}`)}>
+                        <Eye className="mr-2 h-4 w-4" /> View Order
+                    </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     {orderStatuses.map(status => (
                       <DropdownMenuItem key={status} onClick={() => onUpdateStatus(order.id, status)}>
@@ -400,7 +404,7 @@ function OrderRow({ order, onGenerateInvoice, onUpdateStatus, pickupPoints, dyna
   )
 }
 
-function GeneratedInvoiceRow({ invoice, onView }: { invoice: SalesInvoice, onView: (id: string) => void }) {
+function GeneratedInvoiceRow({ invoice, onView, onUpdateStatus }: { invoice: SalesInvoice, onView: (id: string) => void, onUpdateStatus: (id: string, status: 'Paid' | 'Unpaid') => void }) {
     const [isOpen, setIsOpen] = React.useState(false);
 
     return (
@@ -424,16 +428,26 @@ function GeneratedInvoiceRow({ invoice, onView }: { invoice: SalesInvoice, onVie
                         </Badge>
                     </TableCell>
                     <TableCell className="text-right font-mono">{formatIndianCurrency(invoice.grandTotal)}</TableCell>
-                    <TableCell className="text-right space-x-2">
-                         <Button variant="outline" size="sm" onClick={() => onView(invoice.invoiceNumber)}>
-                            <Eye className="mr-2 h-4 w-4" /> View
-                        </Button>
+                    <TableCell className="text-right">
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4"/></Button></DropdownMenuTrigger>
+                            <DropdownMenuContent>
+                                <DropdownMenuItem onClick={() => onView(invoice.invoiceNumber)}>
+                                    <Eye className="mr-2 h-4 w-4"/> View
+                                </DropdownMenuItem>
+                                {invoice.status !== 'Paid' && (
+                                     <DropdownMenuItem onClick={() => onUpdateStatus(invoice.invoiceNumber, 'Paid')}>
+                                        <CheckCircle className="mr-2 h-4 w-4"/> Mark as Paid
+                                    </DropdownMenuItem>
+                                )}
+                            </DropdownMenuContent>
+                        </DropdownMenu>
                     </TableCell>
                 </TableRow>
                 <CollapsibleContent asChild>
                     <TableRow>
                         <TableCell colSpan={7} className="p-0">
-                            <div className="p-6 bg-muted/50">
+                            <div className="p-6 bg-muted/50 space-y-4">
                                  <h4 className="font-semibold text-sm mb-2">Invoice Items:</h4>
                                 <Table>
                                     <TableHeader>
@@ -455,6 +469,16 @@ function GeneratedInvoiceRow({ invoice, onView }: { invoice: SalesInvoice, onVie
                                         ))}
                                     </TableBody>
                                 </Table>
+                                <div className="flex justify-end pt-4">
+                                    <div className="w-full max-w-sm space-y-2">
+                                        <div className="flex justify-between"><span>Subtotal</span><span className="font-mono">{formatIndianCurrency(invoice.subtotal)}</span></div>
+                                        {invoice.discount > 0 && <div className="flex justify-between text-green-600"><span>Discount</span><span className="font-mono">- {formatIndianCurrency(invoice.discount)}</span></div>}
+                                        <Separator/>
+                                        <div className="flex justify-between font-bold"><span>Total</span><span className="font-mono">{formatIndianCurrency(invoice.grandTotal)}</span></div>
+                                        <div className="flex justify-between font-bold text-green-600"><span>Paid</span><span className="font-mono">{formatIndianCurrency(invoice.amountPaid)}</span></div>
+                                        <div className="flex justify-between font-bold text-red-600"><span>Balance Due</span><span className="font-mono">{formatIndianCurrency(invoice.balanceDue)}</span></div>
+                                    </div>
+                                </div>
                             </div>
                         </TableCell>
                     </TableRow>
@@ -547,7 +571,6 @@ function InvoicePage() {
     }
 
     const handleViewInvoice = (invoiceId: string) => {
-      // Find the full invoice data to pass to the view page
       const invoiceData = allSalesInvoices?.find(inv => inv.invoiceNumber === invoiceId);
       if (invoiceData) {
         localStorage.setItem('invoiceToView', JSON.stringify(invoiceData));
@@ -666,7 +689,7 @@ function InvoicePage() {
                  </TableBody>
               ) : allSalesInvoices && allSalesInvoices.length > 0 ? (
                 allSalesInvoices.map((invoice) => (
-                  <GeneratedInvoiceRow key={invoice.id} invoice={invoice} onView={(id) => handleViewInvoice(id)} />
+                  <GeneratedInvoiceRow key={invoice.id} invoice={invoice} onView={(id) => handleViewInvoice(id)} onUpdateStatus={handleInvoicePaymentStatus} />
                 ))
               ) : (
                  <TableBody>
