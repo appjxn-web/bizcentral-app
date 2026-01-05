@@ -140,7 +140,7 @@ export default function InvoiceViewPage() {
             const itemSubtotal = item.rate * item.quantity;
             const itemDiscount = itemSubtotal * ((invoiceData.discount / subtotal) || 0);
             const discountedAmount = itemSubtotal - itemDiscount;
-            return acc + (discountedAmount * (item.gstRate / 100));
+            return acc + (discountedAmount * ((item.gstRate || 18) / 100));
         }, 0);
     
         const grandTotal = taxableAmount + totalGst;
@@ -213,13 +213,13 @@ export default function InvoiceViewPage() {
                 <CardContent>
                     <div className="max-w-4xl mx-auto p-8" ref={pdfRef}>
                         <header className="flex justify-between items-start border-b pb-4">
-                             <div>
+                            <div className="w-[175px]">
                                 {companyInfo?.logo && (
                                     <Image 
                                         src={companyInfo.logo} 
                                         alt="Company Logo" 
                                         width={175} 
-                                        height={40} 
+                                        height={45} 
                                         className="object-contain"
                                         crossOrigin="anonymous"
                                     />
@@ -229,11 +229,12 @@ export default function InvoiceViewPage() {
                                 <h1 className="text-2xl font-bold text-primary">Tax Invoice</h1>
                                 <p><strong>Invoice No:</strong> {invoiceData.invoiceNumber}</p>
                                 <p><strong>Date:</strong> {format(new Date(invoiceData.date), 'dd/MM/yyyy')}</p>
+                                <p><strong>Order No:</strong> {invoiceData.orderNumber}</p>
                             </div>
                         </header>
 
                         <section className="my-6">
-                           <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <h3 className="font-semibold text-sm text-muted-foreground">BILLED FROM:</h3>
                                     <p className="font-bold">{companyInfo?.companyName}</p>
@@ -281,7 +282,7 @@ export default function InvoiceViewPage() {
                                             <TableCell className="font-medium">{item.name}</TableCell>
                                             <TableCell>{item.hsn}</TableCell>
                                             <TableCell className="text-right">{item.quantity}</TableCell>
-                                            <TableCell>{item.unit}</TableCell>
+                                            <TableCell>{item.unit || 'pcs'}</TableCell>
                                             <TableCell className="text-right">{formatIndianCurrency(item.rate)}</TableCell>
                                             <TableCell className="text-right font-medium">{formatIndianCurrency(item.rate * item.quantity)}</TableCell>
                                         </TableRow>
@@ -364,4 +365,3 @@ export default function InvoiceViewPage() {
         </>
       );
 }
-
