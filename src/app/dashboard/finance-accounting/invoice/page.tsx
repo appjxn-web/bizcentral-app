@@ -407,7 +407,7 @@ function OrderRow({ order, onGenerateInvoice, onUpdateStatus, pickupPoints, dyna
   )
 }
 
-function GeneratedInvoiceRow({ invoice, order, onViewInvoice, onUpdateStatus, allProducts, getOrderInHand, allSalesInvoices, journalVouchers, allCoaLedgers, onEdit }: { invoice: SalesInvoice, order?: Order, onViewInvoice: (id: string) => void, onUpdateStatus: (id: string, status: 'Paid' | 'Unpaid') => void, allProducts: Product[] | null, getOrderInHand: (productId: string) => number, allSalesInvoices: SalesInvoice[] | null, journalVouchers: JournalVoucher[] | null, allCoaLedgers: CoaLedger[] | null, onEdit: (invoiceId: string) => void }) {
+function GeneratedInvoiceRow({ invoice, order, onViewInvoice, onUpdateStatus, allProducts, getOrderInHand, journalVouchers, allCoaLedgers, onEdit }: { invoice: SalesInvoice, order?: Order, onViewInvoice: (id: string) => void, onUpdateStatus: (id: string, status: 'Paid' | 'Unpaid') => void, allProducts: Product[] | null, getOrderInHand: (productId: string) => number, allSalesInvoices: SalesInvoice[] | null, journalVouchers: JournalVoucher[] | null, allCoaLedgers: CoaLedger[] | null, onEdit: (invoiceId: string) => void }) {
     const [isOpen, setIsOpen] = React.useState(false);
     
     const paymentTransactions = React.useMemo(() => {
