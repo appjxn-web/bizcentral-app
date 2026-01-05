@@ -10,7 +10,7 @@ import {
 } from "firebase-functions/v2/firestore";
 import * as admin from "firebase-admin";
 import {getFirestore, FieldValue} from "firebase-admin/firestore";
-import type {Order, UserProfile, Goal, SalesInvoice, CoaLedger, Product} from "./types";
+import type {Order, UserProfile, Goal, SalesInvoice, Product} from "./types";
 
 // Prevent double initialization
 if (admin.apps.length === 0) {
