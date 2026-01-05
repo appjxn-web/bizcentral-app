@@ -402,7 +402,7 @@ function MyLedgerPageContent() {
             </div>
             <div className="text-right">
               <h1 className="text-2xl font-bold text-primary">{companyDetails.name}</h1>
-              <p className="text-sm text-muted-foreground">{(accountHolder as Party)?.address?.line1}, {(accountHolder as Party)?.address?.city}</p>
+              <p className="text-sm text-muted-foreground">{companyDetails.address.line1}, {companyDetails.address.city}</p>
             </div>
           </header>
           <section className="my-6">
@@ -488,3 +488,4 @@ export default function MyAccountPage() {
 
     return <MyLedgerPageContent />;
 }
+
