@@ -32,7 +32,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { PlusCircle, Save, Trash2, Check, ChevronsUpDown, CalendarClock, Loader2, DollarSign } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import type { Party, Product, UserRole, SalesOrder, Quotation, CoaLedger, SalesInvoice, CompanyInfo } from '@/lib/types';
+import type { Party, Product, UserRole, SalesOrder, Quotation, CoaLedger, SalesInvoice, CompanyInfo, PartyType, CoaNature } from '@/lib/types';
 import { format, startOfMonth } from 'date-fns';
 import { Separator } from '@/components/ui/separator';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -58,7 +58,7 @@ import { cn } from '@/lib/utils';
 import { useRole } from '@/app/dashboard/_components/role-provider';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useFirestore, useCollection, useUser, useDoc } from '@/firebase';
-import { collection, doc, addDoc, serverTimestamp, setDoc, query, where, orderBy, limit, getDocs, updateDoc } from 'firebase/firestore';
+import { collection, doc, addDoc, serverTimestamp, setDoc, query, where, orderBy, limit, getDocs, updateDoc, writeBatch } from 'firebase/firestore';
 import { getNextDocNumber } from '@/lib/number-series';
 import { estimateDispatchDate, type EstimateDispatchDateOutput } from '@/ai/flows/estimate-dispatch-date-flow';
 import { QRCodeSVG } from 'qrcode.react';
@@ -125,7 +125,7 @@ export default function CreateInvoicePage() {
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = React.useState(false);
   const [salesOrderNumber, setSalesOrderNumber] = React.useState('');
   
-  const { data: allProducts, loading: productsLoading } = useCollection<Product>(query(collection(firestore, 'products')));
+  const { data: allProducts, loading: productsLoading } = useCollection<Product>(query(collection(firestore, 'products'), where('saleable', '==', true)));
 
   const [paymentDate, setPaymentDate] = React.useState(format(new Date(), 'yyyy-MM-dd'));
   const [paymentMode, setPaymentMode] = React.useState('UPI');
@@ -355,25 +355,80 @@ export default function CreateInvoicePage() {
     }
   };
 
-  const handleRecordPayment = () => {
+  const getOrCreatePartyLedger = async (party: Party): Promise<CoaLedger> => {
+    if (!coaLedgers) throw new Error("Chart of Accounts not loaded.");
+
+    if (party.coaLedgerId) {
+        const existingLedger = coaLedgers.find(l => l.id === party.coaLedgerId);
+        if (existingLedger) return existingLedger;
+    }
+
+    const ledgerName = party.name;
+    const existingLedgerByName = coaLedgers.find(l => l.name === ledgerName);
+    if (existingLedgerByName) {
+        const partyRef = doc(firestore, 'parties', party.id);
+        await updateDoc(partyRef, { coaLedgerId: existingLedgerByName.id });
+        return existingLedgerByName;
+    }
+    
+    const newLedgerData: Omit<CoaLedger, 'id' | 'createdAt' | 'updatedAt'> = {
+        name: ledgerName,
+        groupId: '1.1.2', // Trade Receivables
+        nature: 'ASSET' as CoaNature,
+        type: 'RECEIVABLE',
+        posting: { isPosting: true, normalBalance: 'DEBIT', isSystem: false, allowManualJournal: true },
+        status: 'ACTIVE',
+    };
+
+    const newLedgerRef = await addDoc(collection(firestore, 'coa_ledgers'), newLedgerData);
+    await updateDoc(doc(firestore, 'parties', party.id), { coaLedgerId: newLedgerRef.id });
+
+    return { id: newLedgerRef.id, ...newLedgerData } as CoaLedger;
+  };
+
+  const handleRecordPayment = async () => {
     const amount = Number(paymentAmount);
-    if (!amount || amount <= 0 || !bankAccountId) {
-        toast({ variant: 'destructive', title: 'Invalid Payment', description: 'Please enter a valid amount and select a payment account.' });
+    if (!amount || amount <= 0 || !bankAccountId || !selectedParty) {
+        toast({ variant: 'destructive', title: 'Invalid Payment', description: 'Please enter a valid amount, select a customer and a payment account.' });
         return;
     }
-    setBookingAmount(prev => prev + amount);
-    
-    const accountName = paymentAccounts.find(acc => acc.id === bankAccountId)?.name || 'Unknown Account';
-    const details = `Mode: ${accountName}, Ref: ${paymentRef}, Date: ${paymentDate}, Amount: ₹${amount.toFixed(2)}`;
-    setPaymentDetails(prev => prev ? `${prev}\\n${details}` : details);
-    
-    toast({ title: 'Payment Recorded', description: `₹${amount.toFixed(2)} recorded.` });
-    
-    setIsPaymentDialogOpen(false);
-    setPaymentAmount('');
-    setPaymentRef('');
-    setBankAccountId('');
-  }
+
+    try {
+      const partyLedger = await getOrCreatePartyLedger(selectedParty);
+      const bankLedger = paymentAccounts.find(acc => acc.id === bankAccountId);
+
+      if (!partyLedger || !bankLedger) {
+        throw new Error('Could not find ledger accounts for transaction.');
+      }
+      
+      const jvData = {
+        date: paymentDate,
+        narration: `Payment received from ${selectedParty.name} via ${bankLedger.name}. Ref: ${paymentRef}`,
+        voucherType: 'Receipt Voucher',
+        entries: [
+          { accountId: bankAccountId, debit: amount, credit: 0 },
+          { accountId: partyLedger.id, debit: 0, credit: amount }
+        ],
+        createdAt: serverTimestamp(),
+      };
+      
+      await addDoc(collection(firestore, 'journalVouchers'), jvData);
+
+      setBookingAmount(prev => prev + amount);
+      const details = `Mode: ${bankLedger.name}, Ref: ${paymentRef}, Date: ${paymentDate}, Amount: ₹${amount.toFixed(2)}`;
+      setPaymentDetails(prev => prev ? `${prev}\n${details}` : details);
+      
+      toast({ title: 'Payment Recorded', description: `A journal entry for ₹${amount.toFixed(2)} has been created.` });
+      
+      setIsPaymentDialogOpen(false);
+      setPaymentAmount('');
+      setPaymentRef('');
+      setBankAccountId('');
+    } catch (e: any) {
+      console.error(e);
+      toast({ variant: 'destructive', title: 'Payment Failed', description: e.message });
+    }
+  };
 
   const balanceDue = calculations.grandTotal - bookingAmount;
   const qrUpiString = companyInfo ? `upi://pay?pa=${companyInfo.primaryUpiId || 'your-upi-id@okhdfcbank'}&pn=${encodeURIComponent(companyInfo.companyName || 'Your Company')}&am=${balanceDue.toFixed(2)}&cu=INR` : '';
