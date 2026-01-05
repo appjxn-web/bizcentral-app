@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -35,28 +36,31 @@ const numberToWords = (num: number): string => {
     if (isNaN(number)) return '';
     if (number === 0) return 'zero';
 
-    const [integerPart, decimalPart] = number.toString().split('.');
-    
-    let words = '';
-    // This simplified function only handles up to thousands.
-    // A production-ready function would need to handle lakhs, crores, etc.
-    if (integerPart.length > 3) {
-      words += a[parseInt(integerPart.slice(0, -3), 10)] + ' thousand ';
-    }
-    const lastThree = parseInt(integerPart.slice(-3), 10);
-    if (lastThree >= 100) {
-      words += a[Math.floor(lastThree / 100)] + ' hundred ';
-    }
-    const lastTwo = lastThree % 100;
-    if (lastTwo >= 20) {
-      words += b[Math.floor(lastTwo / 20)] + ' ' + a[lastTwo % 10];
-    } else if (lastTwo > 0) {
-      words += a[lastTwo];
-    }
+    const integerPart = Math.floor(number);
+    const decimalPart = Math.round((number - integerPart) * 100);
 
+    const numToWords = (n: number): string => {
+        let str = '';
+        if (n > 999) {
+            str += numToWords(Math.floor(n / 1000)) + ' thousand ';
+            n %= 1000;
+        }
+        if (n > 99) {
+            str += a[Math.floor(n / 100)] + ' hundred ';
+            n %= 100;
+        }
+        if (n > 19) {
+            str += b[Math.floor(n / 10)] + ' ' + a[n % 10];
+        } else {
+            str += a[n];
+        }
+        return str.trim();
+    };
+
+    let words = numToWords(integerPart);
     let finalString = words.trim() + ' rupees';
-    if (decimalPart && parseInt(decimalPart) > 0) {
-        finalString += ' and ' + (b[Math.floor(parseInt(decimalPart) / 10)] + ' ' + a[parseInt(decimalPart) % 10]).trim() + ' paise';
+    if (decimalPart > 0) {
+        finalString += ' and ' + numToWords(decimalPart) + ' paise';
     }
     
     return finalString.charAt(0).toUpperCase() + finalString.slice(1) + ' only.';
@@ -135,6 +139,10 @@ export default function InvoiceViewPage() {
         );
     }
 
+    const { subtotal, grandTotal, cgst, sgst, igst, discount } = invoiceData;
+    const isInterstate = igst > 0;
+    const taxableAmount = subtotal - discount;
+
     return (
         <>
             <PageHeader title={`Invoice: ${invoiceId}`}>
@@ -200,36 +208,45 @@ export default function InvoiceViewPage() {
                                 <TableFooter>
                                     <TableRow>
                                         <TableCell colSpan={4} className="text-right font-semibold">Subtotal</TableCell>
-                                        <TableCell className="text-right font-semibold">{formatIndianCurrency(invoiceData.subtotal)}</TableCell>
+                                        <TableCell className="text-right font-semibold">{formatIndianCurrency(subtotal)}</TableCell>
                                     </TableRow>
-                                    {invoiceData.discount > 0 && (
+                                    {discount > 0 && (
                                         <TableRow>
                                             <TableCell colSpan={4} className="text-right text-green-600">Discount</TableCell>
-                                            <TableCell className="text-right text-green-600">- {formatIndianCurrency(invoiceData.discount)}</TableCell>
+                                            <TableCell className="text-right text-green-600">- {formatIndianCurrency(discount)}</TableCell>
                                         </TableRow>
                                     )}
                                      <TableRow>
                                         <TableCell colSpan={4} className="text-right font-semibold">Taxable Value</TableCell>
-                                        <TableCell className="text-right font-semibold">{formatIndianCurrency(invoiceData.subtotal - invoiceData.discount)}</TableCell>
+                                        <TableCell className="text-right font-semibold">{formatIndianCurrency(taxableAmount)}</TableCell>
                                     </TableRow>
-                                    <TableRow>
-                                        <TableCell colSpan={4} className="text-right">CGST</TableCell>
-                                        <TableCell className="text-right">{formatIndianCurrency(invoiceData.cgst)}</TableCell>
-                                    </TableRow>
-                                    <TableRow>
-                                        <TableCell colSpan={4} className="text-right">SGST</TableCell>
-                                        <TableCell className="text-right">{formatIndianCurrency(invoiceData.sgst)}</TableCell>
-                                    </TableRow>
+                                    {isInterstate ? (
+                                        <TableRow>
+                                            <TableCell colSpan={4} className="text-right">IGST</TableCell>
+                                            <TableCell className="text-right">{formatIndianCurrency(igst)}</TableCell>
+                                        </TableRow>
+                                    ) : (
+                                        <>
+                                            <TableRow>
+                                                <TableCell colSpan={4} className="text-right">CGST</TableCell>
+                                                <TableCell className="text-right">{formatIndianCurrency(cgst)}</TableCell>
+                                            </TableRow>
+                                            <TableRow>
+                                                <TableCell colSpan={4} className="text-right">SGST</TableCell>
+                                                <TableCell className="text-right">{formatIndianCurrency(sgst)}</TableCell>
+                                            </TableRow>
+                                        </>
+                                    )}
                                     <TableRow className="text-base bg-muted">
                                         <TableCell colSpan={4} className="text-right font-bold">Grand Total</TableCell>
-                                        <TableCell className="text-right font-bold">{formatIndianCurrency(invoiceData.grandTotal)}</TableCell>
+                                        <TableCell className="text-right font-bold">{formatIndianCurrency(grandTotal)}</TableCell>
                                     </TableRow>
                                 </TableFooter>
                             </Table>
                         </section>
                         
                          <div className="text-right my-2 text-sm font-semibold">
-                            Amount in words: {numberToWords(invoiceData.grandTotal)}
+                            Amount in words: {numberToWords(grandTotal)}
                         </div>
 
                         <footer className="text-center text-xs text-muted-foreground pt-16">
@@ -242,3 +259,4 @@ export default function InvoiceViewPage() {
         </>
       );
 }
+
