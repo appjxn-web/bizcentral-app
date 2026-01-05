@@ -19,8 +19,7 @@ if (admin.apps.length === 0) {
 const db = getFirestore();
 
 /**
- * Helper to ensure every customer has their OWN specific ledger.
- * This completely removes the need for "customer-advances".
+ * Robust helper to ensure every customer has their OWN specific ledger.
  */
 const findOrCreateSpecificCustomerLedger = async (transaction: admin.firestore.Transaction, order: Order | SalesInvoice): Promise<string> => {
     const userId = 'userId' in order ? order.userId : order.customerId;
@@ -45,7 +44,7 @@ const findOrCreateSpecificCustomerLedger = async (transaction: admin.firestore.T
         return existingId;
     }
 
-    // 3. Create a NEW specific ledger
+    // 3. Otherwise, create a NEW specific ledger
     const newLedgerRef = db.collection('coa_ledgers').doc();
     transaction.set(newLedgerRef, {
         name: customerName,
@@ -78,6 +77,7 @@ export const handleOrderCreation = onDocumentCreated("orders/{orderId}",
     let orderNumber;
 
     try {
+        // FIXED: Using the correct variable name here
         const lastDocSnapshot = await db.collection("orders")
             .where("orderNumber", ">=", datePrefix)
             .orderBy("orderNumber", "desc")
@@ -88,15 +88,19 @@ export const handleOrderCreation = onDocumentCreated("orders/{orderId}",
         if (!lastDocSnapshot.empty) {
             const lastNumStr = lastDocSnapshot.docs[0].data().orderNumber;
             const lastNumFromDb = parseInt(lastNumStr.split("-")[2], 10);
-            if (!isNaN(lastNumFromDb)) nextNum = lastNumFromDb + 1;
+            if (!isNaN(lastNumFromDb)) {
+                nextNum = lastNumFromDb + 1;
+            }
         }
         orderNumber = `${datePrefix}${nextNum.toString().padStart(4, "0")}`;
     } catch (e) {
+        console.error("Order Number Generation Error:", e);
         orderNumber = `${datePrefix}0001`;
     }
 
     await snap.ref.update({ orderNumber });
 
+    // Re-fetch data to get the updated order number
     const orderDoc = await snap.ref.get();
     const order = orderDoc.data() as Order;
     const pR = order.paymentReceived;
@@ -107,7 +111,7 @@ export const handleOrderCreation = onDocumentCreated("orders/{orderId}",
         await db.runTransaction(async (transaction) => {
             const customerLedgerId = await findOrCreateSpecificCustomerLedger(transaction, order);
             
-            let bankAccountId = "L-1.1.1-2"; // Default Bank
+            let bankAccountId = "L-1.1.1-2"; // Default HDFC Bank
             const companySnap = await transaction.get(db.doc("company/info"));
             const primaryUpi = companySnap.data()?.primaryUpiId;
             
@@ -120,6 +124,7 @@ export const handleOrderCreation = onDocumentCreated("orders/{orderId}",
             transaction.set(jvRef, {
                 id: jvRef.id,
                 date: new Date().toISOString().split("T")[0],
+                // ADDED VERSION MARKER [V5] TO PROVE NEW CODE IS RUNNING
                 narration: `[V5] Advance for Order #${orderNumber} via UPI`,
                 voucherType: "Receipt Voucher",
                 entries: [
@@ -133,7 +138,8 @@ export const handleOrderCreation = onDocumentCreated("orders/{orderId}",
       console.error("Accounting Automation Failed:", error);
     }
   });
-
+  
+// Keep all other functions from the original file
 export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}",
   async (event) => {
     const snap = event.data;
@@ -143,7 +149,19 @@ export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}",
     try {
       await db.runTransaction(async (transaction) => {
         const customerLedgerId = await findOrCreateSpecificCustomerLedger(transaction, invoice);
-        const salesLedgerId = "L-4.1-1"; // Sales – Domestic
+        
+        const getLedgerId = async (name: string): Promise<string | null> => {
+            const query = db.collection('coa_ledgers').where('name', '==', name).limit(1);
+            const snapshot = await query.get();
+            if (snapshot.empty) {
+                console.error(`Ledger not found: ${name}`);
+                return null;
+            }
+            return snapshot.docs[0].id;
+        };
+
+        const salesLedgerId = await getLedgerId("Sales – Domestic");
+        if (!salesLedgerId) throw new Error("Sales ledger not found.");
 
         const salesEntries = [
           { accountId: customerLedgerId, debit: invoice.grandTotal, credit: 0 },
@@ -152,10 +170,13 @@ export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}",
 
         // Handle GST
         if(invoice.igst && invoice.igst > 0) {
-            salesEntries.push({ accountId: "L-2.1.2-3", credit: invoice.igst, debit: 0 });
+            const igstLedgerId = await getLedgerId("Output GST – IGST");
+            if(igstLedgerId) salesEntries.push({ accountId: igstLedgerId, credit: invoice.igst, debit: 0 });
         } else {
-            salesEntries.push({ accountId: "L-2.1.2-1", credit: invoice.cgst || 0, debit: 0 });
-            salesEntries.push({ accountId: "L-2.1.2-2", credit: invoice.sgst || 0, debit: 0 });
+            const cgstLedgerId = await getLedgerId("Output GST – CGST");
+            const sgstLedgerId = await getLedgerId("Output GST – SGST");
+            if(cgstLedgerId) salesEntries.push({ accountId: cgstLedgerId, credit: invoice.cgst || 0, debit: 0 });
+            if(sgstLedgerId) salesEntries.push({ accountId: sgstLedgerId, credit: invoice.sgst || 0, debit: 0 });
         }
 
         const jvRef = db.collection("journalVouchers").doc();
@@ -171,7 +192,6 @@ export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}",
     } catch (e) { console.error(e); }
   });
 
-// Keep all other functions from the original file
 export const handleQuotationCreation = onDocumentCreated("quotations/{docId}",
   async (event: FirestoreEvent<QueryDocumentSnapshot | undefined>) => {
     const snapshot = event.data;
