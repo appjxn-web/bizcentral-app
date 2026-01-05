@@ -117,7 +117,6 @@ export default function CreateInvoicePage() {
   
   const [selectedPartyId, setSelectedPartyId] = React.useState<string | null>(null);
   const [invoiceDate, setInvoiceDate] = React.useState(format(new Date(), 'yyyy-MM-dd'));
-  const [dueDate, setDueDate] = React.useState('');
   const [items, setItems] = React.useState<OrderItem[]>([]);
   const [terms, setTerms] = React.useState('Payment due within 30 days.');
   const [bookingAmount, setBookingAmount] = React.useState(0);
@@ -163,7 +162,6 @@ export default function CreateInvoicePage() {
         setInvoiceIdToEdit(editId);
         setSelectedPartyId(invoiceToEdit.customerId);
         setInvoiceDate(invoiceToEdit.date);
-        setDueDate(invoiceToEdit.dueDate || '');
         setItems(invoiceToEdit.items.map((item, i) => ({
           ...item,
           id: `item-${Date.now()}-${i}`,
@@ -356,7 +354,6 @@ export default function CreateInvoicePage() {
           customerId: selectedPartyId,
           customerName: selectedParty?.name || '',
           date: invoiceDate,
-          dueDate: dueDate || undefined,
           items: items.map(({id, category, ...rest}) => ({...rest, discount: overallDiscount})),
           subtotal: calculations.subtotal,
           discount: calculations.totalDiscountAmount,
@@ -547,25 +544,14 @@ export default function CreateInvoicePage() {
                         onChange={(e) => setSalesOrderNumber(e.target.value)}
                     />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                        <Label htmlFor="invoice-date">Invoice Date</Label>
-                        <Input
-                            id="invoice-date"
-                            type="date"
-                            value={invoiceDate}
-                            onChange={(e) => setInvoiceDate(e.target.value)}
-                        />
-                    </div>
-                    <div className="space-y-2">
-                        <Label htmlFor="due-date">Due Date</Label>
-                        <Input
-                            id="due-date"
-                            type="date"
-                            value={dueDate}
-                            onChange={(e) => setDueDate(e.target.value)}
-                        />
-                    </div>
+                <div className="space-y-2">
+                    <Label htmlFor="invoice-date">Invoice Date</Label>
+                    <Input
+                        id="invoice-date"
+                        type="date"
+                        value={invoiceDate}
+                        onChange={(e) => setInvoiceDate(e.target.value)}
+                    />
                 </div>
             </div>
           </div>
@@ -757,6 +743,7 @@ export default function CreateInvoicePage() {
     </>
   );
 }
+
 
 
 
