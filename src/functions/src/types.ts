@@ -74,6 +74,8 @@ export interface Product {
   name: string;
   source: "Bought" | "Made";
   category: string;
+  cost?: number;
+  coaAccountId?: string;
 }
 
 export interface BOM {
@@ -118,4 +120,26 @@ export interface Milestone {
   label: string;
   date: string;
   status: "Todo" | "In Progress" | "Done";
+}
+
+export interface SalesInvoice {
+    id: string;
+    invoiceNumber: string;
+    orderId: string;
+    orderNumber: string;
+    customerId: string;
+    customerName: string;
+    date: string;
+    items: OrderItem[];
+    subtotal: number;
+    discount: number;
+    taxableAmount: number;
+    cgst: number;
+    sgst: number;
+    igst?: number;
+    grandTotal: number;
+    amountPaid: number;
+    balanceDue: number;
+    status: 'Paid' | 'Unpaid' | 'Overdue';
+    dueDate?: string;
 }

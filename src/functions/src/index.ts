@@ -299,7 +299,7 @@ export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}",
         ];
 
         // Credit GST accounts
-        if(invoice.igst > 0) {
+        if(invoice.igst && invoice.igst > 0) {
             entries.push({ accountId: "output-gst---igst", credit: invoice.igst, debit: 0 });
         } else {
             entries.push({ accountId: "output-gst---cgst", credit: invoice.cgst, debit: 0 });
@@ -365,4 +365,3 @@ export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}",
       console.error("Invoice JV creation failed: ", e);
     }
   });
-
