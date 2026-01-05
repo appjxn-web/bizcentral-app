@@ -28,7 +28,7 @@ import {
 
 import { PageHeader } from '@/components/page-header';
 import { cn } from '@/lib/utils';
-import type { Order, OrderStatus, UserProfile, UserRole, WorkOrder, PickupPoint, SalesOrder, RefundRequest, Product, SalesInvoice, SalesInvoiceItem } from '@/lib/types';
+import type { Order, OrderStatus, UserProfile, UserRole, WorkOrder, PickupPoint, SalesOrder, RefundRequest, Product, SalesInvoice, SalesInvoiceItem, JournalVoucher, CoaLedger } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -404,8 +404,17 @@ function OrderRow({ order, onGenerateInvoice, onUpdateStatus, pickupPoints, dyna
   )
 }
 
-function GeneratedInvoiceRow({ invoice, order, onViewInvoice, onUpdateStatus, allProducts, getOrderInHand }: { invoice: SalesInvoice, order?: Order, onViewInvoice: (id: string) => void, onUpdateStatus: (id: string, status: 'Paid' | 'Unpaid') => void, allProducts: Product[] | null, getOrderInHand: (productId: string) => number }) {
+function GeneratedInvoiceRow({ invoice, order, onViewInvoice, onUpdateStatus, allProducts, getOrderInHand, allSalesInvoices, journalVouchers, allCoaLedgers }: { invoice: SalesInvoice, order?: Order, onViewInvoice: (id: string) => void, onUpdateStatus: (id: string, status: 'Paid' | 'Unpaid') => void, allProducts: Product[] | null, getOrderInHand: (productId: string) => number, allSalesInvoices: SalesInvoice[] | null, journalVouchers: JournalVoucher[] | null, allCoaLedgers: CoaLedger[] | null }) {
     const [isOpen, setIsOpen] = React.useState(false);
+    
+    const paymentTransactions = React.useMemo(() => {
+        if (!journalVouchers || !invoice.orderNumber) return [];
+        return journalVouchers.filter(jv => 
+            jv.voucherType === 'Receipt Voucher' && 
+            jv.narration.includes(invoice.orderNumber)
+        );
+    }, [journalVouchers, invoice.orderNumber]);
+
 
     return (
         <Collapsible asChild key={invoice.id} open={isOpen} onOpenChange={setIsOpen}>
@@ -476,7 +485,7 @@ function GeneratedInvoiceRow({ invoice, order, onViewInvoice, onUpdateStatus, al
                               <div className="grid md:grid-cols-2 gap-6">
                                   <div className="space-y-4">
                                       <h4 className="font-semibold">Payment Summary</h4>
-                                      <div className="text-sm space-y-2 text-muted-foreground">
+                                      <div className="text-sm space-y-1 text-muted-foreground">
                                           <div className="flex justify-between"><span>Subtotal:</span> <span className="font-mono">{formatIndianCurrency(invoice.subtotal)}</span></div>
                                           <div className="flex justify-between"><span>Discount:</span> <span className="font-mono">{formatIndianCurrency(invoice.discount)}</span></div>
                                           <div className="flex justify-between"><span>Taxes (CGST+SGST):</span> <span className="font-mono">{formatIndianCurrency(invoice.cgst + invoice.sgst)}</span></div>
@@ -485,11 +494,21 @@ function GeneratedInvoiceRow({ invoice, order, onViewInvoice, onUpdateStatus, al
                                           <div className="flex justify-between font-medium text-green-600"><span>Paid:</span> <span className="font-mono">{formatIndianCurrency(invoice.amountPaid || 0)}</span></div>
                                           <div className="flex justify-between font-bold text-red-600"><span>Balance Due:</span> <span className="font-mono">{formatIndianCurrency(invoice.balanceDue || 0)}</span></div>
                                       </div>
-                                       {order?.paymentDetails && (
-                                          <div>
-                                              <p className="text-xs font-semibold">Transaction Note:</p>
-                                              <p className="text-xs text-muted-foreground font-mono">{order.paymentDetails}</p>
-                                          </div>
+                                      {paymentTransactions.length > 0 && (
+                                        <div>
+                                            <p className="text-xs font-semibold">Payment Transactions:</p>
+                                            <div className="text-xs text-muted-foreground font-mono space-y-1 mt-1">
+                                                {paymentTransactions.map(jv => {
+                                                    const paymentEntry = jv.entries.find(e => e.debit > 0);
+                                                    const accountName = allCoaLedgers?.find(l => l.id === paymentEntry?.accountId)?.name;
+                                                    return (
+                                                        <p key={jv.id}>
+                                                            {format(new Date(jv.date), 'dd/MM/yy')}: {formatIndianCurrency(paymentEntry?.debit || 0)} via {accountName}
+                                                        </p>
+                                                    )
+                                                })}
+                                            </div>
+                                        </div>
                                       )}
                                   </div>
                                   {order && (
@@ -524,6 +543,8 @@ function InvoicePage() {
     const { data: settingsData } = useDoc<any>(doc(firestore, 'company', 'settings'));
     const { data: pickupPoints } = useCollection<PickupPoint>(collection(firestore, 'pickupPoints'));
     const { data: allProducts, loading: productsLoading } = useCollection<Product>(collection(firestore, 'products'));
+    const { data: journalVouchers } = useCollection<JournalVoucher>(collection(firestore, 'journalVouchers'));
+    const { data: allCoaLedgers } = useCollection<CoaLedger>(collection(firestore, 'coa_ledgers'));
 
     const getDynamicOrderStatus = (order: Order): OrderStatus => {
         if (order.status !== 'Ordered') {
@@ -718,7 +739,18 @@ function InvoicePage() {
                 allSalesInvoices.map((invoice) => {
                   const correspondingOrder = orders?.find(o => o.orderNumber === invoice.orderNumber);
                   return (
-                    <GeneratedInvoiceRow key={invoice.id} invoice={invoice} order={correspondingOrder} onViewInvoice={(id) => onViewInvoice(id)} onUpdateStatus={handleInvoicePaymentStatus} allProducts={allProducts} getOrderInHand={getOrderInHand} />
+                    <GeneratedInvoiceRow 
+                      key={invoice.id} 
+                      invoice={invoice} 
+                      order={correspondingOrder} 
+                      onViewInvoice={(id) => onViewInvoice(id)} 
+                      onUpdateStatus={handleInvoicePaymentStatus} 
+                      allProducts={allProducts} 
+                      getOrderInHand={getOrderInHand} 
+                      allSalesInvoices={allSalesInvoices || []}
+                      journalVouchers={journalVouchers || []}
+                      allCoaLedgers={allCoaLedgers || []}
+                    />
                   )
                 })
               ) : (
