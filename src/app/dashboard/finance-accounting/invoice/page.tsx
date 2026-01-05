@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -23,6 +22,7 @@ import {
   RefreshCcw,
   Receipt,
   Eye,
+  CircleDollarSign,
 } from 'lucide-react';
 
 import { PageHeader } from '@/components/page-header';
@@ -443,8 +443,8 @@ function GeneratedInvoiceRow({ invoice, onMarkStatus, onView }: { invoice: Sales
                                             <TableRow key={index}>
                                                 <TableCell>{item.name}</TableCell>
                                                 <TableCell className="text-right">{item.quantity}</TableCell>
-                                                <TableCell className="text-right">{formatIndianCurrency(item.price)}</TableCell>
-                                                <TableCell className="text-right">{formatIndianCurrency(item.price * item.quantity)}</TableCell>
+                                                <TableCell className="text-right">{formatIndianCurrency(item.rate)}</TableCell>
+                                                <TableCell className="text-right">{formatIndianCurrency(item.rate * item.quantity)}</TableCell>
                                             </TableRow>
                                         ))}
                                     </TableBody>
