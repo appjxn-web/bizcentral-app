@@ -28,8 +28,8 @@ import type { SalesInvoice, CompanyInfo, Party, CoaLedger, Address, Order } from
 import { useFirestore, useDoc, useCollection } from '@/firebase';
 import { collection, doc, query, where, limit } from 'firebase/firestore';
 
-
 const numberToWords = (num: number): string => {
+    if (num === null || num === undefined) return '';
     const a = ['', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen'];
     const b = ['', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety'];
     const number = parseFloat(num.toFixed(2));
@@ -51,13 +51,14 @@ const numberToWords = (num: number): string => {
         }
         if (n > 19) {
             str += b[Math.floor(n / 10)] + ' ' + a[n % 10];
-        } else {
+        } else if (n > 0) {
             str += a[n];
         }
         return str.trim();
     };
 
     let words = numToWords(integerPart);
+    if (!words) words = "zero";
     let finalString = words.trim() + ' rupees';
     if (decimalPart > 0) {
         finalString += ' and ' + numToWords(decimalPart) + ' paise';
@@ -93,7 +94,55 @@ export default function InvoiceViewPage() {
             }
         }
     }, [invoiceId]);
+
+    const { data: customerData, loading: customerLoading } = useDoc<Party>(
+        invoiceData?.customerId ? doc(useFirestore(), 'parties', invoiceData.customerId) : null
+    );
     
+    const bankLedgerQuery = React.useMemo(() => {
+        if (!companyInfo?.primaryUpiId || !useFirestore) return null;
+        return query(
+            collection(useFirestore(), 'coa_ledgers'),
+            where('bank.upiId', '==', companyInfo.primaryUpiId),
+            limit(1)
+        );
+    }, [companyInfo, useFirestore]);
+
+    const { data: bankLedgerResult, loading: bankLedgerLoading } = useCollection<CoaLedger>(bankLedgerQuery);
+    const bankDetails = bankLedgerResult?.[0]?.bank;
+    
+    const companyAddress = companyInfo?.addresses?.[0] as Address | undefined;
+    const customerAddress = customerData?.address;
+
+    const isInterstate = React.useMemo(() => {
+        const companyGstin = companyInfo?.taxInfo?.gstin?.value;
+        if (!companyGstin || !customerData?.gstin) return false;
+        return !companyGstin.startsWith(customerData.gstin.substring(0, 2));
+    }, [companyInfo, customerData]);
+    
+    const calculations = React.useMemo(() => {
+        if (!invoiceData?.items) return { items: [], subtotal: 0, cgst: 0, sgst: 0, igst: 0, grandTotal: 0, totalDiscountAmount: 0, taxableAmount: 0 };
+    
+        const items = invoiceData.items;
+        const subtotal = items.reduce((acc: number, item: any) => acc + (item.rate * item.quantity), 0);
+        const totalDiscount = invoiceData.discount || 0;
+        const taxableAmount = subtotal - totalDiscount;
+        const totalGst = items.reduce((acc: number, item: any) => {
+            const itemSubtotal = item.rate * item.quantity;
+            const itemDiscount = itemSubtotal * (invoiceData.overallDiscount / 100 || 0); // Assuming overall discount for simplicity
+            const discountedAmount = itemSubtotal - itemDiscount;
+            return acc + (discountedAmount * (item.gstRate / 100));
+        }, 0);
+    
+        const grandTotal = taxableAmount + totalGst;
+        const cgst = isInterstate ? 0 : totalGst / 2;
+        const sgst = isInterstate ? 0 : totalGst / 2;
+        const igst = isInterstate ? totalGst : 0;
+        
+        return { items, subtotal, totalDiscountAmount: totalDiscount, taxableAmount, cgst, sgst, igst, grandTotal };
+      }, [invoiceData, isInterstate]);
+
+
     const handleDownloadPdf = async () => {
         const element = pdfRef.current;
         if (!element) return;
@@ -119,7 +168,9 @@ export default function InvoiceViewPage() {
         setIsDownloading(false);
     };
 
-    if (companyInfoLoading) {
+    const isLoading = companyInfoLoading || customerLoading || bankLedgerLoading;
+
+    if (isLoading) {
         return (
             <div className="flex h-[50vh] items-center justify-center">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -139,9 +190,7 @@ export default function InvoiceViewPage() {
         );
     }
 
-    const { subtotal, grandTotal, cgst, sgst, igst, discount } = invoiceData;
-    const isInterstate = igst > 0;
-    const taxableAmount = subtotal - discount;
+    const { grandTotal } = calculations;
 
     return (
         <>
@@ -154,6 +203,7 @@ export default function InvoiceViewPage() {
             <Card>
                 <CardContent>
                     <div className="max-w-4xl mx-auto p-8" ref={pdfRef}>
+                        {/* Header */}
                         <header className="flex justify-between items-start border-b pb-4">
                              <div>
                                 {companyInfo?.logo && (
@@ -174,15 +224,20 @@ export default function InvoiceViewPage() {
                             </div>
                         </header>
 
+                        {/* Customer Details */}
                         <section className="my-6">
                            <div className="flex justify-between">
                                 <div>
                                     <h3 className="font-semibold text-sm">Billed To:</h3>
-                                    <p className="font-bold">{invoiceData.customerName}</p>
+                                    <p className="font-bold">{customerData?.name}</p>
+                                    <p className="text-sm">{[customerAddress?.line1, customerAddress?.line2].filter(Boolean).join(', ')}</p>
+                                    <p className="text-sm">{customerAddress?.city && `${customerAddress.city} - ${customerAddress.pin}, `}{customerAddress?.state}</p>
+                                    <p className="text-sm font-semibold">GSTIN: {customerData?.gstin}</p>
                                 </div>
                             </div>
                         </section>
 
+                        {/* Items Table */}
                         <section>
                             <Table>
                                 <TableHeader>
@@ -195,7 +250,7 @@ export default function InvoiceViewPage() {
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {invoiceData.items.map((item: any, index: number) => (
+                                    {calculations.items.map((item: any, index: number) => (
                                         <TableRow key={`${item.productId}-${index}`}>
                                             <TableCell>{item.name}</TableCell>
                                             <TableCell>{item.hsn}</TableCell>
@@ -208,36 +263,36 @@ export default function InvoiceViewPage() {
                                 <TableFooter>
                                     <TableRow>
                                         <TableCell colSpan={4} className="text-right font-semibold">Subtotal</TableCell>
-                                        <TableCell className="text-right font-semibold">{formatIndianCurrency(subtotal)}</TableCell>
+                                        <TableCell className="text-right font-semibold">{formatIndianCurrency(calculations.subtotal)}</TableCell>
                                     </TableRow>
-                                    {discount > 0 && (
+                                    {calculations.totalDiscountAmount > 0 && (
                                         <TableRow>
                                             <TableCell colSpan={4} className="text-right text-green-600">Discount</TableCell>
-                                            <TableCell className="text-right text-green-600">- {formatIndianCurrency(discount)}</TableCell>
+                                            <TableCell className="text-right text-green-600">- {formatIndianCurrency(calculations.totalDiscountAmount)}</TableCell>
                                         </TableRow>
                                     )}
                                      <TableRow>
                                         <TableCell colSpan={4} className="text-right font-semibold">Taxable Value</TableCell>
-                                        <TableCell className="text-right font-semibold">{formatIndianCurrency(taxableAmount)}</TableCell>
+                                        <TableCell className="text-right font-semibold">{formatIndianCurrency(calculations.taxableAmount)}</TableCell>
                                     </TableRow>
                                     {isInterstate ? (
                                         <TableRow>
                                             <TableCell colSpan={4} className="text-right">IGST</TableCell>
-                                            <TableCell className="text-right">{formatIndianCurrency(igst)}</TableCell>
+                                            <TableCell className="text-right">{formatIndianCurrency(calculations.igst)}</TableCell>
                                         </TableRow>
                                     ) : (
                                         <>
                                             <TableRow>
                                                 <TableCell colSpan={4} className="text-right">CGST</TableCell>
-                                                <TableCell className="text-right">{formatIndianCurrency(cgst)}</TableCell>
+                                                <TableCell className="text-right">{formatIndianCurrency(calculations.cgst)}</TableCell>
                                             </TableRow>
                                             <TableRow>
                                                 <TableCell colSpan={4} className="text-right">SGST</TableCell>
-                                                <TableCell className="text-right">{formatIndianCurrency(sgst)}</TableCell>
+                                                <TableCell className="text-right">{formatIndianCurrency(calculations.sgst)}</TableCell>
                                             </TableRow>
                                         </>
                                     )}
-                                    <TableRow className="text-base bg-muted">
+                                     <TableRow className="text-base bg-muted">
                                         <TableCell colSpan={4} className="text-right font-bold">Grand Total</TableCell>
                                         <TableCell className="text-right font-bold">{formatIndianCurrency(grandTotal)}</TableCell>
                                     </TableRow>
@@ -249,7 +304,7 @@ export default function InvoiceViewPage() {
                             Amount in words: {numberToWords(grandTotal)}
                         </div>
 
-                        <footer className="text-center text-xs text-muted-foreground pt-16">
+                         <footer className="text-center text-xs text-muted-foreground pt-16">
                             <p>This is a computer-generated document.</p>
                             <p>{companyInfo?.companyName} | {companyInfo?.contactEmail}</p>
                         </footer>
@@ -259,4 +314,3 @@ export default function InvoiceViewPage() {
         </>
       );
 }
-
