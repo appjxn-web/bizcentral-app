@@ -229,7 +229,7 @@ export default function CheckoutPage() {
   const advanceAmount = grandTotal * 0.25;
 
   const handlePlaceOrder = async () => {
-    if (!user?.uid || !firestore) {
+    if (!user?.uid || !firestore || !userProfile) {
       toast({ variant: 'destructive', title: 'Authentication Error', description: 'User not found. Please log in again.' });
       return;
     }
@@ -260,7 +260,7 @@ export default function CheckoutPage() {
     const newOrder: Omit<Order, 'id'|'orderNumber'> & {id: string} = {
         id: orderRef.id,
         userId: user.uid,
-        customerName: user.displayName || 'Guest',
+        customerName: userProfile.name || user.displayName || 'Guest',
         customerEmail: user.email || 'N/A',
         date: new Date().toISOString(),
         status: 'Ordered',
@@ -515,4 +515,5 @@ export default function CheckoutPage() {
   );
 }
 
+    
     

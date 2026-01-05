@@ -206,15 +206,16 @@ export const defaultCoaLedgers: Omit<CoaLedger, 'createdAt' | 'updatedAt'>[] = [
   createLedger('L-4.2-5', 'Miscellaneous Income', '4.2', 'INCOME'),
   
   // COGS
-  createLedger('L-5-1', 'Opening Stock', '5', 'EXPENSE'),
-  createLedger('L-5-2', 'Purchase – Raw Material', '5', 'EXPENSE'),
-  createLedger('L-5-3', 'Purchase – Finished Goods', '5', 'EXPENSE'),
-  createLedger('L-5-4', 'Direct Labour', '5', 'EXPENSE'),
-  createLedger('L-5-5', 'Factory Wages', '5', 'EXPENSE'),
-  createLedger('L-5-6', 'Power & Fuel', '5', 'EXPENSE'),
-  createLedger('L-5-7', 'Freight Inward', '5', 'EXPENSE'),
-  createLedger('L-5-8', 'Import Duty', '5', 'EXPENSE'),
-  createLedger('L-5-9', 'Closing Stock (Credit)', '5', 'EXPENSE'),
+  createLedger('L-5-1', 'COST OF GOODS SOLD (COGS)', '5', 'EXPENSE'),
+  createLedger('L-5-2', 'Opening Stock', '5', 'EXPENSE'),
+  createLedger('L-5-3', 'Purchase – Raw Material', '5', 'EXPENSE'),
+  createLedger('L-5-4', 'Purchase – Finished Goods', '5', 'EXPENSE'),
+  createLedger('L-5-5', 'Direct Labour', '5', 'EXPENSE'),
+  createLedger('L-5-6', 'Factory Wages', '5', 'EXPENSE'),
+  createLedger('L-5-7', 'Power & Fuel', '5', 'EXPENSE'),
+  createLedger('L-5-8', 'Freight Inward', '5', 'EXPENSE'),
+  createLedger('L-5-9', 'Import Duty', '5', 'EXPENSE'),
+  createLedger('L-5-10', 'Closing Stock (Credit)', '5', 'EXPENSE'),
 
   // EXPENSES
   createLedger('L-6.1-1', 'Office Rent', '6.1', 'EXPENSE'),
@@ -260,3 +261,5 @@ export const defaultCoaLedgers: Omit<CoaLedger, 'createdAt' | 'updatedAt'>[] = [
   createLedger('SYS-4', 'Exchange Rate Gain / Loss', '8', 'EXPENSE'),
   createLedger('SYS-5', 'Suspense Account', '8', 'ASSET'),
 ];
+
+    

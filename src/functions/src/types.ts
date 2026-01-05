@@ -151,3 +151,5 @@ export interface Party {
     coaLedgerId?: string;
     // other party fields
 }
+
+    

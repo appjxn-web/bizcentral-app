@@ -1,3 +1,12 @@
+'use server';
+/**
+ * @fileoverview Cloud Functions for Firebase.
+ *
+ * This file contains the backend logic that triggers on certain Firestore
+ * events, such as document creation or updates. It is responsible for
+ * automating tasks like generating sequential document numbers, creating
+ * accounting entries, and calculating commissions.
+ */
 
 import {
   onDocumentCreated,
@@ -12,7 +21,7 @@ import * as admin from "firebase-admin";
 import {getFirestore, FieldValue} from "firebase-admin/firestore";
 import type {Order, UserProfile, Goal, SalesInvoice, Product, Party} from "./types";
 
-// Prevent double initialization
+// Prevent double initialization in a deployed environment
 if (admin.apps.length === 0) {
   admin.initializeApp();
 }
@@ -411,3 +420,4 @@ export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}",
       console.error("Invoice JV creation failed: ", e);
     }
   });
+    
