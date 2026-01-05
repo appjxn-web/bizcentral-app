@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -25,7 +26,7 @@ import {
 
 import { PageHeader } from '@/components/page-header';
 import { cn } from '@/lib/utils';
-import type { Order, OrderStatus, UserProfile, UserRole, WorkOrder, PickupPoint, SalesOrder, RefundRequest, Product } from '@/lib/types';
+import type { Order, OrderStatus, UserProfile, UserRole, WorkOrder, PickupPoint, SalesOrder, RefundRequest, Product, SalesInvoice } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -475,7 +476,11 @@ function OrdersPageContent() {
     };
     
     const onViewInvoice = (invoiceId: string) => {
-        router.push(`/dashboard/sales/invoice/view?id=${invoiceId}`);
+        const invoiceData = allSalesInvoices?.find(inv => inv.invoiceNumber === invoiceId);
+        if (invoiceData) {
+            localStorage.setItem('invoiceToView', JSON.stringify(invoiceData));
+            router.push(`/dashboard/sales/invoice/view?id=${invoiceId}`);
+        }
     };
 
     const loading = ordersLoading || workOrdersLoading || productsLoading;
@@ -584,3 +589,4 @@ export default function OrdersPage() {
 
     return <OrdersPageContent />;
 }
+

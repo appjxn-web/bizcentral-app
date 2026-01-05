@@ -29,14 +29,6 @@ import { useFirestore, useDoc, useCollection } from '@/firebase';
 import { collection, doc, query, where, limit } from 'firebase/firestore';
 import { format } from 'date-fns';
 
-const formatIndianCurrency = (num: number) => {
-  return new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    minimumFractionDigits: 2,
-  }).format(num || 0);
-};
-
 const numberToWords = (num: number): string => {
     if (num === null || num === undefined) return '';
     const a = ['', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen'];
@@ -84,6 +76,14 @@ const numberToWords = (num: number): string => {
     return finalString.charAt(0).toUpperCase() + finalString.slice(1) + ' only.';
 };
 
+
+const formatIndianCurrency = (num: number) => {
+  return new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    minimumFractionDigits: 2,
+  }).format(num || 0);
+};
 
 export default function SalesOrderViewPage() {
     const searchParams = useSearchParams();
@@ -333,3 +333,4 @@ export default function SalesOrderViewPage() {
     );
 }
 
+```
