@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -252,11 +251,11 @@ export default function InvoiceViewPage() {
                                     <h3 className="font-semibold text-sm">Billed To:</h3>
                                     <p className="font-bold">{customerData?.name}</p>
                                     <p className="text-sm">
-                                        {[customerData?.address?.line1, customerData?.address?.line2].filter(Boolean).join(', ')}
+                                        {[customerAddress?.line1, customerAddress?.line2].filter(Boolean).join(', ')}
                                     </p>
                                     <p className="text-sm">
-                                        {customerData?.address?.city && `${customerData.address.city} - ${customerData.address.pin}, `}
-                                        {customerData?.address?.district}, {customerData?.address?.state}, {customerData?.address?.country}
+                                        {customerAddress?.city && `${customerAddress.city} - ${customerAddress.pin}, `}
+                                        {customerAddress?.district}, {customerAddress?.state}, {customerAddress?.country}
                                     </p>
                                     <p className="text-sm">
                                         {customerData?.contactPerson && `Attn: ${customerData.contactPerson}, `}
@@ -333,14 +332,6 @@ export default function InvoiceViewPage() {
                                      <TableRow className="text-base bg-muted/50">
                                         <TableCell colSpan={6} className="text-right font-bold py-2">Grand Total</TableCell>
                                         <TableCell className="text-right font-bold py-2">{formatIndianCurrency(grandTotal)}</TableCell>
-                                    </TableRow>
-                                     <TableRow>
-                                        <TableCell colSpan={6} className="text-right font-semibold py-1">Amount Paid</TableCell>
-                                        <TableCell className="text-right font-semibold text-green-600 py-1">{formatIndianCurrency(invoiceData.amountPaid || 0)}</TableCell>
-                                    </TableRow>
-                                     <TableRow className="text-base">
-                                        <TableCell colSpan={6} className="text-right font-bold py-1">Balance Due</TableCell>
-                                        <TableCell className="text-right font-bold text-red-600 py-1">{formatIndianCurrency(invoiceData.balanceDue)}</TableCell>
                                     </TableRow>
                                 </TableFooter>
                             </Table>
