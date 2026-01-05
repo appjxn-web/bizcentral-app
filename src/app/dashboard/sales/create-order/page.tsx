@@ -130,7 +130,7 @@ export default function CreateSalesOrderPage() {
   // State for payment dialog
   const [paymentDate, setPaymentDate] = React.useState(format(new Date(), 'yyyy-MM-dd'));
   const [paymentMode, setPaymentMode] = React.useState('UPI');
-  const [paymentAmount, setPaymentAmount] = React.useState(0);
+  const [paymentAmount, setPaymentAmount] = React.useState('');
   const [paymentRef, setPaymentRef] = React.useState('');
   const [paymentDetails, setPaymentDetails] = React.useState('');
   const [bankAccountId, setBankAccountId] = React.useState('');
@@ -369,7 +369,7 @@ export default function CreateSalesOrderPage() {
     toast({ title: 'Payment Recorded', description: `₹${amount.toFixed(2)} recorded.` });
     
     setIsPaymentDialogOpen(false);
-    setPaymentAmount(0);
+    setPaymentAmount('');
     setPaymentRef('');
     setBankAccountId('');
   }
@@ -582,7 +582,7 @@ export default function CreateSalesOrderPage() {
                             </div>
                             <div className="space-y-2">
                                 <Label htmlFor="payment-amount">Amount Received</Label>
-                                <Input id="payment-amount" type="number" value={paymentAmount} onChange={e => setPaymentAmount(Number(e.target.value))} placeholder="₹0.00" />
+                                <Input id="payment-amount" type="number" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} placeholder="₹0.00" />
                             </div>
                              <div className="space-y-2">
                                 <Label htmlFor="payment-ref">Transaction Reference</Label>

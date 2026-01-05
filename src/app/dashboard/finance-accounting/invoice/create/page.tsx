@@ -129,7 +129,7 @@ export default function CreateInvoicePage() {
 
   const [paymentDate, setPaymentDate] = React.useState(format(new Date(), 'yyyy-MM-dd'));
   const [paymentMode, setPaymentMode] = React.useState('UPI');
-  const [paymentAmount, setPaymentAmount] = React.useState(0);
+  const [paymentAmount, setPaymentAmount] = React.useState('');
   const [paymentRef, setPaymentRef] = React.useState('');
   const [paymentDetails, setPaymentDetails] = React.useState('');
   const [bankAccountId, setBankAccountId] = React.useState('');
@@ -188,12 +188,11 @@ export default function CreateInvoicePage() {
   
     React.useEffect(() => {
     const fetchEstimate = async () => {
-        const machineryItems = items.filter(item => item.category === 'Plants & Machinery');
-        if (machineryItems.length > 0) {
+        if (items.some(item => item.category === 'Plants & Machinery')) {
             setIsEstimating(true);
             try {
                 const estimateInput = {
-                    items: machineryItems.map(item => ({
+                    items: items.map(item => ({
                         productId: item.productId,
                         quantity: item.quantity,
                         category: item.category,
@@ -203,7 +202,7 @@ export default function CreateInvoicePage() {
                 setDispatchEstimate(result);
             } catch (error) {
                 console.error("Error fetching dispatch estimate:", error);
-                setDispatchEstimate(null);
+                setDispatchEstimate(null); // Clear previous estimate on error
             } finally {
                 setIsEstimating(false);
             }
@@ -212,7 +211,9 @@ export default function CreateInvoicePage() {
         }
     };
 
-    fetchEstimate();
+    if (items.length > 0) {
+      fetchEstimate();
+    }
   }, [items]);
 
 
@@ -369,7 +370,7 @@ export default function CreateInvoicePage() {
     toast({ title: 'Payment Recorded', description: `₹${amount.toFixed(2)} recorded.` });
     
     setIsPaymentDialogOpen(false);
-    setPaymentAmount(0);
+    setPaymentAmount('');
     setPaymentRef('');
     setBankAccountId('');
   }
@@ -596,7 +597,7 @@ export default function CreateInvoicePage() {
                             </div>
                             <div className="space-y-2">
                                 <Label htmlFor="payment-amount">Amount Received</Label>
-                                <Input id="payment-amount" type="number" value={paymentAmount} onChange={e => setPaymentAmount(Number(e.target.value))} placeholder="₹0.00" />
+                                <Input id="payment-amount" type="number" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} placeholder="₹0.00" />
                             </div>
                              <div className="space-y-2">
                                 <Label htmlFor="payment-ref">Transaction Reference</Label>
@@ -665,4 +666,3 @@ export default function CreateInvoicePage() {
     </>
   );
 }
-
