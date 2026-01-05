@@ -129,7 +129,7 @@ export default function InvoiceViewPage() {
         const taxableAmount = subtotal - totalDiscount;
         const totalGst = items.reduce((acc: number, item: any) => {
             const itemSubtotal = item.rate * item.quantity;
-            const itemDiscount = itemSubtotal * (invoiceData.overallDiscount / 100 || 0); // Assuming overall discount for simplicity
+            const itemDiscount = itemSubtotal * ((invoiceData.discount / subtotal) || 0);
             const discountedAmount = itemSubtotal - itemDiscount;
             return acc + (discountedAmount * (item.gstRate / 100));
         }, 0);
@@ -203,7 +203,6 @@ export default function InvoiceViewPage() {
             <Card>
                 <CardContent>
                     <div className="max-w-4xl mx-auto p-8" ref={pdfRef}>
-                        {/* Header */}
                         <header className="flex justify-between items-start border-b pb-4">
                              <div>
                                 {companyInfo?.logo && (
@@ -224,20 +223,35 @@ export default function InvoiceViewPage() {
                             </div>
                         </header>
 
-                        {/* Customer Details */}
                         <section className="my-6">
-                           <div className="flex justify-between">
+                           <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                    <h3 className="font-semibold text-sm">Billed To:</h3>
+                                    <h3 className="font-semibold text-sm text-muted-foreground">BILLED FROM:</h3>
+                                    <p className="font-bold">{companyInfo?.companyName}</p>
+                                    <p className="text-sm">
+                                        {[companyAddress?.line1, companyAddress?.line2].filter(Boolean).join(', ')}
+                                    </p>
+                                    <p className="text-sm">
+                                        {companyAddress?.city && `${companyAddress.city} - ${companyAddress.pin}, `}
+                                        {companyAddress?.district}, {companyAddress?.state}, {companyAddress?.country}
+                                    </p>
+                                    <p className="text-sm font-semibold">GSTIN: {companyInfo?.taxInfo?.gstin?.value}</p>
+                                </div>
+                                <div className="text-right">
+                                    <h3 className="font-semibold text-sm text-muted-foreground">BILLED TO:</h3>
                                     <p className="font-bold">{customerData?.name}</p>
-                                    <p className="text-sm">{[customerAddress?.line1, customerAddress?.line2].filter(Boolean).join(', ')}</p>
-                                    <p className="text-sm">{customerAddress?.city && `${customerAddress.city} - ${customerAddress.pin}, `}{customerAddress?.state}</p>
+                                    <p className="text-sm">
+                                        {[customerAddress?.line1, customerAddress?.line2].filter(Boolean).join(', ')}
+                                    </p>
+                                    <p className="text-sm">
+                                        {customerAddress?.city && `${customerAddress.city} - ${customerAddress.pin}, `}
+                                        {customerAddress?.district}, {customerAddress?.state}, {customerAddress?.country}
+                                    </p>
                                     <p className="text-sm font-semibold">GSTIN: {customerData?.gstin}</p>
                                 </div>
                             </div>
                         </section>
 
-                        {/* Items Table */}
                         <section>
                             <Table>
                                 <TableHeader>
@@ -267,7 +281,7 @@ export default function InvoiceViewPage() {
                                     </TableRow>
                                     {calculations.totalDiscountAmount > 0 && (
                                         <TableRow>
-                                            <TableCell colSpan={4} className="text-right text-green-600">Discount ({invoiceData.overallDiscount}%)</TableCell>
+                                            <TableCell colSpan={4} className="text-right text-green-600">Discount</TableCell>
                                             <TableCell className="text-right text-green-600">- {formatIndianCurrency(calculations.totalDiscountAmount)}</TableCell>
                                         </TableRow>
                                     )}
