@@ -35,7 +35,7 @@ import { format } from 'date-fns';
 import { useRouter } from 'next/navigation';
 import { useFirestore, useCollection } from '@/firebase';
 import { collection, query, where } from 'firebase/firestore';
-import type { Order, JournalVoucher, Party } from '@/lib/types';
+import type { SalesInvoice, JournalVoucher, Party, Product } from '@/lib/types';
 
 
 interface GstTransaction {
@@ -59,8 +59,8 @@ export default function GstPage() {
   const [year, setYear] = React.useState(new Date().getFullYear().toString());
   const [month, setMonth] = React.useState((new Date().getMonth() + 1).toString());
 
-  // Corrected to fetch from invoices instead of orders
-  const { data: invoicesData } = useCollection<Order>(collection(firestore, 'invoices'));
+  // Corrected to fetch from salesInvoices collection
+  const { data: invoicesData } = useCollection<SalesInvoice>(collection(firestore, 'salesInvoices'));
   const { data: jvData } = useCollection<JournalVoucher>(collection(firestore, 'journalVouchers'));
   const { data: partiesData } = useCollection<Party>(collection(firestore, 'parties'));
   const { data: productsData } = useCollection<any>(collection(firestore, 'products'));
@@ -72,14 +72,14 @@ export default function GstPage() {
       .map(invoice => ({
         id: invoice.id,
         date: invoice.date,
-        invoiceNo: invoice.id,
+        invoiceNo: invoice.invoiceNumber,
         partyName: invoice.customerName,
-        gstin: partiesData?.find(p => p.id === invoice.userId)?.gstin || 'N/A',
-        taxableValue: invoice.subtotal,
+        gstin: partiesData?.find(p => p.id === invoice.customerId)?.gstin || 'N/A',
+        taxableValue: invoice.taxableAmount,
         cgst: invoice.cgst,
         sgst: invoice.sgst,
-        igst: 0, // Assuming no interstate for now
-        totalGst: invoice.cgst + invoice.sgst,
+        igst: invoice.igst || 0,
+        totalGst: invoice.cgst + invoice.sgst + (invoice.igst || 0),
         totalAmount: invoice.grandTotal
       }));
   }, [invoicesData, year, month, partiesData]);
