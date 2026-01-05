@@ -42,6 +42,8 @@ export interface UserProfile extends User {
     referredBy?: string;
     partnerMatrix?: CommissionRule[];
     coaLedgerId?: string;
+    walletBalance?: number;
+    commissionPayable?: number;
 }
 
 export interface UserWallet {
@@ -972,6 +974,12 @@ export interface Quotation {
     createdAt?: any;
 }
 
+export interface SalesInvoiceItem extends OrderItem {
+    gstRate: number;
+    discount: number;
+    amount: number;
+}
+
 export interface SalesInvoice {
     id: string;
     invoiceNumber: string;
@@ -980,9 +988,10 @@ export interface SalesInvoice {
     customerId: string;
     customerName: string;
     date: string;
-    items: Omit<OrderItem, 'category'>[];
+    items: SalesInvoiceItem[];
     subtotal: number;
     discount: number;
+    taxableAmount: number;
     cgst: number;
     sgst: number;
     igst?: number;

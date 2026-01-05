@@ -10,7 +10,7 @@ import {
 } from "firebase-functions/v2/firestore";
 import * as admin from "firebase-admin";
 import {getFirestore, FieldValue} from "firebase-admin/firestore";
-import type {Order, UserProfile, Goal} from "./types";
+import type {Order, UserProfile, Goal, SalesInvoice, CoaLedger, Product} from "./types";
 
 // Prevent double initialization
 if (admin.apps.length === 0) {
@@ -274,3 +274,95 @@ export const onGoalUpdate = onDocumentCreated("goalUpdates/{updateId}",
     console.log("Goal update recorded...");
     return null;
   });
+
+// New Function to handle Invoice Creation
+export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}",
+  async (event) => {
+    const snap = event.data;
+    if (!snap) return;
+
+    const invoice = snap.data() as SalesInvoice;
+
+    try {
+      await db.runTransaction(async (transaction) => {
+        // 1. Create the main sales journal voucher
+        const jvRef = db.collection("journalVouchers").doc();
+        const customerLedgerRef = db.collection("coa_ledgers").where("name", "==", invoice.customerName).limit(1);
+        const customerLedgerSnap = await transaction.get(customerLedgerRef);
+        const customerLedgerId = customerLedgerSnap.empty ? "trade-debtors---domestic" : customerLedgerSnap.docs[0].id;
+        
+        const entries = [
+          // Debit Customer
+          { accountId: customerLedgerId, debit: invoice.grandTotal, credit: 0 },
+          // Credit Sales Account
+          { accountId: "sales---domestic", credit: invoice.taxableAmount, debit: 0 },
+        ];
+
+        // Credit GST accounts
+        if(invoice.igst > 0) {
+            entries.push({ accountId: "output-gst---igst", credit: invoice.igst, debit: 0 });
+        } else {
+            entries.push({ accountId: "output-gst---cgst", credit: invoice.cgst, debit: 0 });
+            entries.push({ accountId: "output-gst---sgst", credit: invoice.sgst, debit: 0 });
+        }
+
+        const jvData = {
+          date: invoice.date,
+          narration: `Sales Invoice ${invoice.invoiceNumber} to ${invoice.customerName}`,
+          entries,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          voucherType: "Sales Voucher"
+        };
+        transaction.set(jvRef, jvData);
+        
+        // 2. Adjust Advance from customer if any
+        if (invoice.amountPaid > 0) {
+            const advanceJvRef = db.collection("journalVouchers").doc();
+            const advanceJvData = {
+                date: invoice.date,
+                narration: `Adjustment of advance for Invoice ${invoice.invoiceNumber}`,
+                entries: [
+                    { accountId: "customer-advances", debit: invoice.amountPaid, credit: 0 },
+                    { accountId: customerLedgerId, credit: invoice.amountPaid, debit: 0 }
+                ],
+                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                voucherType: "Journal Voucher"
+            };
+            transaction.set(advanceJvRef, advanceJvData);
+        }
+
+        // 3. Handle COGS
+        let cogsAmount = 0;
+        const cogsEntries = [];
+        for (const item of invoice.items) {
+          const productSnap = await db.doc(`products/${item.productId}`).get();
+          const product = productSnap.data() as Product;
+          if (product && product.cost) {
+            const itemCost = product.cost * item.quantity;
+            cogsAmount += itemCost;
+            
+            // Credit Inventory Account
+            const inventoryLedgerId = product.coaAccountId || "stock-in-hand---finished-goods";
+            cogsEntries.push({ accountId: inventoryLedgerId, credit: itemCost, debit: 0 });
+          }
+        }
+
+        if (cogsAmount > 0) {
+            const cogsJvRef = db.collection("journalVouchers").doc();
+            // Debit COGS account
+            cogsEntries.unshift({ accountId: "cost-of-goods-sold-cogs", debit: cogsAmount, credit: 0 });
+            const cogsJvData = {
+                date: invoice.date,
+                narration: `COGS for Invoice ${invoice.invoiceNumber}`,
+                entries: cogsEntries,
+                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                voucherType: "Journal Voucher"
+            };
+            transaction.set(cogsJvRef, cogsJvData);
+        }
+      });
+    } catch (e) {
+      console.error("Invoice JV creation failed: ", e);
+    }
+  });
+
