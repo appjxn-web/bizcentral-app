@@ -30,7 +30,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { PlusCircle, Save, Trash2, Check, ChevronsUpDown, CalendarClock, Loader2 } from 'lucide-react';
+import { PlusCircle, Save, Trash2, Check, ChevronsUpDown, CalendarClock, Loader2, DollarSign } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import type { Party, Product, UserRole, SalesOrder, Quotation, CoaLedger, UserProfile } from '@/lib/types';
 import { format, startOfMonth } from 'date-fns';
@@ -52,9 +52,10 @@ import {
   DialogTrigger,
   DialogFooter,
   DialogClose,
+  DialogDescription,
 } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
-import { useRole } from '../../_components/role-provider';
+import { useRole } from '@/app/dashboard/_components/role-provider';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useFirestore, useCollection, useUser, useDoc } from '@/firebase';
 import { collection, doc, addDoc, serverTimestamp, setDoc, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
@@ -111,7 +112,6 @@ export default function CreateSalesOrderPage() {
   const { toast } = useToast();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const poIdToEdit = searchParams.get('id');
   const { currentRole } = useRole();
   const firestore = useFirestore();
   const { user: authUser } = useUser();
@@ -122,8 +122,9 @@ export default function CreateSalesOrderPage() {
   const [items, setItems] = React.useState<OrderItem[]>([]);
   const [terms, setTerms] = React.useState('50% advance payment required. Delivery within 15 working days. Warranty: 1 year on all products.');
   const [bookingAmount, setBookingAmount] = React.useState(0);
-  const [openCombobox, setOpenCombobox] = React.useState(false);
+  const [openCustomerCombobox, setOpenCustomerCombobox] = React.useState(false);
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = React.useState(false);
+  const [quotationId, setQuotationId] = React.useState<string | null>(null);
   
   const { data: allProducts, loading: productsLoading } = useCollection<Product>(query(collection(firestore, 'products'), where('saleable', '==', true)));
 
@@ -141,6 +142,7 @@ export default function CreateSalesOrderPage() {
 
   const { data: parties, loading: partiesLoading } = useCollection<Party>(collection(firestore, 'parties'));
   const { data: coaLedgers, loading: ledgersLoading } = useCollection<CoaLedger>(collection(firestore, 'coa_ledgers'));
+  const { data: companyInfo } = useDoc<any>(doc(firestore, 'company', 'info'));
   const saleableProducts = allProducts || [];
   
   const paymentAccounts = React.useMemo(() => {
@@ -153,8 +155,8 @@ export default function CreateSalesOrderPage() {
     const rawData = localStorage.getItem('quotationToConvert');
     if (rawData) {
         const data = JSON.parse(rawData);
-        // Map these to your Sales Order state
         setSelectedPartyId(data.customerId);
+        setQuotationId(data.quotationNumber || data.id);
         setItems(data.items.map((item: any, i: number) => ({
             ...item, 
             quantity: item.quantity || item.qty || 1,
@@ -162,8 +164,6 @@ export default function CreateSalesOrderPage() {
         })));
         setOverallDiscount(data.overallDiscount || 0);
         setTerms(data.terms || '50% advance payment required.');
-        
-        // Clean up
         localStorage.removeItem('quotationToConvert');
         toast({ title: "Pre-filled from Quotation" });
     }
@@ -322,7 +322,7 @@ export default function CreateSalesOrderPage() {
     try {
       const newOrderId = `SO-${Date.now()}`;
 
-      const newOrderData: Omit<SalesOrder, 'id'> = {
+      const newOrderData: Partial<SalesOrder> = {
           orderNumber: newOrderId,
           userId: customerUserId, 
           customerName: customerDisplayName,
@@ -343,6 +343,7 @@ export default function CreateSalesOrderPage() {
           paymentDetails: paymentDetails,
           status: 'Ordered',
           createdAt: serverTimestamp(),
+          ...(quotationId && { quotationId: quotationId }),
       };
       
       await addDoc(collection(firestore, 'orders'), newOrderData);
@@ -392,12 +393,12 @@ export default function CreateSalesOrderPage() {
           <div className="grid md:grid-cols-2 gap-6">
             <div className="space-y-4">
               <Label>Customer</Label>
-               <Popover open={openCombobox} onOpenChange={setOpenCombobox}>
+               <Popover open={openCustomerCombobox} onOpenChange={setOpenCustomerCombobox}>
                 <PopoverTrigger asChild>
                   <Button
                     variant="outline"
                     role="combobox"
-                    aria-expanded={openCombobox}
+                    aria-expanded={openCustomerCombobox}
                     className="w-full justify-between"
                     disabled={partiesLoading}
                   >
@@ -419,7 +420,7 @@ export default function CreateSalesOrderPage() {
                             value={party.name}
                             onSelect={() => {
                               setSelectedPartyId(party.id);
-                              setOpenCombobox(false);
+                              setOpenCustomerCombobox(false);
                             }}
                           >
                             <Check

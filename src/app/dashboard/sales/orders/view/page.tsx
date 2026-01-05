@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -25,7 +26,7 @@ import { notFound } from 'next/navigation';
 import { QRCodeSVG } from 'qrcode.react';
 import type { Order, CompanyInfo, PickupPoint, SalesOrder, Party, Address, CoaLedger } from '@/lib/types';
 import { useFirestore, useDoc, useCollection } from '@/firebase';
-import { doc, collection, query, where, limit } from 'firebase/firestore';
+import { collection, doc, query, where, limit } from 'firebase/firestore';
 import { format } from 'date-fns';
 
 const formatIndianCurrency = (num: number) => {
@@ -33,6 +34,7 @@ const formatIndianCurrency = (num: number) => {
     style: 'currency',
     currency: 'INR',
     minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   }).format(num || 0);
 };
 
@@ -180,7 +182,7 @@ export default function SalesOrderViewPage() {
                             </div>
                             <div className="text-right">
                                 <h1 className="text-2xl font-bold text-primary">{companyInfo?.companyName}</h1>
-                                 <p className="text-sm text-muted-foreground">
+                                <p className="text-sm text-muted-foreground">
                                     {[companyAddress?.line1, companyAddress?.line2].filter(Boolean).join(', ')}
                                 </p>
                                 <p className="text-sm text-muted-foreground">
@@ -217,6 +219,7 @@ export default function SalesOrderViewPage() {
                                 <div className="text-right text-sm">
                                     <p><strong>Order No:</strong> {orderData.orderNumber}</p>
                                     <p><strong>Date:</strong> {format(new Date(orderData.date), 'dd/MM/yyyy')}</p>
+                                    {orderData.quotationId && <p><strong>Quotation No:</strong> {orderData.quotationId}</p>}
                                 </div>
                             </div>
                         </section>
@@ -330,3 +333,4 @@ export default function SalesOrderViewPage() {
         </>
     );
 }
+

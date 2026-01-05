@@ -291,6 +291,7 @@ export interface Order {
 }
 export interface SalesOrder extends Order {
   orderNumber: string;
+  quotationId?: string;
 }
 
 export interface Vacancy {
