@@ -24,6 +24,7 @@ import {
   Receipt,
   Eye,
   Edit,
+  CircleDollarSign,
 } from 'lucide-react';
 
 import { PageHeader } from '@/components/page-header';
@@ -465,12 +466,12 @@ function GeneratedInvoiceRow({ invoice, order, onViewInvoice, onUpdateStatus, al
                       <TableCell colSpan={8} className="p-0">
                           <div className="p-6 space-y-6 bg-muted/50">
                               <div className="space-y-2">
-                                {invoice.items.map(item => {
+                                {invoice.items.map((item, index) => {
                                     const product = allProducts?.find(p => p.id === item.productId);
                                     const stock = product?.openingStock || 0;
                                     const orderInHand = getOrderInHand(item.productId);
                                     return (
-                                        <div key={item.productId} className="flex items-center justify-between py-2 border-b">
+                                        <div key={`${item.productId}-${index}`} className="flex items-center justify-between py-2 border-b">
                                             <div className="flex items-center gap-4">
                                                 <Image src={product?.imageUrl || `https://picsum.photos/seed/${item.productId}/64/64`} alt={item.name} width={64} height={64} className="rounded-md object-cover" />
                                                 <div>
