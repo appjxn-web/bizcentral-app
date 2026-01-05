@@ -33,7 +33,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { PlusCircle, Save, Trash2, Check, ChevronsUpDown, CalendarClock, Loader2, DollarSign } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import type { Party, Product, UserRole, SalesOrder, Quotation, CoaLedger, SalesInvoice, CompanyInfo, PartyType, CoaNature, Offer } from '@/lib/types';
-import { format } from 'date-fns';
+import { format, startOfMonth } from 'date-fns';
 import { Separator } from '@/components/ui/separator';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
@@ -345,7 +345,13 @@ export default function CreateInvoicePage() {
       toast({ variant: 'destructive', title: 'Missing Information', description: 'Please select a customer and add items.' });
       return;
     }
-    if (!firestore || !settingsData?.prefixes || !allSalesInvoices) return;
+    if (!firestore || !settingsData?.prefixes || !allSalesInvoices || !parties) return;
+  
+    const customerCoaId = parties.find(p => p.id === selectedPartyId)?.coaLedgerId;
+    if (!customerCoaId) {
+        toast({ variant: 'destructive', title: 'Ledger Missing', description: 'This customer does not have a linked ledger account. Please create one.' });
+        return;
+    }
 
     try {
       const invoiceData: Omit<SalesInvoice, 'id' | 'invoiceNumber'> = {
@@ -353,6 +359,7 @@ export default function CreateInvoicePage() {
           orderNumber: salesOrderNumber,
           customerId: selectedPartyId,
           customerName: selectedParty?.name || '',
+          coaLedgerId: customerCoaId,
           date: invoiceDate,
           items: items.map(({id, category, ...rest}) => ({...rest, discount: overallDiscount})),
           subtotal: calculations.subtotal,
@@ -743,7 +750,3 @@ export default function CreateInvoicePage() {
     </>
   );
 }
-
-
-
-
