@@ -107,6 +107,12 @@ service cloud.firestore {
     }
 
     // --- FINANCE & ACCOUNTING ---
+    match /salesInvoices/{invoiceId} {
+        allow get: if signedIn() && (isAdmin() || resource.data.customerId == request.auth.uid);
+        allow list: if signedIn() && (isAdmin() || request.query.where.customerId == request.auth.uid);
+        allow create, update, delete: if isAdmin();
+    }
+
     match /journalVouchers/{voucherId} {
       allow list: if signedIn(); 
       allow create: if signedIn();
