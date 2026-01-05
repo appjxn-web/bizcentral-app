@@ -22,11 +22,12 @@ import {
   DollarSign,
   RefreshCcw,
   Receipt,
+  CircleDollarSign,
 } from 'lucide-react';
 
 import { PageHeader } from '@/components/page-header';
 import { cn } from '@/lib/utils';
-import type { Order, OrderStatus, UserProfile, UserRole, WorkOrder, PickupPoint, SalesOrder, RefundRequest, Product } from '@/lib/types';
+import type { Order, OrderStatus, UserProfile, UserRole, WorkOrder, PickupPoint, SalesOrder, RefundRequest, Product, ServiceInvoice } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -386,13 +387,13 @@ function OrderRow({ order, onGenerateInvoice, onUpdateStatus, pickupPoints, dyna
   )
 }
 
-export default function InvoicePage() {
+function InvoicePage() {
     const router = useRouter();
     const firestore = useFirestore();
     const { toast } = useToast();
     const { data: orders, loading: ordersLoading } = useCollection<Order>(query(collection(firestore, 'orders'), orderBy('date', 'desc')));
     const { data: workOrders, loading: workOrdersLoading } = useCollection<WorkOrder>(collection(firestore, 'workOrders'));
-    const { data: allSalesInvoices } = useCollection<SalesOrder>(collection(firestore, 'salesInvoices'));
+    const { data: allSalesInvoices } = useCollection<SalesInvoice>(collection(firestore, 'salesInvoices'));
     const { data: settingsData } = useDoc<any>(doc(firestore, 'company', 'settings'));
     const { data: pickupPoints } = useCollection<PickupPoint>(collection(firestore, 'pickupPoints'));
     const { data: allProducts, loading: productsLoading } = useCollection<Product>(collection(firestore, 'products'));
@@ -554,3 +555,16 @@ export default function InvoicePage() {
   );
 }
 
+export default function InvoicePageWrapper() {
+    const [isClient, setIsClient] = React.useState(false);
+
+    React.useEffect(() => {
+        setIsClient(true);
+    }, []);
+
+    if (!isClient) {
+        return null;
+    }
+
+    return <InvoicePage />;
+}
