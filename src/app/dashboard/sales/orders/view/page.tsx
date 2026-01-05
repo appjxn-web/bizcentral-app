@@ -24,7 +24,7 @@ import {
 import { Download, Loader2, Phone, MapPin } from 'lucide-react';
 import { notFound } from 'next/navigation';
 import { QRCodeSVG } from 'qrcode.react';
-import type { Order, CompanyInfo, PickupPoint, SalesOrder, Party, Address, CoaLedger } from '@/lib/types';
+import type { Order, CompanyInfo, PickupPoint, SalesOrder, Party, Address, CoaLedger, UserProfile } from '@/lib/types';
 import { useFirestore, useDoc, useCollection } from '@/firebase';
 import { collection, doc, query, where, limit } from 'firebase/firestore';
 import { format } from 'date-fns';
@@ -34,7 +34,6 @@ const formatIndianCurrency = (num: number) => {
     style: 'currency',
     currency: 'INR',
     minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
   }).format(num || 0);
 };
 
@@ -238,7 +237,7 @@ export default function SalesOrderViewPage() {
                                 </TableHeader>
                                 <TableBody>
                                     {items.map((item, index) => (
-                                        <TableRow key={index}>
+                                        <TableRow key={`${item.productId}-${index}`}>
                                             <TableCell>{index + 1}</TableCell>
                                             <TableCell>{item.name}</TableCell>
                                             <TableCell className="text-right">{item.quantity}</TableCell>
@@ -321,7 +320,7 @@ export default function SalesOrderViewPage() {
                                 </div>
                             </div>
                             <div className="text-right">
-                                <p className="font-semibold mb-16">For, {companyInfo?.companyName}</p>
+                                <p className="font-semibold mb-16">For, {orderData.createdBy || companyInfo?.companyName}</p>
                                 <div className="h-16 w-32"></div>
                                 <Separator className="w-full max-w-[200px] ml-auto"/>
                                 <p className="text-xs pt-1">Authorized Signatory</p>

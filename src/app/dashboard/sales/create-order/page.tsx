@@ -340,6 +340,7 @@ export default function CreateSalesOrderPage() {
           balance: calculations.grandTotal - bookingAmount,
           pickupPointId: 'company-main',
           assignedToUid: authUser.uid, // Assign to the admin/manager creating it
+          createdBy: authUser.displayName || 'System',
           paymentDetails: paymentDetails,
           status: 'Ordered',
           createdAt: serverTimestamp(),
@@ -647,3 +648,4 @@ export default function CreateSalesOrderPage() {
     </>
   );
 }
+
