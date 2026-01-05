@@ -36,14 +36,12 @@ const findOrCreatePartyAndLedger = async (transaction: admin.firestore.Transacti
     const partyData = partySnap.data() as Party | undefined;
 
     if (partyData?.coaLedgerId) {
-        // Ensure the ledger actually exists before returning it
         const ledgerSnap = await transaction.get(db.collection('coa_ledgers').doc(partyData.coaLedgerId));
         if (ledgerSnap.exists) {
             return partyData.coaLedgerId;
         }
     }
 
-    // Party or ledger doesn't exist, create them
     const ledgerName = order.customerName;
     const existingLedgerIdByName = await getLedgerIdByName(ledgerName);
     if(existingLedgerIdByName) {
@@ -55,7 +53,6 @@ const findOrCreatePartyAndLedger = async (transaction: admin.firestore.Transacti
         return existingLedgerIdByName;
     }
 
-    // Create new ledger for the party
     const newLedgerRef = db.collection('coa_ledgers').doc();
     transaction.set(newLedgerRef, {
         name: ledgerName,
@@ -66,7 +63,6 @@ const findOrCreatePartyAndLedger = async (transaction: admin.firestore.Transacti
         status: 'ACTIVE',
     });
 
-    // Create or update party with new ledger ID
     transaction.set(partyRef, { 
         name: ledgerName, 
         type: 'Customer', 
@@ -91,7 +87,6 @@ export const handleQuotationCreation = onDocumentCreated("quotations/{docId}",
       return;
     }
     const data = snapshot.data();
-    // Prevent infinite loops
     if (data.quotationNumber) {
       return;
     }
@@ -121,7 +116,6 @@ export const handleQuotationCreation = onDocumentCreated("quotations/{docId}",
       const nextNumStr = nextNumber.toString().padStart(4, "0");
       const finalQuotationNumber = `${prefix}${nextNumStr}`;
 
-      // FIX: Set quotationNumber AND delete the bad 'id' data field
       return snapshot.ref.update({
         quotationNumber: finalQuotationNumber,
         id: FieldValue.delete(),
@@ -344,53 +338,27 @@ export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}",
     const invoice = snap.data() as SalesInvoice;
 
     try {
-      // Helper function to find a ledger by name, used as a fallback
-      const getLedgerId = async (name: string): Promise<string | null> => {
-        const query = db.collection('coa_ledgers').where('name', '==', name).limit(1);
-        const snapshot = await query.get();
-        if (snapshot.empty) {
-            console.error(`Ledger not found: ${name}`);
-            return null;
-        }
-        return snapshot.docs[0].id;
-      };
-
       await db.runTransaction(async (transaction) => {
         // --- 1. Main Sales Journal Voucher ---
         const jvRef = db.collection("journalVouchers").doc();
         
-        // Find customer's ledger from their party document first
-        const customerPartyRef = db.doc(`parties/${invoice.customerId}`);
-        const customerPartySnap = await transaction.get(customerPartyRef);
-        let customerCoaId = customerPartySnap.data()?.coaLedgerId;
+        const customerLedgerId = (await transaction.get(db.doc(`parties/${invoice.customerId}`))).data()?.coaLedgerId || await getLedgerIdByName(invoice.customerName) || await getLedgerIdByName("Trade Debtors – Domestic");
+        if (!customerLedgerId) throw new Error("Customer ledger not found.");
 
-        // If not found on party, try to find by name as a backup
-        if (!customerCoaId) {
-            customerCoaId = await getLedgerId(invoice.customerName);
-        }
-        // If still not found, default to generic "Trade Debtors"
-        if (!customerCoaId) {
-            customerCoaId = await getLedgerId("Trade Debtors – Domestic");
-        }
-        if (!customerCoaId) throw new Error("Customer ledger not found.");
-
-        const salesLedgerId = await getLedgerId("Sales – Domestic");
+        const salesLedgerId = await getLedgerIdByName("Sales – Domestic");
         if (!salesLedgerId) throw new Error("Sales ledger not found.");
         
         const salesEntries = [
-          // Debit Customer (Trade Receivable)
-          { accountId: customerCoaId, debit: invoice.grandTotal, credit: 0 },
-          // Credit Sales Account
+          { accountId: customerLedgerId, debit: invoice.grandTotal, credit: 0 },
           { accountId: salesLedgerId, credit: invoice.taxableAmount, debit: 0 },
         ];
 
-        // Credit appropriate GST accounts
         if(invoice.igst && invoice.igst > 0) {
-            const igstLedgerId = await getLedgerId("Output GST – IGST");
+            const igstLedgerId = await getLedgerIdByName("Output GST – IGST");
             if(igstLedgerId) salesEntries.push({ accountId: igstLedgerId, credit: invoice.igst, debit: 0 });
         } else {
-            const cgstLedgerId = await getLedgerId("Output GST – CGST");
-            const sgstLedgerId = await getLedgerId("Output GST – SGST");
+            const cgstLedgerId = await getLedgerIdByName("Output GST – CGST");
+            const sgstLedgerId = await getLedgerIdByName("Output GST – SGST");
             if(cgstLedgerId) salesEntries.push({ accountId: cgstLedgerId, credit: invoice.cgst || 0, debit: 0 });
             if(sgstLedgerId) salesEntries.push({ accountId: sgstLedgerId, credit: invoice.sgst || 0, debit: 0 });
         }
@@ -404,36 +372,6 @@ export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}",
         };
         transaction.set(jvRef, jvData);
         
-        // --- 2. Adjust Advance from customer if any ---
-        if (invoice.amountPaid > 0) {
-            const advanceJvRef = db.collection("journalVouchers").doc();
-            
-            // This JV moves the advance payment from the customer's ledger (where it was a credit)
-            // against the receivable (which is the same ledger). Effectivly debiting their account to reduce the advance credit balance
-            // and crediting their receivable balance. This is self-balancing on the customer's account.
-            // A clearer way is to Debit Customer Account (to reduce advance), Credit Customer Account (to pay invoice)
-            // But since it's the same account, it nets out. A better approach for clarity is to use an intermediary "Customer Advances" account.
-            // Since the user wants to eliminate that, we now credit the customer's ledger directly for the advance.
-            // So we need to debit it now to clear that advance liability.
-            
-            const advanceJvData = {
-                date: invoice.date,
-                narration: `Adjustment of advance for Invoice ${invoice.invoiceNumber}`,
-                entries: [
-                    // Debit the customer ledger to reverse the advance credit
-                    { accountId: customerCoaId, debit: invoice.amountPaid, credit: 0 },
-                    // Credit the customer ledger to apply payment to the invoice receivable
-                    { accountId: customerCoaId, credit: invoice.amountPaid, debit: 0 }
-                ],
-                createdAt: admin.firestore.FieldValue.serverTimestamp(),
-                voucherType: "Journal Voucher"
-            };
-            // Note: This JV nets to zero on the customer account but is good for audit trail.
-            // A more advanced system would use a separate control account for advances.
-            // For simplicity and to meet user request, we are moving away from that.
-            // The logic in `handleOrderCreation` is now the single source of truth for advance posting.
-        }
-
         // --- 3. Handle Cost of Goods Sold (COGS) ---
         let cogsAmount = 0;
         const cogsEntries = [];
@@ -445,8 +383,7 @@ export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}",
             const itemCost = product.cost * item.quantity;
             cogsAmount += itemCost;
             
-            // Credit the specific Inventory Account for the product
-            const inventoryLedgerId = product.coaAccountId || await getLedgerId("Stock-in-Hand – Finished Goods");
+            const inventoryLedgerId = product.coaAccountId || await getLedgerIdByName("Stock-in-Hand – Finished Goods");
             if (!inventoryLedgerId) throw new Error(`Inventory ledger for product ${product.name} not found.`);
             
             cogsEntries.push({ accountId: inventoryLedgerId, credit: itemCost, debit: 0 });
@@ -455,10 +392,9 @@ export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}",
 
         if (cogsAmount > 0) {
             const cogsJvRef = db.collection("journalVouchers").doc();
-            const cogsLedgerId = await getLedgerId("COST OF GOODS SOLD (COGS)");
+            const cogsLedgerId = await getLedgerIdByName("COST OF GOODS SOLD (COGS)");
             if (!cogsLedgerId) throw new Error("COGS ledger not found.");
 
-            // Debit COGS account
             cogsEntries.unshift({ accountId: cogsLedgerId, debit: cogsAmount, credit: 0 });
 
             const cogsJvData = {
@@ -475,4 +411,3 @@ export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}",
       console.error("Invoice JV creation failed: ", e);
     }
   });
-
