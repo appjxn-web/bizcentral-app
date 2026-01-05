@@ -457,7 +457,7 @@ function GeneratedInvoiceRow({ invoice, order, onViewInvoice, onUpdateStatus, al
                                     return (
                                         <div key={item.productId} className="flex items-center justify-between py-2 border-b">
                                             <div className="flex items-center gap-4">
-                                                <Image src={`https://picsum.photos/seed/${item.productId}/64/64`} alt={item.name} width={64} height={64} className="rounded-md object-cover" />
+                                                <Image src={product?.imageUrl || `https://picsum.photos/seed/${item.productId}/64/64`} alt={item.name} width={64} height={64} className="rounded-md object-cover" />
                                                 <div>
                                                     <p className="font-medium">{item.name}</p>
                                                     <p className="text-sm text-muted-foreground">Qty: {item.quantity}</p>
@@ -467,7 +467,7 @@ function GeneratedInvoiceRow({ invoice, order, onViewInvoice, onUpdateStatus, al
                                                     </div>
                                                 </div>
                                             </div>
-                                            <p className="font-medium">{formatIndianCurrency((item.price || 0) * item.quantity)}</p>
+                                            <p className="font-medium">{formatIndianCurrency(item.amount)}</p>
                                         </div>
                                     )
                                 })}
