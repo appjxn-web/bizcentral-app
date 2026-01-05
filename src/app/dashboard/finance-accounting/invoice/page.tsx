@@ -1,17 +1,38 @@
 
-
 'use client';
 
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
+import { format } from 'date-fns';
+import {
+  MoreHorizontal,
+  PlusCircle,
+  ChevronDown,
+  ChevronRight,
+  Package,
+  Truck,
+  CheckCircle,
+  XCircle,
+  Building,
+  User as UserIcon,
+  Phone,
+  MapPin,
+  ListFilter,
+  DollarSign,
+  RefreshCcw,
+} from 'lucide-react';
+
 import { PageHeader } from '@/components/page-header';
-import { Button, buttonVariants } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
+import type { Order, OrderStatus, UserProfile, UserRole, WorkOrder, PickupPoint, SalesOrder, RefundRequest, Product } from '@/lib/types';
+import { Button } from '@/components/ui/button';
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
+  CardFooter,
 } from '@/components/ui/card';
 import {
   Table,
@@ -21,18 +42,26 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+  DropdownMenuCheckboxItem,
+} from '@/components/ui/dropdown-menu';
 import { Badge } from '@/components/ui/badge';
-import { format } from 'date-fns';
-import { cn } from '@/lib/utils';
-import { MoreHorizontal, FileText, CircleDollarSign, Receipt, CheckCircle, PlusCircle, ChevronDown, ChevronRight, DollarSign, MapPin, Phone } from 'lucide-react';
-import { useFirestore, useCollection, useUser, useDoc } from '@/firebase';
-import { collection, query, orderBy, where, doc, setDoc, updateDoc } from 'firebase/firestore';
-import type { Order, OrderStatus, WorkOrder, SalesOrder, SalesInvoice, PickupPoint, UserProfile, Product } from '@/lib/types';
-import { getNextDocNumber } from '@/lib/number-series';
-import { useToast } from '@/hooks/use-toast';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible';
 import Image from 'next/image';
 import { Separator } from '@/components/ui/separator';
+import { useFirestore, useCollection, useUser, useDoc } from '@/firebase';
+import { collection, query, orderBy, doc, where, or, updateDoc, writeBatch, limit } from 'firebase/firestore';
+import { OrderStatusTracker } from '../../my-orders/_components/order-status';
 import {
   Dialog,
   DialogContent,
@@ -49,7 +78,7 @@ import { useRole } from '../../_components/role-provider';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-
+import { useToast } from '@/hooks/use-toast';
 
 function getStatusBadgeVariant(status: Order['status'] | 'Refund Pending' | 'Refund Complete') {
   const variants: Record<string, string> = {
@@ -76,29 +105,124 @@ const formatIndianCurrency = (num: number) => {
   }).format(num);
 };
 
-function PartnerPickupDetails({ userId }: { userId: string }) {
-    const firestore = useFirestore();
-    const userDocRef = userId ? doc(firestore, 'users', userId) : null;
-    const { data: partner, loading } = useDoc<UserProfile>(userDocRef);
+function PayBalanceDialog({ order, companyInfo }: { order: Order, companyInfo: any }) {
+    if (!order.balance || order.balance <= 0) return null;
 
-    if (loading) return <p className="text-sm text-muted-foreground">Loading partner details...</p>;
-    if (!partner) return <p className="text-sm text-destructive">Could not load partner details.</p>;
+    const upiString = `upi://pay?pa=${companyInfo?.primaryUpiId || 'your-upi-id@okhdfcbank'}&pn=${encodeURIComponent(companyInfo?.companyName || 'Your Company Name')}&am=${order.balance.toFixed(2)}&cu=INR&tn=Order%20Balance%20Payment`;
+
+    return (
+        <Dialog>
+            <DialogTrigger asChild>
+                <Button size="sm">
+                    <DollarSign className="mr-2 h-4 w-4" /> Pay Balance
+                </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                    <DialogTitle>Pay Remaining Balance</DialogTitle>
+                    <DialogDescription>
+                        Scan the QR code to pay the balance of {formatIndianCurrency(order.balance)} for Order ID: {order.orderNumber || order.id}.
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="flex flex-col items-center gap-4 py-4">
+                    <div className="p-4 bg-white rounded-lg border">
+                        <QRCodeSVG value={upiString} size={180} />
+                    </div>
+                    <p className="text-sm text-muted-foreground text-center">
+                        After payment, please enter the transaction ID in the field below to confirm your payment.
+                    </p>
+                    <Input placeholder="Enter UPI Transaction ID" />
+                </div>
+                <DialogFooter>
+                    <DialogClose asChild>
+                        <Button type="button" variant="outline">Close</Button>
+                    </DialogClose>
+                     <Button type="button">Confirm Payment</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    )
+}
+
+function CancelOrderDialog({ order, onConfirm, open, onOpenChange }: { order: Order; onConfirm: (reason: string, details?: string) => void; open: boolean; onOpenChange: (open: boolean) => void }) {
+  const [reason, setReason] = React.useState('');
+  const [otherDetails, setOtherDetails] = React.useState('');
+
+  const handleSubmit = () => {
+    if (!reason) {
+      alert('Please select a reason.');
+      return;
+    }
+    onConfirm(reason, otherDetails);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Request Cancellation for Order: {order.orderNumber || order.id}</DialogTitle>
+          <DialogDescription>
+            Please let us know why you are canceling this order. An admin will review and approve your request.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="py-4 space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="cancellation-reason">Reason for Cancellation</Label>
+            <Select onValueChange={setReason} value={reason}>
+              <SelectTrigger id="cancellation-reason">
+                <SelectValue placeholder="Select a reason..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Ordered by mistake">Ordered by mistake</SelectItem>
+                <SelectItem value="Item no longer needed">Item no longer needed</SelectItem>
+                <SelectItem value="Found a better price elsewhere">Found a better price elsewhere</SelectItem>
+                <SelectItem value="Delivery time is too long">Delivery time is too long</SelectItem>
+                <SelectItem value="Other">Other</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {reason === 'Other' && (
+            <div className="space-y-2">
+              <Label htmlFor="other-details">Please specify</Label>
+              <Textarea
+                id="other-details"
+                value={otherDetails}
+                onChange={(e) => setOtherDetails(e.target.value)}
+                placeholder="Please provide more details..."
+              />
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <DialogClose asChild><Button variant="outline">Go Back</Button></DialogClose>
+          <Button variant="destructive" onClick={handleSubmit} disabled={!reason}>Request Cancellation</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+
+function PartnerPickupDetails({ pickupPointId }: { pickupPointId: string }) {
+    const firestore = useFirestore();
+    const pickupPointRef = pickupPointId ? doc(firestore, 'pickupPoints', pickupPointId) : null;
+    const { data: pickupPoint, loading } = useDoc<PickupPoint>(pickupPointRef);
+
+    if (loading) return <p className="text-sm text-muted-foreground">Loading details...</p>;
+    if (!pickupPoint) return <p className="text-sm text-destructive">Could not load partner details.</p>;
     
-    const address = (partner.addresses || [])[0];
-    const addressString = address ? [address.line1, address.line2, address.city, address.state, address.pin].filter(Boolean).join(', ') : 'Address not available';
-    
+    const addressString = pickupPoint.addressLine || '';
     let mapUrl = addressString ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addressString)}` : '';
-    if (address?.latitude && address?.longitude) {
-        mapUrl = `https://www.google.com/maps/search/?api=1&query=${address.latitude},${address.longitude}`;
+    if (pickupPoint.lat && pickupPoint.lng) {
+        mapUrl = `https://www.google.com/maps/search/?api=1&query=${pickupPoint.lat},${pickupPoint.lng}`;
     }
 
     return (
         <>
-            <p className="font-medium">{partner.businessName || partner.name}</p>
+            <p className="font-medium">{pickupPoint.name}</p>
             <p className="text-xs text-muted-foreground">Partner</p>
             {addressString && <p className="mt-2 text-sm">{addressString}</p>}
             <div className="flex gap-4 mt-2">
-                {partner.mobile && <a href={`tel:${partner.mobile}`} className="flex items-center gap-1 text-primary hover:underline text-sm"><Phone className="h-4 w-4" /> Call</a>}
                 {mapUrl && <a href={mapUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-primary hover:underline text-sm"><MapPin className="h-4 w-4" /> Get Directions</a>}
             </div>
         </>
