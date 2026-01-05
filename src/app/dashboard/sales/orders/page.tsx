@@ -88,7 +88,6 @@ function getStatusBadgeVariant(status: Order['status'] | 'Refund Pending' | 'Ref
     Delivered: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300',
     'Refund Complete': 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300',
     Shipped: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300',
-    'Invoice Sent': 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300',
     Ordered: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300',
     'Refund Pending': 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300',
     Manufacturing: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300',
@@ -289,7 +288,6 @@ function OrderRow({ order, onGenerateInvoice, onUpdateStatus, pickupPoints, dyna
           <TableCell className="font-mono">{(order as SalesOrder).orderNumber || order.id}</TableCell>
           <TableCell>{order.customerName}</TableCell>
           <TableCell>{format(new Date(order.date), 'dd/MM/yyyy')}</TableCell>
-           <TableCell>{(order as SalesOrder).expectedDeliveryDate ? format(new Date((order as SalesOrder).expectedDeliveryDate!), 'dd/MM/yyyy') : 'N/A'}</TableCell>
           <TableCell>
             <Badge className={cn('text-xs', getStatusBadgeVariant(dynamicStatus))} variant="outline">
               {dynamicStatus}
@@ -337,7 +335,7 @@ function OrderRow({ order, onGenerateInvoice, onUpdateStatus, pickupPoints, dyna
         </TableRow>
         <CollapsibleContent asChild>
           <TableRow>
-              <TableCell colSpan={8} className="p-0">
+              <TableCell colSpan={7} className="p-0">
                   <div className="p-6 space-y-6 bg-muted/50">
                       <div className="space-y-2">
                         {order.items.map(item => {
@@ -560,14 +558,13 @@ function OrdersPageContent() {
                 <TableHead>SO Number</TableHead>
                 <TableHead>Customer</TableHead>
                 <TableHead>Date</TableHead>
-                <TableHead>Exp. Delivery Date</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Total</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
               {loading ? (
-                <TableBody><TableRow><TableCell colSpan={8} className="h-24 text-center">Loading orders...</TableCell></TableRow></TableBody>
+                <TableBody><TableRow><TableCell colSpan={7} className="h-24 text-center">Loading orders...</TableCell></TableRow></TableBody>
               ) : orders && orders.length > 0 ? (
                 orders.map((order) => {
                   const dynamicStatus = getDynamicOrderStatus(order);
@@ -577,7 +574,7 @@ function OrdersPageContent() {
                 })
               ) : (
                 <TableBody><TableRow>
-                  <TableCell colSpan={8} className="h-24 text-center">
+                  <TableCell colSpan={7} className="h-24 text-center">
                     No sales orders found.
                   </TableCell>
                 </TableRow></TableBody>

@@ -295,7 +295,6 @@ function OrderRow({ order, onGenerateInvoice, onUpdateStatus, pickupPoints, dyna
           <TableCell className="font-mono">{(order as SalesOrder).orderNumber || order.id}</TableCell>
           <TableCell>{order.customerName}</TableCell>
           <TableCell>{format(new Date(order.date), 'dd/MM/yyyy')}</TableCell>
-           <TableCell>{(order as SalesOrder).expectedDeliveryDate ? format(new Date((order as SalesOrder).expectedDeliveryDate!), 'dd/MM/yyyy') : 'N/A'}</TableCell>
           <TableCell>
             <Badge className={cn('text-xs', getStatusBadgeVariant(dynamicStatus))} variant="outline">
               {dynamicStatus}
@@ -343,7 +342,7 @@ function OrderRow({ order, onGenerateInvoice, onUpdateStatus, pickupPoints, dyna
         </TableRow>
         <CollapsibleContent asChild>
           <TableRow>
-              <TableCell colSpan={8} className="p-0">
+              <TableCell colSpan={7} className="p-0">
                   <div className="p-6 space-y-6 bg-muted/50">
                       <div className="space-y-2">
                         {order.items.map(item => {
@@ -435,7 +434,6 @@ function GeneratedInvoiceRow({ invoice, order, onViewInvoice, onUpdateStatus, al
                     <TableCell className="font-mono">{invoice.invoiceNumber}</TableCell>
                     <TableCell>{invoice.customerName}</TableCell>
                     <TableCell>{format(new Date(invoice.date), 'dd/MM/yyyy')}</TableCell>
-                    <TableCell>{order?.expectedDeliveryDate ? format(new Date(order.expectedDeliveryDate!), 'dd/MM/yyyy') : 'N/A'}</TableCell>
                     <TableCell>
                         <Badge className={cn('text-xs', getStatusBadgeVariant(invoice.status))} variant="outline">
                         {invoice.status}
@@ -463,7 +461,7 @@ function GeneratedInvoiceRow({ invoice, order, onViewInvoice, onUpdateStatus, al
                 </TableRow>
                 <CollapsibleContent asChild>
                   <TableRow>
-                      <TableCell colSpan={8} className="p-0">
+                      <TableCell colSpan={7} className="p-0">
                           <div className="p-6 space-y-6 bg-muted/50">
                               <div className="space-y-2">
                                 {invoice.items.map((item, index) => {
@@ -699,14 +697,13 @@ function InvoicePage() {
                 <TableHead>SO Number</TableHead>
                 <TableHead>Customer</TableHead>
                 <TableHead>Date</TableHead>
-                <TableHead>Exp. Delivery Date</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Total</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
               {loading ? (
-                <TableBody><TableRow><TableCell colSpan={8} className="h-24 text-center">Loading orders...</TableCell></TableRow></TableBody>
+                <TableBody><TableRow><TableCell colSpan={7} className="h-24 text-center">Loading orders...</TableCell></TableRow></TableBody>
               ) : orders && orders.length > 0 ? (
                 orders.map((order) => {
                   const dynamicStatus = getDynamicOrderStatus(order);
@@ -716,7 +713,7 @@ function InvoicePage() {
                 })
               ) : (
                 <TableBody><TableRow>
-                  <TableCell colSpan={8} className="h-24 text-center">
+                  <TableCell colSpan={7} className="h-24 text-center">
                     No sales orders found.
                   </TableCell>
                 </TableRow></TableBody>
@@ -740,7 +737,6 @@ function InvoicePage() {
                 <TableHead>Invoice #</TableHead>
                 <TableHead>Customer</TableHead>
                 <TableHead>Date</TableHead>
-                <TableHead>Exp. Delivery Date</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Amount</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
@@ -748,7 +744,7 @@ function InvoicePage() {
             </TableHeader>
               {invoicesLoading ? (
                  <TableBody>
-                    <TableRow><TableCell colSpan={8} className="h-24 text-center">Loading invoices...</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={7} className="h-24 text-center">Loading invoices...</TableCell></TableRow>
                  </TableBody>
               ) : allSalesInvoices && allSalesInvoices.length > 0 ? (
                 allSalesInvoices.map((invoice) => {
@@ -771,7 +767,7 @@ function InvoicePage() {
                 })
               ) : (
                  <TableBody>
-                    <TableRow><TableCell colSpan={8} className="h-24 text-center">No invoices created yet.</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={7} className="h-24 text-center">No invoices created yet.</TableCell></TableRow>
                  </TableBody>
               )}
           </Table>
