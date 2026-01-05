@@ -126,6 +126,8 @@ export default function CreateInvoicePage() {
   const [salesOrderNumber, setSalesOrderNumber] = React.useState('');
   
   const { data: allProducts, loading: productsLoading } = useCollection<Product>(query(collection(firestore, 'products'), where('saleable', '==', true)));
+  const { data: allSalesInvoices } = useCollection<SalesInvoice>(collection(firestore, 'salesInvoices'));
+  const { data: settingsData } = useDoc<any>(doc(firestore, 'company', 'settings'));
 
   const [paymentDate, setPaymentDate] = React.useState(format(new Date(), 'yyyy-MM-dd'));
   const [paymentMode, setPaymentMode] = React.useState('UPI');
@@ -321,10 +323,10 @@ export default function CreateInvoicePage() {
       toast({ variant: 'destructive', title: 'Missing Information', description: 'Please select a customer and add items.' });
       return;
     }
-    if (!firestore) return;
+    if (!firestore || !settingsData?.prefixes || !allSalesInvoices) return;
 
     try {
-      const newInvoiceId = `INV-${Date.now()}`;
+      const newInvoiceId = getNextDocNumber('Sales Invoice', settingsData.prefixes, allSalesInvoices);
 
       const newInvoiceData: Omit<SalesInvoice, 'id'> = {
           invoiceNumber: newInvoiceId,
@@ -346,7 +348,9 @@ export default function CreateInvoicePage() {
           status: 'Unpaid',
       };
       
-      await addDoc(collection(firestore, 'salesInvoices'), newInvoiceData);
+      const invoiceRef = doc(firestore, 'salesInvoices', newInvoiceId);
+      await setDoc(invoiceRef, { ...newInvoiceData, id: newInvoiceId });
+
       toast({ title: 'Invoice Saved', description: `Invoice ${newInvoiceId} has been saved.` });
       router.push('/dashboard/finance-accounting/invoice');
     } catch (e) {
@@ -547,7 +551,7 @@ export default function CreateInvoicePage() {
                   <TableRow>
                     <TableHead className="w-[35%]">Item</TableHead>
                     <TableHead className="w-[10%]">HSN</TableHead>
-                    <TableHead className="w-[8%]">Quantity</TableHead>
+                    <TableHead className="w-[8%]">Qty</TableHead>
                     <TableHead className="w-[8%]">Unit</TableHead>
                     <TableHead className="w-[12%]">Rate</TableHead>
                     <TableHead className="w-[8%]">GST %</TableHead>
@@ -721,3 +725,4 @@ export default function CreateInvoicePage() {
     </>
   );
 }
+
