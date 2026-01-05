@@ -3,6 +3,7 @@
 import {
   onDocumentCreated,
   onDocumentUpdated,
+  onDocumentWritten,
   FirestoreEvent,
   QueryDocumentSnapshot,
   Change,
@@ -10,7 +11,7 @@ import {
 } from "firebase-functions/v2/firestore";
 import * as admin from "firebase-admin";
 import {getFirestore, FieldValue} from "firebase-admin/firestore";
-import type {Order, SalesInvoice, Product, Party} from "./types";
+import type {Order, UserProfile, Goal, SalesInvoice, Product, Party} from "./types";
 
 if (admin.apps.length === 0) {
   admin.initializeApp();
@@ -18,7 +19,8 @@ if (admin.apps.length === 0) {
 const db = getFirestore();
 
 /**
- * Robust helper to ensure every customer has their OWN specific ledger.
+ * Helper to ensure every customer has their OWN specific ledger.
+ * This completely removes the need for "customer-advances".
  */
 const findOrCreateSpecificCustomerLedger = async (transaction: admin.firestore.Transaction, order: Order | SalesInvoice): Promise<string> => {
     const userId = 'userId' in order ? order.userId : order.customerId;
@@ -43,7 +45,7 @@ const findOrCreateSpecificCustomerLedger = async (transaction: admin.firestore.T
         return existingId;
     }
 
-    // 3. Otherwise, create a NEW specific ledger
+    // 3. Create a NEW specific ledger
     const newLedgerRef = db.collection('coa_ledgers').doc();
     transaction.set(newLedgerRef, {
         name: customerName,
@@ -76,7 +78,6 @@ export const handleOrderCreation = onDocumentCreated("orders/{orderId}",
     let orderNumber;
 
     try {
-        // FIXED: Using the correct variable name here
         const lastDocSnapshot = await db.collection("orders")
             .where("orderNumber", ">=", datePrefix)
             .orderBy("orderNumber", "desc")
@@ -87,19 +88,15 @@ export const handleOrderCreation = onDocumentCreated("orders/{orderId}",
         if (!lastDocSnapshot.empty) {
             const lastNumStr = lastDocSnapshot.docs[0].data().orderNumber;
             const lastNumFromDb = parseInt(lastNumStr.split("-")[2], 10);
-            if (!isNaN(lastNumFromDb)) {
-                nextNum = lastNumFromDb + 1;
-            }
+            if (!isNaN(lastNumFromDb)) nextNum = lastNumFromDb + 1;
         }
         orderNumber = `${datePrefix}${nextNum.toString().padStart(4, "0")}`;
     } catch (e) {
-        console.error("Order Number Generation Error:", e);
         orderNumber = `${datePrefix}0001`;
     }
 
     await snap.ref.update({ orderNumber });
 
-    // Re-fetch data to get the updated order number
     const orderDoc = await snap.ref.get();
     const order = orderDoc.data() as Order;
     const pR = order.paymentReceived;
@@ -110,7 +107,7 @@ export const handleOrderCreation = onDocumentCreated("orders/{orderId}",
         await db.runTransaction(async (transaction) => {
             const customerLedgerId = await findOrCreateSpecificCustomerLedger(transaction, order);
             
-            let bankAccountId = "L-1.1.1-2"; // Default HDFC Bank
+            let bankAccountId = "L-1.1.1-2"; // Default Bank
             const companySnap = await transaction.get(db.doc("company/info"));
             const primaryUpi = companySnap.data()?.primaryUpiId;
             
@@ -123,8 +120,7 @@ export const handleOrderCreation = onDocumentCreated("orders/{orderId}",
             transaction.set(jvRef, {
                 id: jvRef.id,
                 date: new Date().toISOString().split("T")[0],
-                // ADDED VERSION MARKER [V3] TO PROVE NEW CODE IS RUNNING
-                narration: `[V3] Advance for Order #${orderNumber} via UPI`,
+                narration: `[V5] Advance for Order #${orderNumber} via UPI`,
                 voucherType: "Receipt Voucher",
                 entries: [
                     { accountId: bankAccountId, debit: pR, credit: 0 },
@@ -173,4 +169,165 @@ export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}",
         });
       });
     } catch (e) { console.error(e); }
+  });
+
+// Keep all other functions from the original file
+export const handleQuotationCreation = onDocumentCreated("quotations/{docId}",
+  async (event: FirestoreEvent<QueryDocumentSnapshot | undefined>) => {
+    const snapshot = event.data;
+    if (!snapshot) {
+      return;
+    }
+    const data = snapshot.data();
+    // Prevent infinite loops
+    if (data.quotationNumber) {
+      return;
+    }
+
+    try {
+      const now = new Date();
+      const year = now.getFullYear().toString().slice(-2);
+      const month = (now.getMonth() + 1).toString().padStart(2, "0");
+      const prefix = `QU-${year}${month}-`;
+
+      const lastQuotationQuery = await db.collection("quotations")
+        .where("quotationNumber", ">=", prefix)
+        .where("quotationNumber", "<", prefix + "\uf8ff")
+        .orderBy("quotationNumber", "desc")
+        .limit(1)
+        .get();
+
+      let nextNumber = 1;
+      if (!lastQuotationQuery.empty) {
+        const lastNo = lastQuotationQuery.docs[0].data().quotationNumber;
+        const lastSequence = parseInt(lastNo.split("-")[2], 10);
+        if (!isNaN(lastSequence)) {
+          nextNumber = lastSequence + 1;
+        }
+      }
+
+      const nextNumStr = nextNumber.toString().padStart(4, "0");
+      const finalQuotationNumber = `${prefix}${nextNumStr}`;
+
+      return snapshot.ref.update({
+        quotationNumber: finalQuotationNumber,
+        id: FieldValue.delete(),
+      });
+    } catch (error) {
+      console.error("Error generating quotation number:", error);
+      return null;
+    }
+  });
+
+
+export const handleWorkOrderCreation = onDocumentCreated(
+  "workOrders/{id}",
+  () => {
+    // Empty function to satisfy schema
+  });
+
+export const handleVoucherCreation = onDocumentCreated(
+  "journalVouchers/{id}",
+  () => {
+    // Empty function to satisfy schema
+  });
+
+export const handleOrderUpdates = onDocumentUpdated("orders/{orderId}",
+  async (event: FirestoreEvent<Change<DocumentSnapshot> | undefined>) => {
+    if (!event.data) {
+      return;
+    }
+    const after = event.data.after.data() as Order;
+    if (after.status !== "Delivered" || !after.assignedToUid) {
+      return;
+    }
+
+    return db.runTransaction(async (transaction) => {
+      const uid = after.assignedToUid as string;
+      const uRef = db.doc(`users/${uid}`);
+      const pSnap = await transaction.get(uRef);
+      const pData = pSnap.data() as UserProfile;
+      if (!pData?.partnerMatrix) {
+        return;
+      }
+
+      let comm = 0;
+      after.items.forEach((item) => {
+        const m = pData.partnerMatrix;
+        const rule = m?.find((x) => x.category === item.category);
+        if (rule) {
+          const subTot = item.price * item.quantity;
+          comm += (subTot * (rule.commissionRate / 100));
+        }
+      });
+
+      if (comm > 0) {
+        const wRef = db.doc(`users/${uid}/wallet/main`);
+        transaction.set(wRef, {
+          commissionPayable: admin.firestore.FieldValue.increment(comm),
+        }, {merge: true});
+        const oRef = db.doc(`orders/${event.params.orderId}`);
+        transaction.update(oRef, {commission: comm});
+      }
+    });
+  });
+
+export const onMilestoneUpdate = onDocumentWritten(
+  "goals/{goalId}/milestones/{milestoneId}", async (event: FirestoreEvent<Change<DocumentSnapshot> | undefined>) => {
+    const goalId = event.params.goalId;
+    const goalRef = db.collection("goals").doc(goalId);
+
+    return db.runTransaction(async (transaction) => {
+      const goalDoc = await transaction.get(goalRef);
+      if (!goalDoc.exists) {
+        console.log(`Goal ${goalId} not found.`);
+        return;
+      }
+      const goal = goalDoc.data() as Goal;
+
+      const milestonesCollectionRef = goalRef.collection("milestones");
+      const milestonesSnapshot = await transaction.get(milestonesCollectionRef);
+
+      const totalMilestones = milestonesSnapshot.size;
+      const completedMilestones = milestonesSnapshot.docs
+        .filter((doc) => doc.data().status === "Done").length;
+
+      const progressPct = totalMilestones > 0 ?
+        Math.round((completedMilestones / totalMilestones) * 100) :
+        0;
+      const currentValue = totalMilestones > 0 ?
+        (progressPct / 100) * goal.targetValue :
+        0;
+
+      const now = new Date();
+      const startDate = new Date(goal.startDate);
+      const endDate = new Date(goal.endDate);
+
+      const totalDuration = endDate.getTime() - startDate.getTime();
+      const elapsedDuration = now.getTime() - startDate.getTime();
+      const timeElapsedPct = totalDuration > 0 ?
+        (elapsedDuration / totalDuration) * 100 :
+        0;
+
+      let health: Goal["health"] = "On Track";
+      const progressBehindTime = timeElapsedPct - progressPct;
+
+      if (progressBehindTime > 25) {
+        health = "Off Track";
+      } else if (progressBehindTime > 10) {
+        health = "At Risk";
+      }
+
+      transaction.update(goalRef, {
+        progressPct: progressPct,
+        currentValue: currentValue,
+        health: health,
+      });
+    });
+  });
+
+export const onGoalUpdate = onDocumentCreated("goalUpdates/{updateId}",
+  async (event: FirestoreEvent<QueryDocumentSnapshot | undefined>) => {
+    console.log("Goal update recorded...");
+    return null;
   });
