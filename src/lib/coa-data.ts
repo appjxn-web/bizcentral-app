@@ -170,7 +170,6 @@ export const defaultCoaLedgers: Omit<CoaLedger, 'createdAt' | 'updatedAt'>[] = [
   createLedger('L-2.1.3-1', 'Outstanding Expenses', '2.1.3', 'LIABILITY'),
   createLedger('L-2.1.3-2', 'Salary Payable', '2.1.3', 'LIABILITY'),
   createLedger('L-2.1.3-3', 'Interest Payable', '2.1.3', 'LIABILITY'),
-  createLedger('L-2.1.3-4', 'Customer Advances', '2.1.3', 'LIABILITY'),
   createLedger('L-2.1.3-5', 'Unearned Revenue', '2.1.3', 'LIABILITY'),
   
   createLedger('L-2.2.1-1', 'Term Loan – Bank', '2.2.1', 'LIABILITY'),

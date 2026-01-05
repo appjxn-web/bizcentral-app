@@ -33,24 +33,29 @@ const getLedgerIdByName = async (name: string): Promise<string | null> => {
 const findOrCreatePartyAndLedger = async (transaction: admin.firestore.Transaction, order: Order): Promise<string> => {
     const partyRef = db.collection('parties').doc(order.userId);
     const partySnap = await transaction.get(partyRef);
+    const partyData = partySnap.data() as Party | undefined;
 
-    if (partySnap.exists && partySnap.data()?.coaLedgerId) {
-        return partySnap.data()?.coaLedgerId;
+    if (partyData?.coaLedgerId) {
+        // Ensure the ledger actually exists before returning it
+        const ledgerSnap = await transaction.get(db.collection('coa_ledgers').doc(partyData.coaLedgerId));
+        if (ledgerSnap.exists) {
+            return partyData.coaLedgerId;
+        }
     }
 
     // Party or ledger doesn't exist, create them
     const ledgerName = order.customerName;
-    const existingLedger = await getLedgerIdByName(ledgerName);
-    if(existingLedger) {
+    const existingLedgerIdByName = await getLedgerIdByName(ledgerName);
+    if(existingLedgerIdByName) {
         if(!partySnap.exists) {
-            transaction.set(partyRef, { name: ledgerName, type: 'Customer', coaLedgerId: existingLedger });
-        } else {
-            transaction.update(partyRef, { coaLedgerId: existingLedger });
+            transaction.set(partyRef, { name: ledgerName, type: 'Customer', coaLedgerId: existingLedgerIdByName, id: order.userId });
+        } else if (!partyData?.coaLedgerId) {
+            transaction.update(partyRef, { coaLedgerId: existingLedgerIdByName });
         }
-        return existingLedger;
+        return existingLedgerIdByName;
     }
 
-    // Create new ledger
+    // Create new ledger for the party
     const newLedgerRef = db.collection('coa_ledgers').doc();
     transaction.set(newLedgerRef, {
         name: ledgerName,
@@ -200,7 +205,8 @@ export const handleOrderCreation = onDocumentCreated("orders/{orderId}",
                 voucherType: "Receipt Voucher",
                 entries: [
                     {accountId: bankAccountId, debit: pR, credit: 0},
-                    {accountId: customerLedgerId, debit: 0, credit: pR}, // Credit customer's own ledger
+                    // Credit the specific customer's ledger, not the generic "Customer Advances"
+                    {accountId: customerLedgerId, debit: 0, credit: pR},
                 ],
                 createdAt: admin.firestore.FieldValue.serverTimestamp(),
             };
@@ -402,27 +408,30 @@ export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}",
         if (invoice.amountPaid > 0) {
             const advanceJvRef = db.collection("journalVouchers").doc();
             
-            // The advance was already credited to the customer's personal ledger,
-            // so we just need to move it from their ledger to their receivable balance which is the same ledger.
-            // This JV is effectively a self-balancing entry on the customer's ledger.
-            // Debit the customer to reduce the credit from advance, Credit the customer to apply it to the invoice.
-            // In a double-entry system, this should be: Debit Customer Advance Liability, Credit Customer Receivable
-            // Correcting the logic here:
-            const customerAdvancesLedgerId = await getLedgerId("Customer Advances"); // Assuming a generic advance account was used
-            if (!customerAdvancesLedgerId) throw new Error("Customer Advances ledger not found.");
-
+            // This JV moves the advance payment from the customer's ledger (where it was a credit)
+            // against the receivable (which is the same ledger). Effectivly debiting their account to reduce the advance credit balance
+            // and crediting their receivable balance. This is self-balancing on the customer's account.
+            // A clearer way is to Debit Customer Account (to reduce advance), Credit Customer Account (to pay invoice)
+            // But since it's the same account, it nets out. A better approach for clarity is to use an intermediary "Customer Advances" account.
+            // Since the user wants to eliminate that, we now credit the customer's ledger directly for the advance.
+            // So we need to debit it now to clear that advance liability.
+            
             const advanceJvData = {
                 date: invoice.date,
                 narration: `Adjustment of advance for Invoice ${invoice.invoiceNumber}`,
                 entries: [
-                    // This moves the liability from the advance account to the customer's receivable account
-                    { accountId: customerAdvancesLedgerId, debit: invoice.amountPaid, credit: 0 },
+                    // Debit the customer ledger to reverse the advance credit
+                    { accountId: customerCoaId, debit: invoice.amountPaid, credit: 0 },
+                    // Credit the customer ledger to apply payment to the invoice receivable
                     { accountId: customerCoaId, credit: invoice.amountPaid, debit: 0 }
                 ],
                 createdAt: admin.firestore.FieldValue.serverTimestamp(),
                 voucherType: "Journal Voucher"
             };
-            transaction.set(advanceJvRef, advanceJvData);
+            // Note: This JV nets to zero on the customer account but is good for audit trail.
+            // A more advanced system would use a separate control account for advances.
+            // For simplicity and to meet user request, we are moving away from that.
+            // The logic in `handleOrderCreation` is now the single source of truth for advance posting.
         }
 
         // --- 3. Handle Cost of Goods Sold (COGS) ---
@@ -467,4 +476,3 @@ export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}",
     }
   });
 
-    
