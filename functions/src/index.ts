@@ -1,4 +1,3 @@
-
 import {
   onDocumentCreated,
   onDocumentUpdated,
@@ -10,19 +9,85 @@ import {
 } from "firebase-functions/v2/firestore";
 import * as admin from "firebase-admin";
 import {getFirestore, FieldValue} from "firebase-admin/firestore";
-import type {Order, UserProfile, Goal, SalesInvoice, Product} from "./types";
+import type {Order, UserProfile, Goal, SalesInvoice, Product, Party} from "./types";
 
-// Prevent double initialization
-if (admin.apps.length === 0) {
-  admin.initializeApp();
-}
+if (admin.apps.length === 0) { admin.initializeApp(); }
 const db = getFirestore();
 
-/**
- * Handles the generation of unique quotation numbers.
- * @param {object} event The Cloud Firestore event.
- * @return {Promise<any>|null} A promise that resolves on completion.
- */
+const findOrCreateSpecificCustomerLedger = async (transaction: admin.firestore.Transaction, order: Order | SalesInvoice): Promise<string> => {
+    const userId = 'userId' in order ? order.userId : order.customerId;
+    const customerName = order.customerName;
+    const customerEmail = 'customerEmail' in order ? order.customerEmail : '';
+    const partyRef = db.collection('parties').doc(userId);
+    const partySnap = await transaction.get(partyRef);
+    const partyData = partySnap.data() as Party | undefined;
+
+    if (partyData?.coaLedgerId && partyData.coaLedgerId !== "customer-advances") {
+        const ledgerSnap = await transaction.get(db.collection('coa_ledgers').doc(partyData.coaLedgerId));
+        if (ledgerSnap.exists) return partyData.coaLedgerId;
+    }
+    const ledgerSearch = await db.collection('coa_ledgers').where('name', '==', customerName).limit(1).get();
+    if (!ledgerSearch.empty) {
+        const existingId = ledgerSearch.docs[0].id;
+        transaction.set(partyRef, { coaLedgerId: existingId }, { merge: true });
+        return existingId;
+    }
+    const newLedgerRef = db.collection('coa_ledgers').doc();
+    transaction.set(newLedgerRef, {
+        name: customerName, groupId: '1.1.2', nature: 'ASSET', type: 'RECEIVABLE',
+        posting: { isPosting: true, normalBalance: 'DEBIT', allowManualJournal: true },
+        status: 'ACTIVE', openingBalance: { amount: 0, drCr: 'DR', asOf: new Date().toISOString() }
+    });
+    transaction.set(partyRef, { coaLedgerId: newLedgerRef.id, name: customerName, id: userId, type: 'Customer', email: customerEmail }, { merge: true });
+    return newLedgerRef.id;
+};
+
+export const handleOrderCreation = onDocumentCreated("orders/{orderId}", async (event) => {
+    const snap = event.data;
+    if (!snap) return;
+    const now = new Date();
+    const datePrefix = `SO-${now.getFullYear().toString().slice(-2)}${(now.getMonth() + 1).toString().padStart(2, "0")}-`;
+    let orderNumber;
+    try {
+        const lastDocSnapshot = await db.collection("orders").where("orderNumber", ">=", datePrefix).orderBy("orderNumber", "desc").limit(1).get();
+        let nextNum = 1;
+        if (!lastDocSnapshot.empty) {
+            const lastNumStr = lastDocSnapshot.docs[0].data().orderNumber;
+            const lastNumFromDb = parseInt(lastNumStr.split("-")[2], 10);
+            if (!isNaN(lastNumFromDb)) nextNum = lastNumFromDb + 1;
+        }
+        orderNumber = `${datePrefix}${nextNum.toString().padStart(4, "0")}`;
+    } catch (e) { orderNumber = `${datePrefix}0001`; }
+    await snap.ref.update({ orderNumber });
+    const order = (await snap.ref.get()).data() as Order;
+    const pR = order.paymentReceived;
+    if (!pR || pR <= 0) return;
+    try {
+        await db.runTransaction(async (transaction) => {
+            const customerLedgerId = await findOrCreateSpecificCustomerLedger(transaction, order);
+            let bankAccountId = "L-1.1.1-2";
+            const companySnap = await transaction.get(db.doc("company/info"));
+            const primaryUpi = companySnap.data()?.primaryUpiId;
+            if (primaryUpi) {
+                const ledgerSearch = await db.collection("coa_ledgers").where("bank.upiId", "==", primaryUpi).limit(1).get();
+                if (!ledgerSearch.empty) bankAccountId = ledgerSearch.docs[0].id;
+            }
+            const jvRef = db.collection("journalVouchers").doc();
+            transaction.set(jvRef, {
+                id: jvRef.id,
+                date: new Date().toISOString().split("T")[0],
+                narration: `[V6-FINAL-MERGE] Advance for Order #${orderNumber} via UPI`,
+                voucherType: "Receipt Voucher",
+                entries: [
+                    { accountId: bankAccountId, debit: pR, credit: 0 },
+                    { accountId: customerLedgerId, debit: 0, credit: pR }, 
+                ],
+                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+        });
+    } catch (error) { console.error(error); }
+});
+
 export const handleQuotationCreation = onDocumentCreated("quotations/{docId}",
   async (event: FirestoreEvent<QueryDocumentSnapshot | undefined>) => {
     const snapshot = event.data;
@@ -71,91 +136,10 @@ export const handleQuotationCreation = onDocumentCreated("quotations/{docId}",
     }
   });
 
-/**
- * Generates the next sequential document number based on month/year prefix.
- * @param {string} prefix The string prefix (e.g., SO).
- * @return {Promise<string>} The generated document ID.
- */
-async function getNextDocNumber(prefix: string): Promise<string> {
-  const now = new Date();
-  const year = now.getFullYear().toString().slice(-2);
-  const month = (now.getMonth() + 1).toString().padStart(2, "0");
-  const datePrefix = `${prefix}-${year}${month}-`;
-
-  let nextNumber = 1;
-  const lastDocQuery = await db.collection("orders")
-    .where("orderNumber", ">=", datePrefix)
-    .where("orderNumber", "<", `${datePrefix}\uf8ff`)
-    .orderBy("orderNumber", "desc")
-    .limit(1)
-    .get();
-
-  if (!lastDocQuery.empty) {
-    const lastNumStr = lastDocQuery.docs[0].data().orderNumber;
-    const lastNum = parseInt(lastNumStr.split("-")[2], 10);
-    if (!isNaN(lastNum)) {
-      nextNumber = lastNum + 1;
-    }
-  }
-  const paddedNum = nextNumber.toString().padStart(4, "0");
-  return `${datePrefix}${paddedNum}`;
-}
 
 /**
  * Handles the creation of Sales Orders and associated accounting entries.
  */
-export const handleOrderCreation = onDocumentCreated("orders/{orderId}",
-  async (event: FirestoreEvent<QueryDocumentSnapshot | undefined>) => {
-    const snap = event.data;
-    if (!snap) {
-      return;
-    }
-
-    const orderNumber = await getNextDocNumber("SO");
-    await snap.ref.update({orderNumber: orderNumber});
-
-    const updatedSnap = await snap.ref.get();
-    const order = updatedSnap.data() as Order;
-
-    const pR = order.paymentReceived;
-    if (!pR || pR <= 0) {
-      return;
-    }
-
-    try {
-      let bankAccountId = "bank---current-account";
-      const companySnap = await db.doc("company/info").get();
-      const primaryUpi = companySnap.data()?.primaryUpiId;
-
-      if (primaryUpi) {
-        const ledgerSearch = await db.collection("coa_ledgers")
-          .where("bank.upiId", "==", primaryUpi)
-          .limit(1)
-          .get();
-        if (!ledgerSearch.empty) {
-          bankAccountId = ledgerSearch.docs[0].id;
-        }
-      }
-
-      return db.runTransaction(async (transaction) => {
-        const jvRef = db.collection("journalVouchers").doc();
-        const jvData = {
-          id: jvRef.id,
-          date: new Date().toISOString().split("T")[0],
-          narration: `Advance for Order #${orderNumber} via UPI`,
-          voucherType: "Receipt Voucher",
-          entries: [
-            {accountId: bankAccountId, debit: pR, credit: 0},
-            {accountId: "customer-advances", debit: 0, credit: pR},
-          ],
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        };
-        transaction.set(jvRef, jvData);
-      });
-    } catch (error) {
-      console.error("Accounting Automation Failed:", error);
-    }
-  });
 
 
 export const handleWorkOrderCreation = onDocumentCreated(
