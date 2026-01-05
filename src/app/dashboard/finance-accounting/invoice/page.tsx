@@ -27,7 +27,7 @@ import {
 
 import { PageHeader } from '@/components/page-header';
 import { cn } from '@/lib/utils';
-import type { Order, OrderStatus, UserProfile, UserRole, WorkOrder, PickupPoint, SalesOrder, RefundRequest, Product, ServiceInvoice } from '@/lib/types';
+import type { Order, OrderStatus, UserProfile, UserRole, WorkOrder, PickupPoint, SalesOrder, RefundRequest, Product, ServiceInvoice, SalesInvoice } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -83,17 +83,21 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 
-function getStatusBadgeVariant(status: Order['status'] | 'Refund Pending' | 'Refund Complete') {
+function getStatusBadgeVariant(status: Order['status'] | 'Refund Pending' | 'Refund Complete' | SalesInvoice['status']) {
   const variants: Record<string, string> = {
     Delivered: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300',
     'Refund Complete': 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300',
+    Paid: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300',
     Shipped: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300',
+    'Invoice Sent': 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300',
     Ordered: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300',
     'Refund Pending': 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300',
+    'Work Complete': 'bg-yellow-100 text-yellow-800',
     Manufacturing: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300',
     'Ready for Dispatch': 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-300',
     'Awaiting Payment': 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300',
-    'Invoice Sent': 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300',
+    Unpaid: 'bg-orange-100 text-orange-800',
+    Overdue: 'bg-red-100 text-red-800',
     Canceled: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300',
     'Cancellation Requested': 'bg-rose-100 text-rose-800 dark:bg-rose-900/50 dark:text-rose-300'
   };
@@ -393,7 +397,7 @@ function InvoicePage() {
     const { toast } = useToast();
     const { data: orders, loading: ordersLoading } = useCollection<Order>(query(collection(firestore, 'orders'), orderBy('date', 'desc')));
     const { data: workOrders, loading: workOrdersLoading } = useCollection<WorkOrder>(collection(firestore, 'workOrders'));
-    const { data: allSalesInvoices } = useCollection<SalesInvoice>(collection(firestore, 'salesInvoices'));
+    const { data: allSalesInvoices, loading: invoicesLoading } = useCollection<SalesInvoice>(query(collection(firestore, 'salesInvoices'), orderBy('date', 'desc')));
     const { data: settingsData } = useDoc<any>(doc(firestore, 'company', 'settings'));
     const { data: pickupPoints } = useCollection<PickupPoint>(collection(firestore, 'pickupPoints'));
     const { data: allProducts, loading: productsLoading } = useCollection<Product>(collection(firestore, 'products'));
@@ -426,26 +430,22 @@ function InvoicePage() {
 
 
     const kpis = React.useMemo(() => {
-        if (!orders) return { totalBilled: 0, totalPaid: 0, totalOutstanding: 0 };
+        if (!allSalesInvoices) return { totalBilled: 0, totalPaid: 0, totalOutstanding: 0 };
         
-        const totalBilled = orders.reduce((sum, order) => sum + order.grandTotal, 0);
-        const totalPaid = orders.reduce((sum, order) => sum + (order.paymentReceived || 0), 0);
+        const totalBilled = allSalesInvoices.reduce((sum, invoice) => sum + invoice.grandTotal, 0);
+        const totalPaid = allSalesInvoices.filter(inv => inv.status === 'Paid').reduce((sum, invoice) => sum + invoice.grandTotal, 0);
         const totalOutstanding = totalBilled - totalPaid;
 
         return { totalBilled, totalPaid, totalOutstanding };
-    }, [orders]);
+    }, [allSalesInvoices]);
 
-    const handleGenerateInvoice = async (order: Order) => {
+    const handleGenerateInvoice = (order: Order) => {
         const dataToPass = {
             ...order,
             customerId: order.userId,
             overallDiscount: (order.discount / order.subtotal) * 100 || 0,
         };
         localStorage.setItem('invoiceDataToCreate', JSON.stringify(dataToPass));
-        
-        const orderRef = doc(firestore, 'orders', order.id);
-        await updateDoc(orderRef, { status: 'Invoice Sent' });
-
         router.push('/dashboard/finance-accounting/invoice/create');
     };
     
@@ -466,8 +466,14 @@ function InvoicePage() {
             });
         }
     };
+    
+    const handleInvoicePaymentStatus = async (invoiceId: string, status: 'Paid' | 'Unpaid') => {
+      const invoiceRef = doc(firestore, 'salesInvoices', invoiceId);
+      await updateDoc(invoiceRef, { status: status });
+      toast({ title: "Status Updated", description: `Invoice marked as ${status}.`});
+    }
 
-    const loading = ordersLoading || workOrdersLoading || productsLoading;
+    const loading = ordersLoading || workOrdersLoading || productsLoading || invoicesLoading;
 
   return (
     <>
@@ -548,6 +554,55 @@ function InvoicePage() {
                   </TableCell>
                 </TableRow></TableBody>
               )}
+          </Table>
+        </CardContent>
+      </Card>
+      
+      <Card>
+        <CardHeader>
+          <CardTitle>Generated Invoices</CardTitle>
+          <CardDescription>
+            List of all created sales invoices.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Invoice #</TableHead>
+                <TableHead>Customer</TableHead>
+                <TableHead>Date</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right">Amount</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {invoicesLoading ? (
+                <TableRow><TableCell colSpan={6} className="h-24 text-center">Loading invoices...</TableCell></TableRow>
+              ) : allSalesInvoices && allSalesInvoices.length > 0 ? (
+                allSalesInvoices.map((invoice) => (
+                  <TableRow key={invoice.id}>
+                    <TableCell className="font-mono">{invoice.invoiceNumber}</TableCell>
+                    <TableCell>{invoice.customerName}</TableCell>
+                    <TableCell>{format(new Date(invoice.date), 'dd/MM/yyyy')}</TableCell>
+                    <TableCell>
+                      <Badge className={cn('text-xs', getStatusBadgeVariant(invoice.status))} variant="outline">
+                        {invoice.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right font-mono">{formatIndianCurrency(invoice.grandTotal)}</TableCell>
+                    <TableCell className="text-right">
+                       <Button variant="outline" size="sm" onClick={() => handleInvoicePaymentStatus(invoice.id, invoice.status === 'Paid' ? 'Unpaid' : 'Paid')}>
+                          Mark as {invoice.status === 'Paid' ? 'Unpaid' : 'Paid'}
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))
+              ) : (
+                <TableRow><TableCell colSpan={6} className="h-24 text-center">No invoices created yet.</TableCell></TableRow>
+              )}
+            </TableBody>
           </Table>
         </CardContent>
       </Card>
