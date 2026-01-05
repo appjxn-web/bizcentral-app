@@ -33,7 +33,7 @@ const numberToWords = (num: number): string => {
     const b = ['', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety'];
     const number = parseFloat(num.toFixed(2));
     if (isNaN(number)) return '';
-    if (number === 0) return 'zero';
+    if (number === 0) return 'zero rupees only.';
 
     const integerPart = Math.floor(number);
     const decimalPart = Math.round((number - integerPart) * 100);
@@ -66,12 +66,12 @@ const numberToWords = (num: number): string => {
 
     let words = numToWords(integerPart);
     if (!words) words = "zero";
-    let finalString = words.charAt(0).toUpperCase() + words.slice(1) + ' rupees';
+    let finalString = words.charAt(0).toUpperCase() + words.slice(1) + ' Rupees';
     if (decimalPart > 0) {
-        finalString += ' and ' + numToWords(decimalPart) + ' paise';
+        finalString += ' and ' + numToWords(decimalPart) + ' Paise';
     }
     
-    return finalString + ' only.';
+    return finalString + ' Only.';
 };
 
 const formatIndianCurrency = (num: number) => {
@@ -88,21 +88,12 @@ export default function InvoiceViewPage() {
     const pdfRef = React.useRef<HTMLDivElement>(null);
     const [isDownloading, setIsDownloading] = React.useState(false);
     
-    const [invoiceData, setInvoiceData] = React.useState<any>(null);
     const firestore = useFirestore();
+    const invoiceRef = invoiceId ? doc(firestore, 'salesInvoices', invoiceId) : null;
+    const { data: invoiceData, loading: invoiceLoading } = useDoc<SalesInvoice>(invoiceRef);
 
     const { data: companyInfo, loading: companyInfoLoading } = useDoc<CompanyInfo>(doc(firestore, 'company', 'info'));
     
-    React.useEffect(() => {
-        const data = localStorage.getItem('invoiceToView');
-        if (data) {
-            const parsedData = JSON.parse(data);
-            if (parsedData.invoiceNumber === invoiceId) {
-                setInvoiceData(parsedData);
-            }
-        }
-    }, [invoiceId]);
-
     const { data: customerData, loading: customerLoading } = useDoc<Party>(
         invoiceData?.customerId ? doc(firestore, 'parties', invoiceData.customerId) : null
     );
@@ -176,7 +167,7 @@ export default function InvoiceViewPage() {
         setIsDownloading(false);
     };
 
-    const isLoading = companyInfoLoading || customerLoading || bankLedgerLoading;
+    const isLoading = invoiceLoading || companyInfoLoading || customerLoading || bankLedgerLoading;
 
     if (isLoading) {
         return (
@@ -190,7 +181,7 @@ export default function InvoiceViewPage() {
         return (
             <div className="p-8 text-center space-y-4">
                 <h1 className="text-2xl font-bold text-destructive">Invoice Data Not Found</h1>
-                <p className="text-muted-foreground">Could not load the invoice details from the previous page.</p>
+                <p className="text-muted-foreground">Could not load the invoice details.</p>
                 <Button variant="outline" onClick={() => window.history.back()}>
                     <ArrowLeft className="mr-2 h-4 w-4" /> Go Back
                 </Button>
@@ -225,29 +216,27 @@ export default function InvoiceViewPage() {
                                 )}
                             </div>
                             <div className="text-right">
-                                <h1 className="text-2xl font-bold text-primary">Tax Invoice</h1>
-                                <p><strong>Invoice No:</strong> {invoiceData.invoiceNumber}</p>
-                                <p><strong>Date:</strong> {format(new Date(invoiceData.date), 'dd/MM/yyyy')}</p>
-                                <p><strong>Order No:</strong> {invoiceData.orderNumber}</p>
+                                <h1 className="text-xl md:text-2xl font-bold text-primary">{companyInfo?.companyName}</h1>
+                                <p className="text-xs md:text-sm text-muted-foreground">
+                                    {[companyAddress?.line1, companyAddress?.line2].filter(Boolean).join(', ')}
+                                </p>
+                                <p className="text-xs md:text-sm text-muted-foreground">
+                                    {companyAddress?.city && `${companyAddress.city} - ${companyAddress.pin}, `}
+                                    {companyAddress?.district}, {companyAddress?.state}, {companyAddress?.country}
+                                </p>
+                                <p className="text-xs md:text-sm text-muted-foreground">{companyInfo?.contactEmail} | {companyInfo?.contactNumber}</p>
+                                <div className="text-xs md:text-sm mt-2 space-y-1">
+                                    <p><strong>GSTIN:</strong> {companyInfo?.taxInfo?.gstin?.value}</p>
+                                    <p><strong>CIN:</strong> {companyInfo?.taxInfo?.cin?.value}</p>
+                                </div>
                             </div>
                         </header>
-
+        
                         <section className="my-6">
-                            <div className="flex justify-between">
+                            <h2 className="text-right text-lg font-bold mb-4 underline">TAX INVOICE</h2>
+                            <div className="flex flex-col md:flex-row justify-between gap-4">
                                 <div>
-                                    <h3 className="font-semibold text-sm text-muted-foreground">BILLED FROM:</h3>
-                                    <p className="font-bold">{companyInfo?.companyName}</p>
-                                    <p className="text-sm">
-                                        {[companyAddress?.line1, companyAddress?.line2].filter(Boolean).join(', ')}
-                                    </p>
-                                    <p className="text-sm">
-                                        {companyAddress?.city && `${companyAddress.city} - ${companyAddress.pin}, `}
-                                        {companyAddress?.district}, {companyAddress?.state}, {companyAddress?.country}
-                                    </p>
-                                    <p className="text-sm font-semibold">GSTIN: {companyInfo?.taxInfo?.gstin?.value}</p>
-                                </div>
-                                <div className="text-right">
-                                    <h3 className="font-semibold text-sm text-muted-foreground">BILLED TO:</h3>
+                                    <h3 className="font-semibold text-sm">Billed To:</h3>
                                     <p className="font-bold">{customerData?.name}</p>
                                     <p className="text-sm">
                                         {[customerAddress?.line1, customerAddress?.line2].filter(Boolean).join(', ')}
@@ -256,15 +245,24 @@ export default function InvoiceViewPage() {
                                         {customerAddress?.city && `${customerAddress.city} - ${customerAddress.pin}, `}
                                         {customerAddress?.district}, {customerAddress?.state}, {customerAddress?.country}
                                     </p>
+                                    <p className="text-sm">
+                                        {customerData?.contactPerson && `Attn: ${customerData.contactPerson}, `}
+                                        {customerData?.email} | {customerData?.phone}
+                                    </p>
                                     <p className="text-sm font-semibold">GSTIN: {customerData?.gstin}</p>
+                                </div>
+                                <div className="md:text-right text-sm">
+                                    <p><strong>Invoice No:</strong> {invoiceData.invoiceNumber}</p>
+                                    <p><strong>Date:</strong> {format(new Date(invoiceData.date), 'dd/MM/yyyy')}</p>
+                                    <p><strong>Order No:</strong> {invoiceData.orderNumber}</p>
                                 </div>
                             </div>
                         </section>
-
-                        <section>
+        
+                        <section className="overflow-x-auto">
                             <Table>
                                 <TableHeader>
-                                    <TableRow className="bg-muted">
+                                    <TableRow className="bg-muted/50">
                                         <TableHead>Sr.</TableHead>
                                         <TableHead>Items</TableHead>
                                         <TableHead>HSN</TableHead>
@@ -319,7 +317,7 @@ export default function InvoiceViewPage() {
                                             </TableRow>
                                         </>
                                     )}
-                                     <TableRow className="text-base bg-muted">
+                                     <TableRow className="text-base bg-muted/50">
                                         <TableCell colSpan={6} className="text-right font-bold">Grand Total</TableCell>
                                         <TableCell className="text-right font-bold">{formatIndianCurrency(grandTotal)}</TableCell>
                                     </TableRow>
@@ -335,11 +333,11 @@ export default function InvoiceViewPage() {
                             </Table>
                         </section>
                         
-                         <div className="text-right my-2 text-sm font-semibold italic">
+                        <div className="text-right my-4 text-xs md:text-sm font-semibold italic">
                             Amount in words: {numberToWords(grandTotal)}
                         </div>
-                        
-                         <footer className="flex justify-between items-end mt-16">
+        
+                        <footer className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-16">
                             <div className="text-xs space-y-4">
                                 <div className="flex gap-4 p-3 bg-slate-50 rounded-lg">
                                     {bankDetails && (
@@ -359,8 +357,8 @@ export default function InvoiceViewPage() {
                                     )}
                                 </div>
                             </div>
-                            <div className="text-right">
-                                <p className="font-semibold mb-16">For, {companyInfo?.companyName}</p>
+                            <div className="text-right flex flex-col justify-end items-end">
+                                <p className="font-semibold text-sm mb-16">For, {companyInfo?.companyName}</p>
                                 <div className="h-16 w-32"></div>
                                 <Separator className="w-full max-w-[200px] ml-auto"/>
                                 <p className="text-xs pt-1">Authorized Signatory</p>
