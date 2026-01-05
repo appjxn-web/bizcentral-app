@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -202,10 +203,26 @@ export default function InvoiceViewPage() {
     }
 
     const { grandTotal, subtotal, discount, cgst, sgst, igst, items, totalDiscountAmount, taxableAmount } = calculations;
+    
+    const paymentNotes = orderData?.paymentDetails?.split('\n').map(line => {
+      const parts = line.split(',').map(part => part.trim());
+      const details: Record<string, string> = {};
+      parts.forEach(part => {
+        const [key, ...value] = part.split(':');
+        if (key && value.length > 0) {
+          details[key.trim().toLowerCase()] = value.join(':').trim();
+        } else if (key.toLowerCase().includes('transaction id')) {
+            // Handle cases where the whole line is the transaction ID
+            const [label, ...val] = key.split(':');
+            details['ref'] = val.join(':').trim();
+        }
+      });
+      return details;
+    });
 
     return (
         <>
-            <PageHeader title={`Invoice: ${invoiceId}`}>
+            <PageHeader title={`Tax Invoice: ${invoiceId}`}>
                 <Button onClick={handleDownloadPdf} disabled={isDownloading}>
                     {isDownloading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
                     Download PDF
@@ -371,7 +388,15 @@ export default function InvoiceViewPage() {
                                 {orderData?.paymentDetails && (
                                     <div>
                                         <h4 className="font-bold mb-1">Payment Notes:</h4>
-                                        <p className="whitespace-pre-wrap">{orderData.paymentDetails}</p>
+                                         <div className="text-xs text-muted-foreground space-y-1">
+                                            {paymentNotes?.map((details, index) => (
+                                                <div key={index} className="p-2 border-b">
+                                                    {Object.entries(details).map(([key, value]) => (
+                                                        <p key={key}><span className="font-semibold capitalize">{key}:</span> {value}</p>
+                                                    ))}
+                                                </div>
+                                            ))}
+                                        </div>
                                     </div>
                                 )}
                             </div>
@@ -388,3 +413,4 @@ export default function InvoiceViewPage() {
         </>
       );
 }
+
