@@ -42,7 +42,7 @@ const findOrCreateSpecificCustomerLedger = async (transaction: admin.firestore.T
     const partySnap = await transaction.get(partyRef);
     const partyData = partySnap.data() as Party | undefined;
 
-    // 1. If we have a valid ID that isn't the generic string, use it
+    // 1. If we have a valid ID that isn't the generic one, use it
     if (partyData?.coaLedgerId && partyData.coaLedgerId !== "customer-advances") {
         const ledgerSnap = await transaction.get(db.collection('coa_ledgers').doc(partyData.coaLedgerId));
         if (ledgerSnap.exists) return partyData.coaLedgerId;
@@ -52,7 +52,7 @@ const findOrCreateSpecificCustomerLedger = async (transaction: admin.firestore.T
     const ledgerSearch = await db.collection('coa_ledgers').where('name', '==', customerName).limit(1).get();
     if (!ledgerSearch.empty) {
         const existingId = ledgerSearch.docs[0].id;
-        transaction.set(partyRef, { coaLedgerId: existingId }, { merge: true });
+        transaction.set(partyRef, { coaLedgerId: existingId, name: customerName, id: userId, type: 'Customer', email: customerEmail }, { merge: true });
         return existingId;
     }
 
@@ -89,7 +89,6 @@ export const handleOrderCreation = onDocumentCreated("orders/{orderId}",
     let orderNumber;
 
     try {
-        // FIXED: Using the correct variable name here
         const lastDocSnapshot = await db.collection("orders")
             .where("orderNumber", ">=", datePrefix)
             .orderBy("orderNumber", "desc")
@@ -136,7 +135,6 @@ export const handleOrderCreation = onDocumentCreated("orders/{orderId}",
             transaction.set(jvRef, {
                 id: jvRef.id,
                 date: new Date().toISOString().split("T")[0],
-                // ADDED VERSION MARKER [V3] TO PROVE NEW CODE IS RUNNING
                 narration: `[V3] Advance for Order #${orderNumber} via UPI`,
                 voucherType: "Receipt Voucher",
                 entries: [
@@ -159,7 +157,6 @@ export const handleQuotationCreation = onDocumentCreated("quotations/{docId}",
       return;
     }
     const data = snapshot.data();
-    // Prevent infinite loops
     if (data.quotationNumber) {
       return;
     }
@@ -203,13 +200,11 @@ export const handleQuotationCreation = onDocumentCreated("quotations/{docId}",
 export const handleWorkOrderCreation = onDocumentCreated(
   "workOrders/{id}",
   () => {
-    // Empty function to satisfy schema
   });
 
 export const handleVoucherCreation = onDocumentCreated(
   "journalVouchers/{id}",
   () => {
-    // Empty function to satisfy schema
   });
 
 export const handleOrderUpdates = onDocumentUpdated("orders/{orderId}",
