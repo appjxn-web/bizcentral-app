@@ -27,12 +27,12 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { CircleDollarSign, ArrowUpCircle, ArrowDownCircle, Download, Loader2, Wallet, Users, Handshake, ShoppingCart, TrendingUp, TrendingDown } from 'lucide-react';
-import { format, subDays } from 'date-fns';
+import { format, subDays, parseISO } from 'date-fns';
 import Image from 'next/image';
 import { Separator } from '@/components/ui/separator';
 import { useUser, useFirestore, useDoc, useCollection } from '@/firebase';
 import { collection, query, where, doc, getDoc, Timestamp, orderBy } from 'firebase/firestore';
-import type { JournalVoucher, CoaLedger, UserProfile, Party, Referral, Order } from '@/lib/types';
+import type { JournalVoucher, CoaLedger, UserProfile, Party, Referral, Order, SalesInvoice } from '@/lib/types';
 
 
 const companyDetails = {
@@ -105,18 +105,26 @@ function MyLedgerPageContent() {
   const userLedgerRef = userLedgerId ? doc(firestore, 'coa_ledgers', userLedgerId) : null;
   const { data: userLedger, loading: ledgerLoading } = useDoc<CoaLedger>(userLedgerRef);
   
+  const ninetyDaysAgo = subDays(new Date(), 90);
   const jvQuery = React.useMemo(() => {
-    // Fetch all JVs from the last 90 days for client-side filtering.
-    // This is more efficient than fetching all JVs ever created.
-    const ninetyDaysAgo = subDays(new Date(), 90);
     return query(
         collection(firestore, 'journalVouchers'),
         where('createdAt', '>=', ninetyDaysAgo),
         orderBy('createdAt', 'desc')
     );
   }, [firestore]);
+  
+  const salesInvoicesQuery = React.useMemo(() => {
+      if (!targetId) return null;
+      return query(
+          collection(firestore, 'salesInvoices'),
+          where('customerId', '==', targetId),
+          orderBy('date', 'desc')
+      );
+  }, [firestore, targetId]);
 
   const { data: recentJournalVouchers, loading: vouchersLoading } = useCollection<JournalVoucher>(jvQuery);
+  const { data: salesInvoices, loading: invoicesLoading } = useCollection<SalesInvoice>(salesInvoicesQuery);
   
   const pdfRef = React.useRef<HTMLDivElement>(null);
   const [isDownloading, setIsDownloading] = React.useState(false);
@@ -126,42 +134,49 @@ function MyLedgerPageContent() {
 
   const { ledger, kpis } = React.useMemo(() => {
     const defaultKpis = { balance: 0, totalCredit: 0, totalDebit: 0 };
-    if (!userLedger || !recentJournalVouchers) return { ledger: [], kpis: defaultKpis };
+    if (!userLedger || (!recentJournalVouchers && !salesInvoices)) return { ledger: [], kpis: defaultKpis };
 
-    const relevantVouchers = recentJournalVouchers.filter(jv => 
-      jv.entries.some(e => e.accountId === userLedger.id)
-    );
-    
     const openingBalance = userLedger.openingBalance?.amount || 0;
     
-    const transactions = relevantVouchers
+    // Combine JVs and Invoices into a unified transaction list
+    const jvTransactions = (recentJournalVouchers || [])
+      .filter(jv => jv.entries.some(e => e.accountId === userLedger.id))
       .map(jv => {
-        const entry = jv.entries.find(e => e.accountId === userLedger.id);
+        const entry = jv.entries.find(e => e.accountId === userLedger.id)!;
         return {
           id: jv.id,
           date: jv.date,
           description: jv.narration,
-          debit: entry?.debit || 0,
-          credit: entry?.credit || 0,
+          debit: entry.debit || 0,
+          credit: entry.credit || 0,
         };
-      })
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      });
+
+    const invoiceTransactions = (salesInvoices || []).map(inv => ({
+        id: inv.id,
+        date: inv.date,
+        description: `Sales Invoice #${inv.invoiceNumber}`,
+        debit: inv.grandTotal, // Debit the customer
+        credit: 0
+    }));
+
+    const allTransactions = [...jvTransactions, ...invoiceTransactions].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
     
     let runningBalance = openingBalance;
-    const processedLedger = transactions.map(tx => {
+    const processedLedger = allTransactions.map(tx => {
       runningBalance += tx.debit - tx.credit;
       return { ...tx, balance: runningBalance };
     });
 
-    const totalCredit = transactions.reduce((sum, tx) => sum + tx.credit, 0);
-    const totalDebit = transactions.reduce((sum, tx) => sum + tx.debit, 0);
+    const totalCredit = allTransactions.reduce((sum, tx) => sum + tx.credit, 0);
+    const totalDebit = allTransactions.reduce((sum, tx) => sum + tx.debit, 0);
 
     return {
       ledger: processedLedger.reverse(),
       kpis: { balance: runningBalance, totalCredit, totalDebit },
     };
-  }, [userLedger, recentJournalVouchers]);
-
+  }, [userLedger, recentJournalVouchers, salesInvoices]);
+  
   const earningsKpis = React.useMemo(() => {
     if (!referrals) return { totalEarnings: 0, totalWithdrawn: 0 };
     
@@ -226,7 +241,7 @@ function MyLedgerPageContent() {
     setIsDownloading(false);
   };
   
-    if (userLoading || vouchersLoading || ledgerLoading) {
+    if (userLoading || vouchersLoading || ledgerLoading || invoicesLoading) {
         return (
             <div className="flex items-center justify-center h-full">
                 <Loader2 className="h-8 w-8 animate-spin" />
@@ -488,4 +503,5 @@ export default function MyAccountPage() {
 
     return <MyLedgerPageContent />;
 }
+
 

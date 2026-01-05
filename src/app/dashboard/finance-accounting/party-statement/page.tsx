@@ -30,7 +30,7 @@ import { CircleDollarSign, ArrowUpCircle, ArrowDownCircle, Download, Loader2, Ch
 import { format } from 'date-fns';
 import { useFirestore, useDoc, useCollection } from '@/firebase';
 import { collection, query, doc } from 'firebase/firestore';
-import type { JournalVoucher, CoaLedger, Party, CompanyInfo } from '@/lib/types';
+import type { JournalVoucher, CoaLedger, Party, CompanyInfo, SalesInvoice } from '@/lib/types';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { cn } from '@/lib/utils';
@@ -59,6 +59,7 @@ function PartyStatementPageContent() {
   const { data: parties, loading: partiesLoading } = useCollection<Party>(collection(firestore, 'parties'));
   const { data: ledgers, loading: ledgersLoading } = useCollection<CoaLedger>(collection(firestore, 'coa_ledgers'));
   const { data: journalVouchers, loading: vouchersLoading } = useCollection<JournalVoucher>(collection(firestore, 'journalVouchers'));
+  const { data: salesInvoices, loading: invoicesLoading } = useCollection<SalesInvoice>(collection(firestore, 'salesInvoices'));
 
   const pdfRef = React.useRef<HTMLDivElement>(null);
   const [isDownloading, setIsDownloading] = React.useState(false);
@@ -106,35 +107,54 @@ function PartyStatementPageContent() {
     const openingBalance = targetLedger.openingBalance?.amount || 0;
     const sortedVouchers = [...journalVouchers].sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
     
-    const transactionsBeforePeriod = sortedVouchers.filter(jv => {
-        const jvDate = new Date(jv.date);
-        return dateFrom && jvDate < new Date(dateFrom);
-    }).flatMap(jv => jv.entries.filter(e => e.accountId === selectedAccountId));
+    const relevantInvoices = (salesInvoices || []).filter(inv => inv.coaLedgerId === selectedAccountId);
+    
+    const jvTransactions = sortedVouchers
+      .filter(jv => jv.entries.some(e => e.accountId === selectedAccountId))
+      .map(jv => {
+        const entry = jv.entries.find(e => e.accountId === selectedAccountId)!;
+        return {
+          id: jv.id,
+          date: jv.date,
+          description: jv.narration,
+          debit: entry.debit || 0,
+          credit: entry.credit || 0,
+        };
+      });
+
+    const invoiceTransactions = relevantInvoices.map(inv => ({
+        id: inv.id,
+        date: inv.date,
+        description: `Sales Invoice #${inv.invoiceNumber}`,
+        debit: inv.grandTotal, // Debit the customer
+        credit: 0
+    }));
+
+    const allTransactions = [...jvTransactions, ...invoiceTransactions].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+    const transactionsBeforePeriod = allTransactions.filter(tx => dateFrom && new Date(tx.date) < new Date(dateFrom));
 
     let periodOpeningBalance = openingBalance;
     transactionsBeforePeriod.forEach(tx => {
-        periodOpeningBalance += (tx.debit || 0) - (tx.credit || 0);
+        periodOpeningBalance += tx.debit - tx.credit;
     });
     
-    const periodTransactions = sortedVouchers.filter(jv => {
-        const jvDate = new Date(jv.date);
+    const periodTransactions = allTransactions.filter(tx => {
+        const txDate = new Date(tx.date);
         const fromDate = dateFrom ? new Date(dateFrom) : null;
         const toDate = dateTo ? new Date(dateTo) : null;
+
         if(fromDate) fromDate.setHours(0,0,0,0);
         if(toDate) toDate.setHours(23,59,59,999);
-        return jv.entries.some(e => e.accountId === selectedAccountId) && 
-               (!fromDate || jvDate >= fromDate) && 
-               (!toDate || jvDate <= toDate);
+
+        return (!fromDate || txDate >= fromDate) && 
+               (!toDate || txDate <= toDate);
     });
 
     let runningBalance = periodOpeningBalance;
-    const processedLedger = periodTransactions.map(jv => {
-      const entry = jv.entries.find(e => e.accountId === selectedAccountId)!;
-      runningBalance += (entry.debit || 0) - (entry.credit || 0);
-      return {
-        id: jv.id, date: jv.date, description: jv.narration,
-        debit: entry.debit || 0, credit: entry.credit || 0, balance: runningBalance,
-      };
+    const processedLedger = periodTransactions.map(tx => {
+      runningBalance += tx.debit - tx.credit;
+      return { ...tx, balance: runningBalance };
     });
 
     return {
@@ -142,11 +162,11 @@ function PartyStatementPageContent() {
       kpis: { 
         openingBalance: periodOpeningBalance, 
         balance: runningBalance, 
-        totalCredit: processedLedger.reduce((s, t) => s + t.credit, 0), 
-        totalDebit: processedLedger.reduce((s, t) => s + t.debit, 0) 
+        totalCredit: periodTransactions.reduce((s, t) => s + t.credit, 0), 
+        totalDebit: periodTransactions.reduce((s, t) => s + t.debit, 0) 
       },
     };
-  }, [selectedAccountId, journalVouchers, ledgers, dateFrom, dateTo]);
+  }, [selectedAccountId, journalVouchers, ledgers, dateFrom, dateTo, salesInvoices]);
 
   const handleDownloadPdf = async () => {
     const element = pdfRef.current;
@@ -171,7 +191,7 @@ function PartyStatementPageContent() {
     setIsDownloading(false);
   };
   
-  const loading = partiesLoading || vouchersLoading || ledgersLoading;
+  const loading = partiesLoading || vouchersLoading || ledgersLoading || invoicesLoading;
   const isAssetOrExpense = accountHolder && ('nature' in accountHolder) && (accountHolder.nature === 'ASSET' || accountHolder.nature === 'EXPENSE');
 
   return (
@@ -416,3 +436,4 @@ export default function PartyStatementPage() {
     if (!isClient) return <div className="flex h-screen items-center justify-center"><Loader2 className="animate-spin" /></div>;
     return <PartyStatementPageContent />;
 }
+
