@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -33,7 +32,7 @@ import { useToast } from '@/hooks/use-toast';
 import { PlusCircle, FileUp, Camera, Loader2, Trash2, MoreHorizontal, Search, CheckCheck, FileText, Printer, Eye, Edit } from 'lucide-react';
 import { format } from 'date-fns';
 import { useFirestore, useCollection, useUser, useDoc } from '@/firebase';
-import { collection, orderBy, query, addDoc, serverTimestamp, doc, updateDoc, deleteDoc, setDoc } from 'firebase/firestore';
+import { collection, orderBy, query, addDoc, serverTimestamp, doc, updateDoc, deleteDoc, setDoc, Timestamp } from 'firebase/firestore';
 import type { CoaLedger, JournalVoucher, Party, CoaNature, PartyType, UserProfile } from '@/lib/types';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose, DialogTrigger } from '@/components/ui/dialog';
@@ -195,7 +194,11 @@ function TransactionsPageContent() {
         });
 
         if (journalVouchers) {
-            const sortedVouchers = [...journalVouchers].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+            const sortedVouchers = [...journalVouchers].sort((a, b) => {
+                const dateA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.date);
+                const dateB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.date);
+                return dateA.getTime() - dateB.getTime();
+            });
             sortedVouchers.forEach(jv => {
                 jv.entries.forEach(entry => {
                 if (balances.has(entry.accountId)) {
@@ -907,12 +910,5 @@ export default function TransactionsPageWrapper() {
     if (!isClient) return <PageHeader title="Transactions" />;
     return <TransactionsPageContent />;
 }
-
-    
-    
-
-    
-
-    
 
     
