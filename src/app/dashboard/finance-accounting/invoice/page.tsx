@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -20,6 +21,7 @@ import {
   ListFilter,
   DollarSign,
   RefreshCcw,
+  Receipt,
 } from 'lucide-react';
 
 import { PageHeader } from '@/components/page-header';
@@ -203,26 +205,29 @@ function CancelOrderDialog({ order, onConfirm, open, onOpenChange }: { order: Or
 }
 
 
-function PartnerPickupDetails({ pickupPointId }: { pickupPointId: string }) {
+function PartnerPickupDetails({ userId }: { userId: string }) {
     const firestore = useFirestore();
-    const pickupPointRef = pickupPointId ? doc(firestore, 'pickupPoints', pickupPointId) : null;
-    const { data: pickupPoint, loading } = useDoc<PickupPoint>(pickupPointRef);
+    const userDocRef = userId ? doc(firestore, 'users', userId) : null;
+    const { data: partner, loading } = useDoc<UserProfile>(userDocRef);
 
-    if (loading) return <p className="text-sm text-muted-foreground">Loading details...</p>;
-    if (!pickupPoint) return <p className="text-sm text-destructive">Could not load partner details.</p>;
+    if (loading) return <p className="text-sm text-muted-foreground">Loading partner details...</p>;
+    if (!partner) return <p className="text-sm text-destructive">Could not load partner details.</p>;
     
-    const addressString = pickupPoint.addressLine || '';
+    const address = (partner.addresses || [])[0];
+    const addressString = address ? [address.line1, address.line2, address.city, address.state, address.pin].filter(Boolean).join(', ') : 'Address not available';
+    
     let mapUrl = addressString ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addressString)}` : '';
-    if (pickupPoint.lat && pickupPoint.lng) {
-        mapUrl = `https://www.google.com/maps/search/?api=1&query=${pickupPoint.lat},${pickupPoint.lng}`;
+    if (address?.latitude && address?.longitude) {
+        mapUrl = `https://www.google.com/maps/search/?api=1&query=${address.latitude},${address.longitude}`;
     }
 
     return (
         <>
-            <p className="font-medium">{pickupPoint.name}</p>
+            <p className="font-medium">{partner.businessName || partner.name}</p>
             <p className="text-xs text-muted-foreground">Partner</p>
             {addressString && <p className="mt-2 text-sm">{addressString}</p>}
             <div className="flex gap-4 mt-2">
+                {partner.mobile && <a href={`tel:${partner.mobile}`} className="flex items-center gap-1 text-primary hover:underline text-sm"><Phone className="h-4 w-4" /> Call</a>}
                 {mapUrl && <a href={mapUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-primary hover:underline text-sm"><MapPin className="h-4 w-4" /> Get Directions</a>}
             </div>
         </>
@@ -387,7 +392,7 @@ export default function InvoicePage() {
     const { toast } = useToast();
     const { data: orders, loading: ordersLoading } = useCollection<Order>(query(collection(firestore, 'orders'), orderBy('date', 'desc')));
     const { data: workOrders, loading: workOrdersLoading } = useCollection<WorkOrder>(collection(firestore, 'workOrders'));
-    const { data: allSalesInvoices } = useCollection<SalesInvoice>(collection(firestore, 'salesInvoices'));
+    const { data: allSalesInvoices } = useCollection<SalesOrder>(collection(firestore, 'salesInvoices'));
     const { data: settingsData } = useDoc<any>(doc(firestore, 'company', 'settings'));
     const { data: pickupPoints } = useCollection<PickupPoint>(collection(firestore, 'pickupPoints'));
     const { data: allProducts, loading: productsLoading } = useCollection<Product>(collection(firestore, 'products'));
@@ -548,3 +553,4 @@ export default function InvoicePage() {
     </>
   );
 }
+
