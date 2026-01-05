@@ -151,22 +151,24 @@ export default function CreateInvoicePage() {
 
   React.useEffect(() => {
     const rawData = localStorage.getItem('invoiceDataToCreate');
-    if (rawData) {
+    if (rawData && allProducts) {
         const data = JSON.parse(rawData);
         setSelectedPartyId(data.customerId);
         setItems(data.items.map((item: any, i: number) => {
             const product = allProducts?.find(p => p.id === item.productId);
+            const rate = item.price || item.rate || 0;
+            const quantity = item.quantity || item.qty || 1;
             return {
                 id: `item-${Date.now()}-${i}`,
                 productId: item.productId,
                 name: item.name,
                 hsn: product?.hsn || '',
-                quantity: item.quantity || item.qty || 1,
+                quantity: quantity,
                 unit: product?.unit || 'pcs',
-                rate: item.price || item.rate || 0,
+                rate: rate,
                 gstRate: item.gstRate || 18,
-                amount: (item.price || item.rate || 0) * (item.quantity || item.qty || 1),
-                category: item.category,
+                amount: rate * quantity,
+                category: product?.category || item.category,
                 discount: 0,
             };
         }));
