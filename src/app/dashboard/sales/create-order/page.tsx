@@ -58,7 +58,7 @@ import { cn } from '@/lib/utils';
 import { useRole } from '@/app/dashboard/_components/role-provider';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useFirestore, useCollection, useUser, useDoc } from '@/firebase';
-import { collection, doc, addDoc, serverTimestamp, setDoc, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
+import { collection, doc, addDoc, serverTimestamp, setDoc, query, where, orderBy, limit, getDocs, updateDoc } from 'firebase/firestore';
 import { getNextDocNumber } from '@/lib/number-series';
 import { estimateDispatchDate, type EstimateDispatchDateOutput } from '@/ai/flows/estimate-dispatch-date-flow';
 import { QRCodeSVG } from 'qrcode.react';
@@ -125,8 +125,12 @@ export default function CreateSalesOrderPage() {
   const [openCustomerCombobox, setOpenCustomerCombobox] = React.useState(false);
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = React.useState(false);
   const [quotationId, setQuotationId] = React.useState<string | null>(null);
+  const [isEditMode, setIsEditMode] = React.useState(false);
+  const [orderIdToEdit, setOrderIdToEdit] = React.useState<string | null>(null);
   
   const { data: allProducts, loading: productsLoading } = useCollection<Product>(query(collection(firestore, 'products'), where('saleable', '==', true)));
+  const { data: allSalesOrders } = useCollection<SalesOrder>(collection(firestore, 'orders'));
+  const { data: settingsData } = useDoc<any>(doc(firestore, 'company', 'settings'));
 
   // State for payment dialog
   const [paymentDate, setPaymentDate] = React.useState(format(new Date(), 'yyyy-MM-dd'));
@@ -152,31 +156,53 @@ export default function CreateSalesOrderPage() {
 
 
   React.useEffect(() => {
-    const rawData = localStorage.getItem('quotationToConvert');
-    if (rawData) {
-        const data = JSON.parse(rawData);
-        setSelectedPartyId(data.customerId);
-        setQuotationId(data.quotationNumber || data.id);
-        setItems(data.items.map((item: any, i: number) => ({
-            ...item, 
-            quantity: item.quantity || item.qty || 1,
-            id: `item-${Date.now()}-${i}`
-        })));
-        setOverallDiscount(data.overallDiscount || 0);
-        setTerms(data.terms || '50% advance payment required.');
-        localStorage.removeItem('quotationToConvert');
-        toast({ title: "Pre-filled from Quotation" });
+    const editId = searchParams.get('id');
+    if (editId && firestore) {
+        setIsEditMode(true);
+        setOrderIdToEdit(editId);
+        const fetchOrder = async () => {
+            const orderDoc = await getDoc(doc(firestore, 'orders', editId));
+            if (orderDoc.exists()) {
+                const data = orderDoc.data() as SalesOrder;
+                setSelectedPartyId(data.userId);
+                setOrderDate(data.date);
+                setItems(data.items.map((item, i) => ({
+                    ...item,
+                    id: `item-${Date.now()}-${i}`,
+                })));
+                setOverallDiscount((data.discount / data.subtotal) * 100 || 0);
+                setBookingAmount(data.paymentReceived || 0);
+                setPaymentDetails(data.paymentDetails || '');
+                setExpectedDeliveryDate(data.expectedDeliveryDate || '');
+            }
+        };
+        fetchOrder();
+    } else {
+        const rawData = localStorage.getItem('quotationToConvert');
+        if (rawData) {
+            const data = JSON.parse(rawData);
+            setSelectedPartyId(data.customerId);
+            setQuotationId(data.quotationNumber || data.id);
+            setItems(data.items.map((item: any, i: number) => ({
+                ...item, 
+                quantity: item.quantity || item.qty || 1,
+                id: `item-${Date.now()}-${i}`
+            })));
+            setOverallDiscount(data.overallDiscount || 0);
+            setTerms(data.terms || '50% advance payment required.');
+            localStorage.removeItem('quotationToConvert');
+            toast({ title: "Pre-filled from Quotation" });
+        }
     }
-  }, [toast]);
+  }, [searchParams, firestore, toast]);
   
     React.useEffect(() => {
     const fetchEstimate = async () => {
-        const machineryItems = items.filter(item => item.category === 'Plants & Machinery');
-        if (machineryItems.length > 0) {
+        if (items.length > 0) {
             setIsEstimating(true);
             try {
                 const estimateInput = {
-                    items: machineryItems.map(item => ({
+                    items: items.map(item => ({
                         productId: item.productId,
                         quantity: item.quantity,
                         category: item.category,
@@ -186,7 +212,7 @@ export default function CreateSalesOrderPage() {
                 setDispatchEstimate(result);
             } catch (error) {
                 console.error("Error fetching dispatch estimate:", error);
-                setDispatchEstimate(null);
+                setDispatchEstimate(null); // Clear previous estimate on error
             } finally {
                 setIsEstimating(false);
             }
@@ -195,7 +221,9 @@ export default function CreateSalesOrderPage() {
         }
     };
 
-    fetchEstimate();
+    if (items.length > 0) {
+      fetchEstimate();
+    }
   }, [items]);
 
 
@@ -305,7 +333,6 @@ export default function CreateSalesOrderPage() {
     }
     if (!firestore || !authUser) return;
 
-    // Fetch the full UserProfile associated with the Party
     const customerUserQuery = query(collection(firestore, 'users'), where('email', '==', selectedParty?.email), limit(1));
     const customerUserSnap = await getDocs(customerUserQuery);
 
@@ -320,36 +347,42 @@ export default function CreateSalesOrderPage() {
 
 
     try {
-      const newOrderId = `SO-${Date.now()}`;
+        const orderData = {
+            userId: customerUserId, 
+            customerName: customerDisplayName,
+            customerEmail: selectedParty?.email || '',
+            date: orderDate,
+            expectedDeliveryDate: expectedDeliveryDate || null,
+            items: items.map(({id, category, ...rest}) => ({...rest, discount: overallDiscount})),
+            subtotal: calculations.subtotal,
+            discount: calculations.totalDiscountAmount,
+            cgst: calculations.cgst,
+            sgst: calculations.sgst,
+            grandTotal: calculations.grandTotal,
+            total: calculations.grandTotal,
+            paymentReceived: bookingAmount,
+            balance: calculations.grandTotal - bookingAmount,
+            pickupPointId: 'company-main',
+            assignedToUid: authUser.uid, 
+            createdBy: authUser.displayName || 'System',
+            paymentDetails: paymentDetails,
+            ...(quotationId && { quotationId: quotationId }),
+        };
 
-      const newOrderData: Partial<SalesOrder> = {
-          orderNumber: newOrderId,
-          userId: customerUserId, 
-          customerName: customerDisplayName,
-          customerEmail: selectedParty?.email || '',
-          date: orderDate,
-          expectedDeliveryDate: expectedDeliveryDate || null,
-          items: items.map(({id, category, ...rest}) => ({...rest, discount: overallDiscount})),
-          subtotal: calculations.subtotal,
-          discount: calculations.totalDiscountAmount,
-          cgst: calculations.cgst,
-          sgst: calculations.sgst,
-          grandTotal: calculations.grandTotal,
-          total: calculations.grandTotal,
-          paymentReceived: bookingAmount,
-          balance: calculations.grandTotal - bookingAmount,
-          pickupPointId: 'company-main',
-          assignedToUid: authUser.uid, // Assign to the admin/manager creating it
-          createdBy: authUser.displayName || 'System',
-          paymentDetails: paymentDetails,
-          status: 'Ordered',
-          createdAt: serverTimestamp(),
-          ...(quotationId && { quotationId: quotationId }),
-      };
-      
-      await addDoc(collection(firestore, 'orders'), newOrderData);
-      toast({ title: 'Sales Order Saved', description: `Order ${newOrderId} has been saved.` });
-      router.push('/dashboard/sales/orders');
+        if (isEditMode && orderIdToEdit) {
+            const orderRef = doc(firestore, 'orders', orderIdToEdit);
+            await updateDoc(orderRef, orderData);
+            toast({ title: 'Sales Order Updated' });
+        } else {
+            const newOrderData: Partial<SalesOrder> = {
+                ...orderData,
+                status: 'Ordered',
+                createdAt: serverTimestamp(),
+            };
+            await addDoc(collection(firestore, 'orders'), newOrderData);
+            toast({ title: 'Sales Order Saved' });
+        }
+        router.push('/dashboard/sales/orders');
     } catch (e) {
         console.error(e);
         toast({ variant: 'destructive', title: 'Save failed' });
@@ -379,9 +412,9 @@ export default function CreateSalesOrderPage() {
 
   return (
     <>
-      <PageHeader title="Create Sales Order">
+      <PageHeader title={isEditMode ? "Edit Sales Order" : "Create Sales Order"}>
         <Button onClick={handleSaveSalesOrder} disabled={isSaveDisabled}>
-          <Save className="mr-2 h-4 w-4" /> Save Sales Order
+          <Save className="mr-2 h-4 w-4" /> {isEditMode ? "Update" : "Save"} Sales Order
         </Button>
       </PageHeader>
       
@@ -648,4 +681,3 @@ export default function CreateSalesOrderPage() {
     </>
   );
 }
-

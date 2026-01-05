@@ -22,6 +22,7 @@ import {
   DollarSign,
   RefreshCcw,
   Eye,
+  Edit,
 } from 'lucide-react';
 
 import { PageHeader } from '@/components/page-header';
@@ -264,7 +265,7 @@ function CompanyPickupDetails() {
     );
 }
 
-function OrderRow({ order, onGenerateInvoice, onUpdateStatus, pickupPoints, dynamicStatus, allProducts, getOrderInHand, allSalesInvoices, onViewInvoice }: { order: Order, onGenerateInvoice: (order: Order) => void, onUpdateStatus: (orderId: string, status: OrderStatus) => void, pickupPoints: PickupPoint[] | null, dynamicStatus: OrderStatus, allProducts: Product[] | null, getOrderInHand: (productId: string) => number, allSalesInvoices: SalesInvoice[] | null, onViewInvoice: (invoiceId: string) => void }) {
+function OrderRow({ order, onGenerateInvoice, onUpdateStatus, pickupPoints, dynamicStatus, allProducts, getOrderInHand, allSalesInvoices, onViewInvoice, onEdit }: { order: Order, onGenerateInvoice: (order: Order) => void, onUpdateStatus: (orderId: string, status: OrderStatus) => void, pickupPoints: PickupPoint[] | null, dynamicStatus: OrderStatus, allProducts: Product[] | null, getOrderInHand: (productId: string) => number, allSalesInvoices: SalesInvoice[] | null, onViewInvoice: (invoiceId: string) => void, onEdit: (orderId: string) => void }) {
   const [isOpen, setIsOpen] = React.useState(false);
   const router = useRouter();
   const orderStatuses: OrderStatus[] = ['Manufacturing', 'Ready for Dispatch', 'Awaiting Payment', 'Shipped', 'Delivered'];
@@ -320,6 +321,9 @@ function OrderRow({ order, onGenerateInvoice, onUpdateStatus, pickupPoints, dyna
                      <DropdownMenuItem onClick={() => router.push(`/dashboard/sales/orders/view?id=${order.id}`)}>
                         <Eye className="mr-2 h-4 w-4" /> View Order
                     </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => onEdit(order.id)}>
+                        <Edit className="mr-2 h-4 w-4" /> Edit Order
+                    </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     {orderStatuses.map(status => (
                       <DropdownMenuItem key={status} onClick={() => onUpdateStatus(order.id, status)}>
@@ -374,7 +378,7 @@ function OrderRow({ order, onGenerateInvoice, onUpdateStatus, pickupPoints, dyna
                               {order.paymentDetails && (
                                   <div>
                                       <p className="text-xs font-semibold">Transaction Note:</p>
-                                      <p className="text-xs text-muted-foreground font-mono">{order.paymentDetails}</p>
+                                      <p className="text-xs text-muted-foreground font-mono whitespace-pre-wrap">{order.paymentDetails}</p>
                                   </div>
                               )}
                           </div>
@@ -483,11 +487,20 @@ function OrdersPageContent() {
         }
     };
 
+    const handleEditOrder = (orderId: string) => {
+        router.push(`/dashboard/sales/create-order?id=${orderId}`);
+    };
+
     const loading = ordersLoading || workOrdersLoading || productsLoading;
 
   return (
     <>
-      <PageHeader title="Sales Orders" />
+      <PageHeader title="Sales Orders">
+         <Button onClick={() => router.push('/dashboard/sales/create-order')}>
+            <PlusCircle className="mr-2 h-4 w-4" />
+            Create New Order
+        </Button>
+      </PageHeader>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
@@ -559,7 +572,7 @@ function OrdersPageContent() {
                 orders.map((order) => {
                   const dynamicStatus = getDynamicOrderStatus(order);
                   return (
-                    <OrderRow key={order.id} order={order} pickupPoints={pickupPoints} onGenerateInvoice={handleGenerateInvoice} onUpdateStatus={handleUpdateStatus} dynamicStatus={dynamicStatus} allProducts={allProducts} getOrderInHand={getOrderInHand} allSalesInvoices={allSalesInvoices || []} onViewInvoice={onViewInvoice} />
+                    <OrderRow key={order.id} order={order} pickupPoints={pickupPoints} onGenerateInvoice={handleGenerateInvoice} onUpdateStatus={handleUpdateStatus} dynamicStatus={dynamicStatus} allProducts={allProducts} getOrderInHand={getOrderInHand} allSalesInvoices={allSalesInvoices || []} onViewInvoice={onViewInvoice} onEdit={handleEditOrder} />
                   )
                 })
               ) : (
@@ -589,4 +602,3 @@ export default function OrdersPage() {
 
     return <OrdersPageContent />;
 }
-

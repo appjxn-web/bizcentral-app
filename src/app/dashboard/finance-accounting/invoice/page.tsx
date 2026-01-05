@@ -23,7 +23,7 @@ import {
   RefreshCcw,
   Receipt,
   Eye,
-  CircleDollarSign,
+  Edit,
 } from 'lucide-react';
 
 import { PageHeader } from '@/components/page-header';
@@ -270,7 +270,7 @@ function CompanyPickupDetails() {
     );
 }
 
-function OrderRow({ order, onGenerateInvoice, onUpdateStatus, pickupPoints, dynamicStatus, allProducts, getOrderInHand, allSalesInvoices, onViewInvoice }: { order: Order, onGenerateInvoice: (order: Order) => void, onUpdateStatus: (orderId: string, status: OrderStatus) => void, pickupPoints: PickupPoint[] | null, dynamicStatus: OrderStatus, allProducts: Product[] | null, getOrderInHand: (productId: string) => number, allSalesInvoices: SalesInvoice[] | null, onViewInvoice: (invoiceId: string) => void }) {
+function OrderRow({ order, onGenerateInvoice, onUpdateStatus, pickupPoints, dynamicStatus, allProducts, getOrderInHand, allSalesInvoices, onViewInvoice, onEdit }: { order: Order, onGenerateInvoice: (order: Order) => void, onUpdateStatus: (orderId: string, status: OrderStatus) => void, pickupPoints: PickupPoint[] | null, dynamicStatus: OrderStatus, allProducts: Product[] | null, getOrderInHand: (productId: string) => number, allSalesInvoices: SalesInvoice[] | null, onViewInvoice: (invoiceId: string) => void, onEdit: (orderId: string) => void }) {
   const [isOpen, setIsOpen] = React.useState(false);
   const router = useRouter();
   const orderStatuses: OrderStatus[] = ['Manufacturing', 'Ready for Dispatch', 'Awaiting Payment', 'Shipped', 'Delivered'];
@@ -326,6 +326,9 @@ function OrderRow({ order, onGenerateInvoice, onUpdateStatus, pickupPoints, dyna
                      <DropdownMenuItem onClick={() => router.push(`/dashboard/sales/orders/view?id=${order.id}`)}>
                         <Eye className="mr-2 h-4 w-4" /> View Order
                     </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => onEdit(order.id)}>
+                        <Edit className="mr-2 h-4 w-4" /> Edit Order
+                    </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     {orderStatuses.map(status => (
                       <DropdownMenuItem key={status} onClick={() => onUpdateStatus(order.id, status)}>
@@ -380,7 +383,7 @@ function OrderRow({ order, onGenerateInvoice, onUpdateStatus, pickupPoints, dyna
                               {order.paymentDetails && (
                                   <div>
                                       <p className="text-xs font-semibold">Transaction Note:</p>
-                                      <p className="text-xs text-muted-foreground font-mono">{order.paymentDetails}</p>
+                                      <p className="text-xs text-muted-foreground font-mono whitespace-pre-wrap">{order.paymentDetails}</p>
                                   </div>
                               )}
                           </div>
@@ -404,7 +407,7 @@ function OrderRow({ order, onGenerateInvoice, onUpdateStatus, pickupPoints, dyna
   )
 }
 
-function GeneratedInvoiceRow({ invoice, order, onViewInvoice, onUpdateStatus, allProducts, getOrderInHand, allSalesInvoices, journalVouchers, allCoaLedgers }: { invoice: SalesInvoice, order?: Order, onViewInvoice: (id: string) => void, onUpdateStatus: (id: string, status: 'Paid' | 'Unpaid') => void, allProducts: Product[] | null, getOrderInHand: (productId: string) => number, allSalesInvoices: SalesInvoice[] | null, journalVouchers: JournalVoucher[] | null, allCoaLedgers: CoaLedger[] | null }) {
+function GeneratedInvoiceRow({ invoice, order, onViewInvoice, onUpdateStatus, allProducts, getOrderInHand, allSalesInvoices, journalVouchers, allCoaLedgers, onEdit }: { invoice: SalesInvoice, order?: Order, onViewInvoice: (id: string) => void, onUpdateStatus: (id: string, status: 'Paid' | 'Unpaid') => void, allProducts: Product[] | null, getOrderInHand: (productId: string) => number, allSalesInvoices: SalesInvoice[] | null, journalVouchers: JournalVoucher[] | null, allCoaLedgers: CoaLedger[] | null, onEdit: (invoiceId: string) => void }) {
     const [isOpen, setIsOpen] = React.useState(false);
     
     const paymentTransactions = React.useMemo(() => {
@@ -444,6 +447,9 @@ function GeneratedInvoiceRow({ invoice, order, onViewInvoice, onUpdateStatus, al
                             <DropdownMenuContent>
                                 <DropdownMenuItem onClick={() => onViewInvoice(invoice.invoiceNumber)}>
                                     <Eye className="mr-2 h-4 w-4"/> View
+                                </DropdownMenuItem>
+                                 <DropdownMenuItem onClick={() => onEdit(invoice.invoiceNumber)}>
+                                    <Edit className="mr-2 h-4 w-4"/> Edit
                                 </DropdownMenuItem>
                                 {invoice.status !== 'Paid' && (
                                      <DropdownMenuItem onClick={() => onUpdateStatus(invoice.invoiceNumber, 'Paid')}>
@@ -499,7 +505,7 @@ function GeneratedInvoiceRow({ invoice, order, onViewInvoice, onUpdateStatus, al
                                             <p className="text-xs font-semibold">Payment Transactions:</p>
                                             <div className="text-xs text-muted-foreground font-mono space-y-1 mt-1">
                                                 {paymentTransactions.map(jv => {
-                                                    const paymentEntry = jv.entries.find(e => e.debit > 0);
+                                                    const paymentEntry = jv.entries.find((e: any) => e.debit > 0);
                                                     const accountName = allCoaLedgers?.find(l => l.id === paymentEntry?.accountId)?.name;
                                                     return (
                                                         <p key={jv.id}>
@@ -625,6 +631,14 @@ function InvoicePage() {
         }
     };
 
+    const handleEditOrder = (orderId: string) => {
+        router.push(`/dashboard/sales/create-order?id=${orderId}`);
+    };
+
+    const handleEditInvoice = (invoiceId: string) => {
+        router.push(`/dashboard/finance-accounting/invoice/create?id=${invoiceId}`);
+    };
+
     const loading = ordersLoading || workOrdersLoading || productsLoading || invoicesLoading;
 
   return (
@@ -696,7 +710,7 @@ function InvoicePage() {
                 orders.map((order) => {
                   const dynamicStatus = getDynamicOrderStatus(order);
                   return (
-                    <OrderRow key={order.id} order={order} pickupPoints={pickupPoints} onGenerateInvoice={handleGenerateInvoice} onUpdateStatus={handleUpdateStatus} dynamicStatus={dynamicStatus} allProducts={allProducts} getOrderInHand={getOrderInHand} allSalesInvoices={allSalesInvoices || []} onViewInvoice={onViewInvoice} />
+                    <OrderRow key={order.id} order={order} pickupPoints={pickupPoints} onGenerateInvoice={handleGenerateInvoice} onUpdateStatus={handleUpdateStatus} dynamicStatus={dynamicStatus} allProducts={allProducts} getOrderInHand={getOrderInHand} allSalesInvoices={allSalesInvoices || []} onViewInvoice={onViewInvoice} onEdit={handleEditOrder} />
                   )
                 })
               ) : (
@@ -750,6 +764,7 @@ function InvoicePage() {
                       allSalesInvoices={allSalesInvoices || []}
                       journalVouchers={journalVouchers || []}
                       allCoaLedgers={allCoaLedgers || []}
+                      onEdit={handleEditInvoice}
                     />
                   )
                 })
