@@ -991,6 +991,7 @@ export interface SalesInvoice {
     balanceDue: number;
     status: 'Paid' | 'Unpaid' | 'Overdue';
     dueDate?: string;
+    appliedCoupons?: Offer[];
 }
 
 export interface TdsRate {

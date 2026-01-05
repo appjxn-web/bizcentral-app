@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -23,7 +24,7 @@ import {
 import { Download, Loader2, ArrowLeft } from 'lucide-react';
 import { format } from 'date-fns';
 import { QRCodeSVG } from 'qrcode.react';
-import type { SalesInvoice, CompanyInfo, Party, CoaLedger, Address, Order } from '@/lib/types';
+import type { SalesInvoice, CompanyInfo, Party, CoaLedger, Address, Order, Offer } from '@/lib/types';
 import { useFirestore, useDoc, useCollection } from '@/firebase';
 import { collection, doc, query, where, limit } from 'firebase/firestore';
 
@@ -140,7 +141,7 @@ export default function InvoiceViewPage() {
         const taxableAmount = subtotal - totalDiscount;
         const totalGst = items.reduce((acc: number, item: any) => {
             const itemSubtotal = item.rate * item.quantity;
-            const itemDiscount = itemSubtotal * ((invoiceData.discount / subtotal) || 0);
+            const itemDiscount = subtotal > 0 ? itemSubtotal * (totalDiscount / subtotal) : 0;
             const discountedAmount = itemSubtotal - itemDiscount;
             return acc + (discountedAmount * ((item.gstRate || 18) / 100));
         }, 0);
@@ -292,8 +293,8 @@ export default function InvoiceViewPage() {
                                             <TableCell>{item.hsn}</TableCell>
                                             <TableCell className="text-right">{item.quantity}</TableCell>
                                             <TableCell>pcs</TableCell>
-                                            <TableCell className="text-right">{formatIndianCurrency(item.rate)}</TableCell>
-                                            <TableCell className="text-right font-medium">{formatIndianCurrency(item.rate * item.quantity)}</TableCell>
+                                            <TableCell className="text-right">{formatIndianCurrency(item.price)}</TableCell>
+                                            <TableCell className="text-right font-medium">{formatIndianCurrency(item.price * item.quantity)}</TableCell>
                                         </TableRow>
                                     ))}
                                 </TableBody>
@@ -304,7 +305,7 @@ export default function InvoiceViewPage() {
                                     </TableRow>
                                      {totalDiscountAmount > 0 && (
                                         <TableRow>
-                                            <TableCell colSpan={6} className="text-right text-green-600 py-1">Discount</TableCell>
+                                            <TableCell colSpan={6} className="text-right text-green-600 py-1">Discount ({invoiceData.appliedCoupons?.map(c => c.code).join(', ') || ''})</TableCell>
                                             <TableCell className="text-right text-green-600 py-1">- {formatIndianCurrency(totalDiscountAmount)}</TableCell>
                                         </TableRow>
                                     )}

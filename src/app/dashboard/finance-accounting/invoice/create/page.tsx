@@ -32,7 +32,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { PlusCircle, Save, Trash2, Check, ChevronsUpDown, CalendarClock, Loader2, DollarSign } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import type { Party, Product, UserRole, SalesOrder, Quotation, CoaLedger, SalesInvoice, CompanyInfo, PartyType, CoaNature } from '@/lib/types';
+import type { Party, Product, UserRole, SalesOrder, Quotation, CoaLedger, SalesInvoice, CompanyInfo, PartyType, CoaNature, Offer } from '@/lib/types';
 import { format, startOfMonth } from 'date-fns';
 import { Separator } from '@/components/ui/separator';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -144,6 +144,7 @@ export default function CreateInvoicePage() {
   const { data: coaLedgers, loading: ledgersLoading } = useCollection<CoaLedger>(collection(firestore, 'coa_ledgers'));
   const { data: companyInfo } = useDoc<CompanyInfo>(doc(firestore, 'company', 'info'));
   const saleableProducts = allProducts || [];
+  const [appliedCoupons, setAppliedCoupons] = React.useState<Offer[]>([]);
   
   const paymentAccounts = React.useMemo(() => {
     if (!coaLedgers) return [];
@@ -182,6 +183,7 @@ export default function CreateInvoicePage() {
         setSalesOrderNumber(data.orderNumber || data.id);
         setBookingAmount(data.paymentReceived || 0);
         setPaymentDetails(data.paymentDetails || '');
+        setAppliedCoupons(data.appliedCoupons || []);
         
         localStorage.removeItem('invoiceDataToCreate');
         toast({ title: "Pre-filled from Sales Order" });
@@ -346,6 +348,7 @@ export default function CreateInvoicePage() {
           amountPaid: bookingAmount,
           balanceDue: calculations.grandTotal - bookingAmount,
           status: 'Unpaid',
+          appliedCoupons: appliedCoupons
       };
       
       const invoiceRef = doc(firestore, 'salesInvoices', newInvoiceId);
@@ -420,7 +423,7 @@ export default function CreateInvoicePage() {
 
       setBookingAmount(prev => prev + amount);
       const details = `Mode: ${bankLedger.name}, Ref: ${paymentRef}, Date: ${paymentDate}, Amount: ₹${amount.toFixed(2)}`;
-      setPaymentDetails(prev => prev ? `${prev}\n${details}` : details);
+      setPaymentDetails(prev => prev ? `${prev}\\n${details}` : details);
       
       toast({ title: 'Payment Recorded', description: `A journal entry for ₹${amount.toFixed(2)} has been created.` });
       
@@ -725,4 +728,5 @@ export default function CreateInvoicePage() {
     </>
   );
 }
+
 
