@@ -21,7 +21,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Trash2, ShoppingCart, Tag, Loader2 } from 'lucide-react';
+import { Trash2, ShoppingCart, Tag, Loader2, CalendarClock } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import type { Product, Offer, UserRole } from '@/lib/types';
 import { Input } from '@/components/ui/input';
@@ -31,6 +31,7 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useFirestore, useCollection, useUser } from '@/firebase';
 import { collection, query, where, getDoc, doc } from 'firebase/firestore';
+import { estimateDispatchDate, type EstimateDispatchDateOutput } from '@/ai/flows/estimate-dispatch-date-flow';
 
 interface CartItem extends Product {
   quantity: number;
@@ -55,6 +56,9 @@ export default function CartPage() {
 
   const [lastAppliedCoupon, setLastAppliedCoupon] = React.useState<Offer | null>(null);
   const [lastRemovedCoupon, setLastRemovedCoupon] = React.useState<Offer | null>(null);
+
+  const [dispatchEstimate, setDispatchEstimate] = React.useState<EstimateDispatchDateOutput | null>(null);
+  const [isEstimating, setIsEstimating] = React.useState(false);
 
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -167,6 +171,35 @@ export default function CartPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allCoupons, subtotal]);
+
+  React.useEffect(() => {
+    const fetchEstimate = async () => {
+        if (cartItems.length > 0) {
+            setIsEstimating(true);
+            try {
+                const estimateInput = {
+                    items: cartItems.map(item => ({
+                        productId: item.id,
+                        quantity: item.quantity,
+                        category: item.category,
+                    }))
+                };
+                const result = await estimateDispatchDate(estimateInput);
+                setDispatchEstimate(result);
+            } catch (error) {
+                console.error("Error fetching dispatch estimate:", error);
+                setDispatchEstimate(null); // Clear previous estimate on error
+            } finally {
+                setIsEstimating(false);
+            }
+        } else {
+            setDispatchEstimate(null);
+        }
+    };
+    if (cartItems.length > 0) {
+      fetchEstimate();
+    }
+  }, [cartItems]);
 
 
   React.useEffect(() => {
@@ -383,6 +416,15 @@ export default function CartPage() {
                         <span>Grand Total</span>
                         <span className="font-mono">{formatIndianCurrency(grandTotal)}</span>
                     </div>
+                     {isEstimating ? (
+                      <div className="flex items-center justify-center p-4 text-muted-foreground"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Calculating dispatch time...</div>
+                  ) : dispatchEstimate?.hasEstimate && (
+                      <div className="p-3 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-md space-y-1">
+                          <p className="font-semibold flex items-center gap-2"><CalendarClock className="h-4 w-4 text-blue-600"/> Estimated Dispatch Date</p>
+                          <p className="font-bold text-blue-700 dark:text-blue-400">{dispatchEstimate.estimatedDate}</p>
+                          <p className="text-xs text-muted-foreground">{dispatchEstimate.reasoning}</p>
+                      </div>
+                  )}
                 </div>
              </div>
           </CardContent>
