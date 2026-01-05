@@ -279,7 +279,7 @@ export default function InvoiceViewPage() {
                                             <TableCell className="font-medium">{item.name}</TableCell>
                                             <TableCell>{item.hsn}</TableCell>
                                             <TableCell className="text-right">{item.quantity}</TableCell>
-                                            <TableCell>{item.unit || 'pcs'}</TableCell>
+                                            <TableCell>pcs</TableCell>
                                             <TableCell className="text-right">{formatIndianCurrency(item.rate)}</TableCell>
                                             <TableCell className="text-right font-medium">{formatIndianCurrency(item.rate * item.quantity)}</TableCell>
                                         </TableRow>
@@ -287,47 +287,47 @@ export default function InvoiceViewPage() {
                                 </TableBody>
                                 <TableFooter>
                                     <TableRow>
-                                        <TableCell colSpan={6} className="text-right font-semibold">Subtotal</TableCell>
-                                        <TableCell className="text-right font-semibold">{formatIndianCurrency(subtotal)}</TableCell>
+                                        <TableCell colSpan={6} className="text-right font-semibold py-1">Subtotal</TableCell>
+                                        <TableCell className="text-right font-semibold py-1">{formatIndianCurrency(subtotal)}</TableCell>
                                     </TableRow>
                                      {totalDiscountAmount > 0 && (
                                         <TableRow>
-                                            <TableCell colSpan={6} className="text-right text-green-600">Discount</TableCell>
-                                            <TableCell className="text-right text-green-600">- {formatIndianCurrency(totalDiscountAmount)}</TableCell>
+                                            <TableCell colSpan={6} className="text-right text-green-600 py-1">Discount</TableCell>
+                                            <TableCell className="text-right text-green-600 py-1">- {formatIndianCurrency(totalDiscountAmount)}</TableCell>
                                         </TableRow>
                                     )}
                                     <TableRow>
-                                        <TableCell colSpan={6} className="text-right font-semibold">Taxable Value</TableCell>
-                                        <TableCell className="text-right font-semibold">{formatIndianCurrency(taxableAmount)}</TableCell>
+                                        <TableCell colSpan={6} className="text-right font-semibold py-1">Taxable Value</TableCell>
+                                        <TableCell className="text-right font-semibold py-1">{formatIndianCurrency(taxableAmount)}</TableCell>
                                     </TableRow>
                                     {isInterstate ? (
                                         <TableRow>
-                                            <TableCell colSpan={6} className="text-right">IGST</TableCell>
-                                            <TableCell className="text-right">{formatIndianCurrency(igst || 0)}</TableCell>
+                                            <TableCell colSpan={6} className="text-right py-1">IGST</TableCell>
+                                            <TableCell className="text-right py-1">{formatIndianCurrency(igst || 0)}</TableCell>
                                         </TableRow>
                                     ) : (
                                         <>
                                             <TableRow>
-                                                <TableCell colSpan={6} className="text-right">CGST</TableCell>
-                                                <TableCell className="text-right">{formatIndianCurrency(cgst)}</TableCell>
+                                                <TableCell colSpan={6} className="text-right py-1">CGST</TableCell>
+                                                <TableCell className="text-right py-1">{formatIndianCurrency(cgst)}</TableCell>
                                             </TableRow>
                                             <TableRow>
-                                                <TableCell colSpan={6} className="text-right">SGST</TableCell>
-                                                <TableCell className="text-right">{formatIndianCurrency(sgst)}</TableCell>
+                                                <TableCell colSpan={6} className="text-right py-1">SGST</TableCell>
+                                                <TableCell className="text-right py-1">{formatIndianCurrency(sgst)}</TableCell>
                                             </TableRow>
                                         </>
                                     )}
                                      <TableRow className="text-base bg-muted/50">
-                                        <TableCell colSpan={6} className="text-right font-bold">Grand Total</TableCell>
-                                        <TableCell className="text-right font-bold">{formatIndianCurrency(grandTotal)}</TableCell>
+                                        <TableCell colSpan={6} className="text-right font-bold py-2">Grand Total</TableCell>
+                                        <TableCell className="text-right font-bold py-2">{formatIndianCurrency(grandTotal)}</TableCell>
                                     </TableRow>
                                      <TableRow>
-                                        <TableCell colSpan={6} className="text-right font-semibold">Amount Paid</TableCell>
-                                        <TableCell className="text-right font-semibold text-green-600">{formatIndianCurrency(invoiceData.amountPaid || 0)}</TableCell>
+                                        <TableCell colSpan={6} className="text-right font-semibold py-1">Amount Paid</TableCell>
+                                        <TableCell className="text-right font-semibold text-green-600 py-1">{formatIndianCurrency(invoiceData.amountPaid || 0)}</TableCell>
                                     </TableRow>
                                      <TableRow className="text-base">
-                                        <TableCell colSpan={6} className="text-right font-bold">Balance Due</TableCell>
-                                        <TableCell className="text-right font-bold text-red-600">{formatIndianCurrency(invoiceData.balanceDue)}</TableCell>
+                                        <TableCell colSpan={6} className="text-right font-bold py-1">Balance Due</TableCell>
+                                        <TableCell className="text-right font-bold text-red-600 py-1">{formatIndianCurrency(invoiceData.balanceDue)}</TableCell>
                                     </TableRow>
                                 </TableFooter>
                             </Table>
@@ -370,3 +370,4 @@ export default function InvoiceViewPage() {
         </>
       );
 }
+
