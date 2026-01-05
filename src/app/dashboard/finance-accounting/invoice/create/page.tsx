@@ -55,7 +55,7 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
-import { useRole } from '../../../_components/role-provider';
+import { useRole } from '../../_components/role-provider';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useFirestore, useCollection, useUser, useDoc } from '@/firebase';
 import { collection, doc, addDoc, serverTimestamp, setDoc, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
@@ -154,7 +154,22 @@ export default function CreateInvoicePage() {
     if (rawData) {
         const data = JSON.parse(rawData);
         setSelectedPartyId(data.customerId);
-        setItems(data.items.map((item: any, i: number) => ({ ...item, quantity: item.quantity || item.qty || 1, id: `item-${Date.now()}-${i}` })));
+        setItems(data.items.map((item: any, i: number) => {
+            const product = allProducts?.find(p => p.id === item.productId);
+            return {
+                id: `item-${Date.now()}-${i}`,
+                productId: item.productId,
+                name: item.name,
+                hsn: product?.hsn || '',
+                quantity: item.quantity || item.qty || 1,
+                unit: product?.unit || 'pcs',
+                rate: item.price || item.rate || 0,
+                gstRate: item.gstRate || 18,
+                discount: 0,
+                amount: (item.price || item.rate || 0) * (item.quantity || item.qty || 1),
+                category: item.category,
+            };
+        }));
         setOverallDiscount(data.overallDiscount || 0);
         setSalesOrderNumber(data.orderNumber || data.id);
         setBookingAmount(data.paymentReceived || 0);
@@ -162,7 +177,7 @@ export default function CreateInvoicePage() {
         localStorage.removeItem('invoiceDataToCreate');
         toast({ title: "Pre-filled from Sales Order" });
     }
-  }, [toast]);
+  }, [toast, allProducts]);
   
     React.useEffect(() => {
     const fetchEstimate = async () => {
