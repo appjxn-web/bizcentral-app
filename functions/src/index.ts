@@ -5,13 +5,12 @@ import {
   onDocumentUpdated,
   onDocumentWritten,
   FirestoreEvent,
-  QueryDocumentSnapshot,
   Change,
   DocumentSnapshot,
 } from "firebase-functions/v2/firestore";
 import * as admin from "firebase-admin";
 import {getFirestore, FieldValue} from "firebase-admin/firestore";
-import type {Order, SalesInvoice, Product, Party, Goal, UserProfile} from "./types";
+import type {Order, SalesInvoice, Party, Goal, UserProfile} from "./types";
 
 if (admin.apps.length === 0) { admin.initializeApp(); }
 const db = getFirestore();
