@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -65,6 +66,7 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
+import { getNextDocNumber } from '@/lib/number-series';
 
 
 interface JournalEntryRow {
@@ -131,7 +133,7 @@ function TransactionsPageContent() {
     const firestore = useFirestore();
     const { user } = useUser();
     
-    const { data: settingsData, loading: settingsLoading } = useDoc<any>(doc(firestore, 'company', 'info'));
+    const { data: settingsData, loading: settingsLoading } = useDoc<any>(doc(firestore, 'company', 'settings'));
     const { data: coaLedgers, loading: ledgersLoading } = useCollection<CoaLedger>(collection(firestore, 'coa_ledgers'));
     const { data: journalVouchers, loading: vouchersLoading } = useCollection<JournalVoucher>(query(collection(firestore, 'journalVouchers'), orderBy('createdAt', 'desc')));
     const { data: parties, loading: partiesLoading } = useCollection<Party>(collection(firestore, 'parties'));
@@ -211,16 +213,15 @@ function TransactionsPageContent() {
         const ap: BalanceEntry[] = [];
 
         liveBalances.forEach((balance, accountId) => {
-            const account = coaLedgers?.find(l => l.id === accountId);
-            if (!account || Math.abs(balance) < 0.01) return;
+            if (Math.abs(balance) < 0.01) return; // Skip zero balances
 
-            if (balance > 0 && account.nature === 'ASSET') {
+            const account = coaLedgers?.find(l => l.id === accountId);
+            if (!account) return;
+
+            if (account.type === 'RECEIVABLE' && balance > 0) {
                  ar.push({ id: account.id, name: account.name, balance, type: 'Receivable' });
             } 
-            else if (balance > 0 && account.nature === 'LIABILITY') {
-                 ar.push({ id: account.id, name: account.name, balance, type: 'Receivable' });
-            }
-            else if (balance < 0 && account.nature === 'LIABILITY') {
+            else if (account.type === 'PAYABLE' && balance < 0) {
                  ap.push({ id: account.id, name: account.name, balance: Math.abs(balance), type: 'Payable' });
             }
         });
@@ -302,8 +303,9 @@ function TransactionsPageContent() {
                 resetForms();
             });
         } else {
-            const jvRef = doc(collection(firestore, 'journalVouchers'));
-            setDoc(jvRef, { ...journalVoucherData, id: jvRef.id }).then(() => {
+            const newVoucherId = getNextDocNumber('Journal Voucher', settingsData?.prefixes, journalVouchers || []);
+            const jvRef = doc(firestore, 'journalVouchers', newVoucherId);
+            setDoc(jvRef, { ...journalVoucherData, id: newVoucherId, voucherNumber: newVoucherId }).then(() => {
                 toast({ title: 'Journal Voucher Saved' });
                 resetForms();
             });
@@ -373,13 +375,17 @@ function TransactionsPageContent() {
         }
        
         let journalVoucherData: any;
-        const jvRef = doc(collection(firestore, 'journalVouchers'));
-
+        
         try {
+            let voucherType: string;
+            let newVoucherId: string;
+            
             if (type === 'expense') {
                 if (!expenseLedgerId || !paidFromLedgerId || !partyId) return;
+                voucherType = 'Payment Voucher';
+                newVoucherId = getNextDocNumber(voucherType, settingsData?.prefixes, journalVouchers || []);
                 journalVoucherData = {
-                    id: jvRef.id, date, narration, partyId, voucherType: 'Payment Voucher', entries: [
+                    id: newVoucherId, voucherNumber: newVoucherId, date, narration, partyId, voucherType, entries: [
                         { accountId: expenseLedgerId, debit: transAmt, credit: 0 },
                         { accountId: paidFromLedgerId, debit: 0, credit: transAmt },
                     ], createdAt: serverTimestamp()
@@ -390,15 +396,19 @@ function TransactionsPageContent() {
                 const partyLedger = await getOrCreatePartyLedger(selParty);
 
                 if (type === 'receive') {
+                    voucherType = 'Receipt Voucher';
+                    newVoucherId = getNextDocNumber(voucherType, settingsData?.prefixes, journalVouchers || []);
                     journalVoucherData = {
-                       id: jvRef.id, date, narration, voucherType: 'Receipt Voucher', entries: [
+                       id: newVoucherId, voucherNumber: newVoucherId, date, narration, voucherType, entries: [
                             { accountId: bankAccountId, debit: transAmt, credit: 0 },
                             { accountId: partyLedger.id, debit: 0, credit: transAmt },
                         ], createdAt: serverTimestamp()
                     };
                 } else {
+                    voucherType = 'Payment Voucher';
+                    newVoucherId = getNextDocNumber(voucherType, settingsData?.prefixes, journalVouchers || []);
                     journalVoucherData = {
-                       id: jvRef.id, date, narration, voucherType: 'Payment Voucher', entries: [
+                       id: newVoucherId, voucherNumber: newVoucherId, date, narration, voucherType, entries: [
                             { accountId: partyLedger.id, debit: transAmt, credit: 0 },
                             { accountId: bankAccountId, debit: 0, credit: transAmt },
                         ], createdAt: serverTimestamp()
@@ -406,8 +416,9 @@ function TransactionsPageContent() {
                 }
             }
             
+            const jvRef = doc(firestore, 'journalVouchers', newVoucherId);
             await setDoc(jvRef, journalVoucherData);
-            prepareAndPrintVoucher(journalVoucherData.voucherType, jvRef.id);
+            prepareAndPrintVoucher(journalVoucherData.voucherType, newVoucherId);
             resetForms();
 
         } catch (error: any) {
@@ -870,4 +881,6 @@ export default function TransactionsPageWrapper() {
 }
 
     
+    
+
     
