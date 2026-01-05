@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -177,7 +176,16 @@ export default function SalesOrderViewPage() {
                     <div className="max-w-4xl mx-auto p-8" ref={pdfRef}>
                         <header className="flex justify-between items-start border-b pb-4">
                              <div>
-                                {companyInfo?.logo && <Image src={companyInfo.logo} alt="Company Logo" width={175} height={40} className="object-contain" crossOrigin="anonymous" />}
+                                {companyInfo?.logo && (
+                                    <Image 
+                                        src={companyInfo.logo} 
+                                        alt="Company Logo" 
+                                        width={175} 
+                                        height={40} 
+                                        className="object-contain"
+                                        crossOrigin="anonymous"
+                                    />
+                                )}
                             </div>
                             <div className="text-right">
                                 <h1 className="text-2xl font-bold text-primary">{companyInfo?.companyName}</h1>
@@ -332,5 +340,3 @@ export default function SalesOrderViewPage() {
         </>
     );
 }
-
-```
