@@ -83,7 +83,7 @@ const numberToWords = (num: number): string => {
 };
 
 
-function MyLedgerPageContent() {
+function MyAccountPageContent() {
   const searchParams = useSearchParams();
   const firestore = useFirestore();
   const { user: authUser } = useUser();
@@ -106,22 +106,17 @@ function MyLedgerPageContent() {
   const { data: userLedger, loading: ledgerLoading } = useDoc<CoaLedger>(userLedgerRef);
   
   const ninetyDaysAgo = subDays(new Date(), 90);
-  const jvQuery = React.useMemo(() => {
-    return query(
-        collection(firestore, 'journalVouchers'),
-        where('createdAt', '>=', ninetyDaysAgo),
-        orderBy('createdAt', 'desc')
-    );
-  }, [firestore]);
   
-  const salesInvoicesQuery = React.useMemo(() => {
-      if (!targetId) return null;
-      return query(
-          collection(firestore, 'salesInvoices'),
-          where('customerId', '==', targetId),
-          orderBy('date', 'desc')
-      );
-  }, [firestore, targetId]);
+  const jvQuery = userLedgerId ? query(
+      collection(firestore, 'journalVouchers'),
+      where('entries', 'array-contains-any', [{ accountId: userLedgerId }])
+  ) : null;
+  
+  const salesInvoicesQuery = targetId ? query(
+      collection(firestore, 'salesInvoices'),
+      where('customerId', '==', targetId)
+  ) : null;
+
 
   const { data: recentJournalVouchers, loading: vouchersLoading } = useCollection<JournalVoucher>(jvQuery);
   const { data: salesInvoices, loading: invoicesLoading } = useCollection<SalesInvoice>(salesInvoicesQuery);
@@ -501,7 +496,8 @@ export default function MyAccountPage() {
         );
     }
 
-    return <MyLedgerPageContent />;
+    return <MyAccountPageContent />;
 }
+
 
 

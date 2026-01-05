@@ -29,7 +29,7 @@ import { Label } from '@/components/ui/label';
 import { CircleDollarSign, ArrowUpCircle, ArrowDownCircle, Download, Loader2, Check, ChevronsUpDown, ShieldCheck } from 'lucide-react';
 import { format } from 'date-fns';
 import { useFirestore, useDoc, useCollection } from '@/firebase';
-import { collection, query, doc } from 'firebase/firestore';
+import { collection, query, doc, where } from 'firebase/firestore';
 import type { JournalVoucher, CoaLedger, Party, CompanyInfo, SalesInvoice } from '@/lib/types';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
@@ -58,8 +58,12 @@ function PartyStatementPageContent() {
   const { data: companyInfo } = useDoc<CompanyInfo>(doc(firestore, 'company', 'info'));
   const { data: parties, loading: partiesLoading } = useCollection<Party>(collection(firestore, 'parties'));
   const { data: ledgers, loading: ledgersLoading } = useCollection<CoaLedger>(collection(firestore, 'coa_ledgers'));
-  const { data: journalVouchers, loading: vouchersLoading } = useCollection<JournalVoucher>(collection(firestore, 'journalVouchers'));
-  const { data: salesInvoices, loading: invoicesLoading } = useCollection<SalesInvoice>(collection(firestore, 'salesInvoices'));
+  
+  const jvQuery = selectedAccountId ? query(collection(firestore, 'journalVouchers'), where('entries', 'array-contains-any', [{ accountId: selectedAccountId }])) : null;
+  const { data: journalVouchers, loading: vouchersLoading } = useCollection<JournalVoucher>(jvQuery);
+  
+  const salesInvoicesQuery = selectedAccountId ? query(collection(firestore, 'salesInvoices'), where('coaLedgerId', '==', selectedAccountId)) : null;
+  const { data: salesInvoices, loading: invoicesLoading } = useCollection<SalesInvoice>(salesInvoicesQuery);
 
   const pdfRef = React.useRef<HTMLDivElement>(null);
   const [isDownloading, setIsDownloading] = React.useState(false);
@@ -99,18 +103,14 @@ function PartyStatementPageContent() {
 
   const { ledger, kpis } = React.useMemo(() => {
     const defaultKpis = { openingBalance: 0, balance: 0, totalCredit: 0, totalDebit: 0 };
-    if (!selectedAccountId || !journalVouchers || !ledgers) return { ledger: [], kpis: defaultKpis };
+    if (!selectedAccountId || !ledgers) return { ledger: [], kpis: defaultKpis };
     
     const targetLedger = ledgers.find(l => l.id === selectedAccountId);
     if (!targetLedger) return { ledger: [], kpis: defaultKpis };
 
     const openingBalance = targetLedger.openingBalance?.amount || 0;
-    const sortedVouchers = [...journalVouchers].sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
     
-    const relevantInvoices = (salesInvoices || []).filter(inv => inv.coaLedgerId === selectedAccountId);
-    
-    const jvTransactions = sortedVouchers
-      .filter(jv => jv.entries.some(e => e.accountId === selectedAccountId))
+    const jvTransactions = (journalVouchers || [])
       .map(jv => {
         const entry = jv.entries.find(e => e.accountId === selectedAccountId)!;
         return {
@@ -122,16 +122,16 @@ function PartyStatementPageContent() {
         };
       });
 
-    const invoiceTransactions = relevantInvoices.map(inv => ({
+    const invoiceTransactions = (salesInvoices || []).map(inv => ({
         id: inv.id,
         date: inv.date,
         description: `Sales Invoice #${inv.invoiceNumber}`,
-        debit: inv.grandTotal, // Debit the customer
+        debit: inv.grandTotal,
         credit: 0
     }));
 
     const allTransactions = [...jvTransactions, ...invoiceTransactions].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-
+    
     const transactionsBeforePeriod = allTransactions.filter(tx => dateFrom && new Date(tx.date) < new Date(dateFrom));
 
     let periodOpeningBalance = openingBalance;
@@ -173,6 +173,8 @@ function PartyStatementPageContent() {
     if (!element) return;
     setIsDownloading(true);
     
+    await new Promise(resolve => setTimeout(resolve, 100));
+
     const canvas = await html2canvas(element, { 
       scale: 3, 
       useCORS: true,
@@ -436,4 +438,5 @@ export default function PartyStatementPage() {
     if (!isClient) return <div className="flex h-screen items-center justify-center"><Loader2 className="animate-spin" /></div>;
     return <PartyStatementPageContent />;
 }
+
 
