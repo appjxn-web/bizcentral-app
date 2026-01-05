@@ -29,7 +29,7 @@ import {
 
 import { PageHeader } from '@/components/page-header';
 import { cn } from '@/lib/utils';
-import type { Order, OrderStatus, UserProfile, UserRole, WorkOrder, PickupPoint, SalesOrder, RefundRequest, Product, SalesInvoice, SalesInvoiceItem, JournalVoucher, CoaLedger } from '@/lib/types';
+import type { Order, OrderStatus, UserProfile, UserRole, WorkOrder, PickupPoint, SalesOrder, RefundRequest, Product, SalesInvoice, SalesInvoiceItem, JournalVoucher, CoaLedger, Party } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -407,7 +407,7 @@ function OrderRow({ order, onGenerateInvoice, onUpdateStatus, pickupPoints, dyna
   )
 }
 
-function GeneratedInvoiceRow({ invoice, order, onViewInvoice, onUpdateStatus, allProducts, getOrderInHand, journalVouchers, allCoaLedgers, onEdit }: { invoice: SalesInvoice, order?: Order, onViewInvoice: (id: string) => void, onUpdateStatus: (id: string, status: 'Paid' | 'Unpaid') => void, allProducts: Product[] | null, getOrderInHand: (productId: string) => number, allSalesInvoices: SalesInvoice[] | null, journalVouchers: JournalVoucher[] | null, allCoaLedgers: CoaLedger[] | null, onEdit: (invoiceId: string) => void }) {
+function GeneratedInvoiceRow({ invoice, order, onViewInvoice, onUpdateStatus, allProducts, getOrderInHand, allSalesInvoices, journalVouchers, allCoaLedgers, allParties, liveBalances, onEdit }: { invoice: SalesInvoice, order?: Order, onViewInvoice: (id: string) => void, onUpdateStatus: (id: string, status: 'Paid' | 'Unpaid') => void, allProducts: Product[] | null, getOrderInHand: (productId: string) => number, allSalesInvoices: SalesInvoice[] | null, journalVouchers: JournalVoucher[] | null, allCoaLedgers: CoaLedger[] | null, allParties: Party[] | null, liveBalances: Map<string, number>, onEdit: (invoiceId: string) => void }) {
     const [isOpen, setIsOpen] = React.useState(false);
     
     const paymentTransactions = React.useMemo(() => {
@@ -417,6 +417,10 @@ function GeneratedInvoiceRow({ invoice, order, onViewInvoice, onUpdateStatus, al
             jv.narration.includes(invoice.orderNumber)
         );
     }, [journalVouchers, invoice.orderNumber]);
+
+    const party = allParties?.find(p => p.id === invoice.customerId);
+    const partyBalance = party?.coaLedgerId ? liveBalances.get(party.coaLedgerId) : 0;
+    const balanceText = partyBalance > 0 ? `${formatIndianCurrency(partyBalance)} Dr` : `${formatIndianCurrency(Math.abs(partyBalance))} Cr`;
 
 
     return (
@@ -440,6 +444,9 @@ function GeneratedInvoiceRow({ invoice, order, onViewInvoice, onUpdateStatus, al
                         </Badge>
                     </TableCell>
                     <TableCell className="text-right font-mono">{formatIndianCurrency(invoice.grandTotal)}</TableCell>
+                     <TableCell className={cn("text-right font-mono", (partyBalance || 0) > 0 ? "text-red-600" : "text-green-600")}>
+                        {balanceText}
+                    </TableCell>
                     <TableCell className="text-right">
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4"/></Button></DropdownMenuTrigger>
@@ -461,7 +468,7 @@ function GeneratedInvoiceRow({ invoice, order, onViewInvoice, onUpdateStatus, al
                 </TableRow>
                 <CollapsibleContent asChild>
                   <TableRow>
-                      <TableCell colSpan={7} className="p-0">
+                      <TableCell colSpan={8} className="p-0">
                           <div className="p-6 space-y-6 bg-muted/50">
                               <div className="space-y-2">
                                 {invoice.items.map((item, index) => {
@@ -550,6 +557,7 @@ function InvoicePage() {
     const { data: allProducts, loading: productsLoading } = useCollection<Product>(collection(firestore, 'products'));
     const { data: journalVouchers } = useCollection<JournalVoucher>(collection(firestore, 'journalVouchers'));
     const { data: allCoaLedgers } = useCollection<CoaLedger>(collection(firestore, 'coa_ledgers'));
+    const { data: allParties } = useCollection<Party>(collection(firestore, 'parties'));
 
     const getDynamicOrderStatus = (order: Order): OrderStatus => {
         if (order.status !== 'Ordered') {
@@ -587,6 +595,30 @@ function InvoicePage() {
 
         return { totalBilled, totalPaid, totalOutstanding };
     }, [allSalesInvoices]);
+    
+    const liveBalances = React.useMemo(() => {
+        const balances = new Map<string, number>();
+        if (!allCoaLedgers || !journalVouchers) return balances;
+
+        allCoaLedgers.forEach(acc => {
+            const openingBal = acc.openingBalance?.amount || 0;
+            const balance = acc.openingBalance?.drCr === 'CR' ? -openingBal : openingBal;
+            balances.set(acc.id, balance);
+        });
+
+        const sortedVouchers = [...journalVouchers].sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+        sortedVouchers.forEach(jv => {
+            jv.entries.forEach(entry => {
+                if (balances.has(entry.accountId)) {
+                    const currentBal = balances.get(entry.accountId)!;
+                    const newBal = currentBal + (entry.debit || 0) - (entry.credit || 0);
+                    balances.set(entry.accountId, newBal);
+                }
+            });
+        });
+        return balances;
+    }, [allCoaLedgers, journalVouchers]);
+
 
     const handleGenerateInvoice = (order: Order) => {
         const dataToPass = {
@@ -623,11 +655,7 @@ function InvoicePage() {
     }
 
     const onViewInvoice = (invoiceId: string) => {
-        const invoiceData = allSalesInvoices?.find(inv => inv.invoiceNumber === invoiceId);
-        if (invoiceData) {
-            localStorage.setItem('invoiceToView', JSON.stringify(invoiceData));
-            router.push(`/dashboard/sales/invoice/view?id=${invoiceId}`);
-        }
+        router.push(`/dashboard/sales/invoice/view?id=${invoiceId}`);
     };
 
     const handleEditOrder = (orderId: string) => {
@@ -739,12 +767,13 @@ function InvoicePage() {
                 <TableHead>Date</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Amount</TableHead>
+                <TableHead className="text-right">Closing Balance</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
               {invoicesLoading ? (
                  <TableBody>
-                    <TableRow><TableCell colSpan={7} className="h-24 text-center">Loading invoices...</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={8} className="h-24 text-center">Loading invoices...</TableCell></TableRow>
                  </TableBody>
               ) : allSalesInvoices && allSalesInvoices.length > 0 ? (
                 allSalesInvoices.map((invoice) => {
@@ -754,20 +783,22 @@ function InvoicePage() {
                       key={invoice.id} 
                       invoice={invoice} 
                       order={correspondingOrder} 
-                      onViewInvoice={(id) => onViewInvoice(id)} 
+                      onViewInvoice={onViewInvoice} 
                       onUpdateStatus={handleInvoicePaymentStatus} 
-                      allProducts={allProducts} 
+                      allProducts={allProducts || []} 
                       getOrderInHand={getOrderInHand} 
                       allSalesInvoices={allSalesInvoices || []}
                       journalVouchers={journalVouchers || []}
                       allCoaLedgers={allCoaLedgers || []}
+                      allParties={allParties || []}
+                      liveBalances={liveBalances}
                       onEdit={handleEditInvoice}
                     />
                   )
                 })
               ) : (
                  <TableBody>
-                    <TableRow><TableCell colSpan={7} className="h-24 text-center">No invoices created yet.</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={8} className="h-24 text-center">No invoices created yet.</TableCell></TableRow>
                  </TableBody>
               )}
           </Table>
