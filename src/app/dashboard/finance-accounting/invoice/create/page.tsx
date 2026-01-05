@@ -165,9 +165,9 @@ export default function CreateInvoicePage() {
                 unit: product?.unit || 'pcs',
                 rate: item.price || item.rate || 0,
                 gstRate: item.gstRate || 18,
-                discount: 0,
                 amount: (item.price || item.rate || 0) * (item.quantity || item.qty || 1),
                 category: item.category,
+                discount: 0,
             };
         }));
         setOverallDiscount(data.overallDiscount || 0);
