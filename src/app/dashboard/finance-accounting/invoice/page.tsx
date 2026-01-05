@@ -22,13 +22,12 @@ import {
   DollarSign,
   RefreshCcw,
   Receipt,
-  CircleDollarSign,
   Eye,
 } from 'lucide-react';
 
 import { PageHeader } from '@/components/page-header';
 import { cn } from '@/lib/utils';
-import type { Order, OrderStatus, UserProfile, UserRole, WorkOrder, PickupPoint, SalesOrder, RefundRequest, Product, ServiceInvoice, SalesInvoiceItem } from '@/lib/types';
+import type { Order, OrderStatus, UserProfile, UserRole, WorkOrder, PickupPoint, SalesOrder, RefundRequest, Product, SalesInvoice, SalesInvoiceItem } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import {
   Card,
