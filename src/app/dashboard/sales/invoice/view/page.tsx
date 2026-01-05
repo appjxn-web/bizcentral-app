@@ -57,7 +57,7 @@ const numberToWords = (num: number): string => {
             n %= 100;
         }
         if (n > 19) {
-            str += b[Math.floor(n / 20)] + ' ' + a[n % 10];
+            str += b[Math.floor(n / 20)] + (a[n % 10] ? ' ' + a[n % 10] : '');
         } else if (n > 0) {
             str += a[n];
         }
@@ -66,12 +66,12 @@ const numberToWords = (num: number): string => {
 
     let words = numToWords(integerPart);
     if (!words) words = "zero";
-    let finalString = words.trim() + ' rupees';
+    let finalString = words.charAt(0).toUpperCase() + words.slice(1) + ' rupees';
     if (decimalPart > 0) {
         finalString += ' and ' + numToWords(decimalPart) + ' paise';
     }
     
-    return finalString.charAt(0).toUpperCase() + finalString.slice(1) + ' only.';
+    return finalString + ' only.';
 };
 
 const formatIndianCurrency = (num: number) => {
@@ -79,7 +79,6 @@ const formatIndianCurrency = (num: number) => {
     style: 'currency',
     currency: 'INR',
     minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
   }).format(num || 0);
 };
 
@@ -199,7 +198,7 @@ export default function InvoiceViewPage() {
         );
     }
 
-    const { grandTotal } = calculations;
+    const { grandTotal, subtotal, discount, cgst, sgst, igst, items, totalDiscountAmount, taxableAmount } = calculations;
 
     return (
         <>
@@ -213,7 +212,7 @@ export default function InvoiceViewPage() {
                 <CardContent>
                     <div className="max-w-4xl mx-auto p-8" ref={pdfRef}>
                         <header className="flex justify-between items-start border-b pb-4">
-                            <div className="w-[175px]">
+                            <div>
                                 {companyInfo?.logo && (
                                     <Image 
                                         src={companyInfo.logo} 
@@ -234,7 +233,7 @@ export default function InvoiceViewPage() {
                         </header>
 
                         <section className="my-6">
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="flex justify-between">
                                 <div>
                                     <h3 className="font-semibold text-sm text-muted-foreground">BILLED FROM:</h3>
                                     <p className="font-bold">{companyInfo?.companyName}</p>
@@ -276,7 +275,7 @@ export default function InvoiceViewPage() {
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {calculations.items.map((item: any, index: number) => (
+                                    {items.map((item: any, index: number) => (
                                         <TableRow key={`${item.productId}-${index}`}>
                                             <TableCell>{index + 1}</TableCell>
                                             <TableCell className="font-medium">{item.name}</TableCell>
@@ -291,38 +290,46 @@ export default function InvoiceViewPage() {
                                 <TableFooter>
                                     <TableRow>
                                         <TableCell colSpan={6} className="text-right font-semibold">Subtotal</TableCell>
-                                        <TableCell className="text-right font-semibold">{formatIndianCurrency(calculations.subtotal)}</TableCell>
+                                        <TableCell className="text-right font-semibold">{formatIndianCurrency(subtotal)}</TableCell>
                                     </TableRow>
-                                     {calculations.totalDiscountAmount > 0 && (
+                                     {totalDiscountAmount > 0 && (
                                         <TableRow>
                                             <TableCell colSpan={6} className="text-right text-green-600">Discount</TableCell>
-                                            <TableCell className="text-right text-green-600">- {formatIndianCurrency(calculations.totalDiscountAmount)}</TableCell>
+                                            <TableCell className="text-right text-green-600">- {formatIndianCurrency(totalDiscountAmount)}</TableCell>
                                         </TableRow>
                                     )}
                                     <TableRow>
                                         <TableCell colSpan={6} className="text-right font-semibold">Taxable Value</TableCell>
-                                        <TableCell className="text-right font-semibold">{formatIndianCurrency(calculations.taxableAmount)}</TableCell>
+                                        <TableCell className="text-right font-semibold">{formatIndianCurrency(taxableAmount)}</TableCell>
                                     </TableRow>
                                     {isInterstate ? (
                                         <TableRow>
                                             <TableCell colSpan={6} className="text-right">IGST</TableCell>
-                                            <TableCell className="text-right">{formatIndianCurrency(calculations.igst)}</TableCell>
+                                            <TableCell className="text-right">{formatIndianCurrency(igst || 0)}</TableCell>
                                         </TableRow>
                                     ) : (
                                         <>
                                             <TableRow>
                                                 <TableCell colSpan={6} className="text-right">CGST</TableCell>
-                                                <TableCell className="text-right">{formatIndianCurrency(calculations.cgst)}</TableCell>
+                                                <TableCell className="text-right">{formatIndianCurrency(cgst)}</TableCell>
                                             </TableRow>
                                             <TableRow>
                                                 <TableCell colSpan={6} className="text-right">SGST</TableCell>
-                                                <TableCell className="text-right">{formatIndianCurrency(calculations.sgst)}</TableCell>
+                                                <TableCell className="text-right">{formatIndianCurrency(sgst)}</TableCell>
                                             </TableRow>
                                         </>
                                     )}
                                      <TableRow className="text-base bg-muted">
                                         <TableCell colSpan={6} className="text-right font-bold">Grand Total</TableCell>
                                         <TableCell className="text-right font-bold">{formatIndianCurrency(grandTotal)}</TableCell>
+                                    </TableRow>
+                                     <TableRow>
+                                        <TableCell colSpan={6} className="text-right font-semibold">Amount Paid</TableCell>
+                                        <TableCell className="text-right font-semibold text-green-600">{formatIndianCurrency(invoiceData.amountPaid || 0)}</TableCell>
+                                    </TableRow>
+                                     <TableRow className="text-base">
+                                        <TableCell colSpan={6} className="text-right font-bold">Balance Due</TableCell>
+                                        <TableCell className="text-right font-bold text-red-600">{formatIndianCurrency(invoiceData.balanceDue)}</TableCell>
                                     </TableRow>
                                 </TableFooter>
                             </Table>
