@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -50,7 +49,7 @@ const numberToWords = (num: number): string => {
             n %= 100;
         }
         if (n > 19) {
-            str += b[Math.floor(n / 10)] + ' ' + a[n % 10];
+            str += b[Math.floor(n / 20)] + ' ' + a[n % 10];
         } else if (n > 0) {
             str += a[n];
         }
@@ -82,8 +81,9 @@ export default function InvoiceViewPage() {
     const [isDownloading, setIsDownloading] = React.useState(false);
     
     const [invoiceData, setInvoiceData] = React.useState<any>(null);
+    const firestore = useFirestore();
 
-    const { data: companyInfo, loading: companyInfoLoading } = useDoc<CompanyInfo>(doc(useFirestore(), 'company', 'info'));
+    const { data: companyInfo, loading: companyInfoLoading } = useDoc<CompanyInfo>(doc(firestore, 'company', 'info'));
     
     React.useEffect(() => {
         const data = localStorage.getItem('invoiceToView');
@@ -96,17 +96,17 @@ export default function InvoiceViewPage() {
     }, [invoiceId]);
 
     const { data: customerData, loading: customerLoading } = useDoc<Party>(
-        invoiceData?.customerId ? doc(useFirestore(), 'parties', invoiceData.customerId) : null
+        invoiceData?.customerId ? doc(firestore, 'parties', invoiceData.customerId) : null
     );
     
     const bankLedgerQuery = React.useMemo(() => {
-        if (!companyInfo?.primaryUpiId || !useFirestore) return null;
+        if (!companyInfo?.primaryUpiId || !firestore) return null;
         return query(
-            collection(useFirestore(), 'coa_ledgers'),
+            collection(firestore, 'coa_ledgers'),
             where('bank.upiId', '==', companyInfo.primaryUpiId),
             limit(1)
         );
-    }, [companyInfo, useFirestore]);
+    }, [companyInfo, firestore]);
 
     const { data: bankLedgerResult, loading: bankLedgerLoading } = useCollection<CoaLedger>(bankLedgerQuery);
     const bankDetails = bankLedgerResult?.[0]?.bank;
@@ -267,7 +267,7 @@ export default function InvoiceViewPage() {
                                     </TableRow>
                                     {calculations.totalDiscountAmount > 0 && (
                                         <TableRow>
-                                            <TableCell colSpan={4} className="text-right text-green-600">Discount</TableCell>
+                                            <TableCell colSpan={4} className="text-right text-green-600">Discount ({invoiceData.overallDiscount}%)</TableCell>
                                             <TableCell className="text-right text-green-600">- {formatIndianCurrency(calculations.totalDiscountAmount)}</TableCell>
                                         </TableRow>
                                     )}
@@ -300,7 +300,7 @@ export default function InvoiceViewPage() {
                             </Table>
                         </section>
                         
-                         <div className="text-right my-2 text-sm font-semibold">
+                         <div className="text-right my-2 text-sm font-semibold italic">
                             Amount in words: {numberToWords(grandTotal)}
                         </div>
 
