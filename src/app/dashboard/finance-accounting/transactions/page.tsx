@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -34,7 +33,7 @@ import { PlusCircle, FileUp, Camera, Loader2, Trash2, MoreHorizontal, Search, Ch
 import { format } from 'date-fns';
 import { useFirestore, useCollection, useUser, useDoc } from '@/firebase';
 import { collection, orderBy, query, addDoc, serverTimestamp, doc, updateDoc, deleteDoc, setDoc } from 'firebase/firestore';
-import type { CoaLedger, JournalVoucher, Party, CoaNature, PartyType } from '@/lib/types';
+import type { CoaLedger, JournalVoucher, Party, CoaNature, PartyType, UserProfile } from '@/lib/types';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose, DialogTrigger } from '@/components/ui/dialog';
 import {
@@ -95,6 +94,8 @@ const numberToWords = (num: number): string => {
     const [integerPart, decimalPart] = number.toString().split('.');
     
     let words = '';
+    // This simplified function only handles up to thousands.
+    // A production-ready function would need to handle lakhs, crores, etc.
     if (integerPart.length > 3) {
       words += ones[parseInt(integerPart.slice(0, -3), 10)] + ' thousand ';
     }
@@ -209,24 +210,29 @@ function TransactionsPageContent() {
 
 
     const { receivables, payables } = React.useMemo(() => {
-        const ar: BalanceEntry[] = [];
-        const ap: BalanceEntry[] = [];
-
-        liveBalances.forEach((balance, accountId) => {
-            if (Math.abs(balance) < 0.01) return; // Skip zero balances
-
-            const account = coaLedgers?.find(l => l.id === accountId);
-            if (!account) return;
-
-            if (account.type === 'RECEIVABLE' && balance > 0) {
-                 ar.push({ id: account.id, name: account.name, balance, type: 'Receivable' });
-            } 
-            else if (account.type === 'PAYABLE' && balance < 0) {
-                 ap.push({ id: account.id, name: account.name, balance: Math.abs(balance), type: 'Payable' });
-            }
-        });
+      const ar: BalanceEntry[] = [];
+      const ap: BalanceEntry[] = [];
+  
+      if (!parties || !coaLedgers || liveBalances.size === 0) {
         return { receivables: ar, payables: ap };
-    }, [coaLedgers, liveBalances]);
+      }
+  
+      parties.forEach(party => {
+        if (!party.coaLedgerId) return;
+  
+        const balance = liveBalances.get(party.coaLedgerId) || 0;
+  
+        if (Math.abs(balance) < 0.01) return;
+  
+        if (party.type === 'Customer' && balance > 0) {
+          ar.push({ id: party.id, name: party.name, balance: balance, type: 'Receivable' });
+        } else if ((party.type === 'Supplier' || party.type === 'Vendor') && balance < 0) {
+          ap.push({ id: party.id, name: party.name, balance: Math.abs(balance), type: 'Payable' });
+        }
+      });
+  
+      return { receivables: ar, payables: ap };
+    }, [parties, coaLedgers, liveBalances]);
 
 
     const resetForms = () => {
@@ -363,6 +369,7 @@ function TransactionsPageContent() {
         const newLedgerRef = await addDoc(collection(firestore, 'coa_ledgers'), newLedgerData);
         await updateDoc(doc(firestore, 'parties', party.id), { coaLedgerId: newLedgerRef.id });
 
+        // This is a simplification. In a real app, you'd refetch or get the created doc.
         return { id: newLedgerRef.id, ...newLedgerData } as CoaLedger;
     };
 
@@ -767,6 +774,7 @@ function TransactionsPageContent() {
                                                             setDeletingJv(jv);
                                                         }}
                                                         className="text-red-500 focus:text-red-600"
+                                                        onClick={(e) => e.stopPropagation()}
                                                         >
                                                         Delete
                                                         </DropdownMenuItem>
@@ -881,6 +889,8 @@ export default function TransactionsPageWrapper() {
 }
 
     
+    
+
     
 
     
