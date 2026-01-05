@@ -1,4 +1,3 @@
-
 'use server';
 /**
  * @fileoverview Cloud Functions for Firebase.
