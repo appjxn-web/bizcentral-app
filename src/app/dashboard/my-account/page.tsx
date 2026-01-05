@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -60,6 +59,8 @@ const numberToWords = (num: number): string => {
     const [integerPart, decimalPart] = number.toString().split('.');
     
     let words = '';
+    // This simplified function only handles up to thousands.
+    // A production-ready function would need to handle lakhs, crores, etc.
     if (integerPart.length > 3) {
       words += a[parseInt(integerPart.slice(0, -3), 10)] + ' thousand ';
     }
@@ -134,6 +135,7 @@ function MyAccountPageContent() {
         return {
           id: jv.id,
           date: jv.date,
+          createdAt: jv.createdAt,
           description: jv.narration,
           debit: entry.debit || 0,
           credit: entry.credit || 0,
@@ -143,12 +145,17 @@ function MyAccountPageContent() {
     const invoiceTransactions = (salesInvoices || []).map(inv => ({
         id: inv.id,
         date: inv.date,
+        createdAt: new Timestamp(new Date(inv.date).getTime() / 1000, 0), // Fallback createdAt
         description: `Sales Invoice #${inv.invoiceNumber}`,
         debit: inv.grandTotal,
         credit: 0
     }));
 
-    const allTransactions = [...jvTransactions, ...invoiceTransactions].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    const allTransactions = [...jvTransactions, ...invoiceTransactions].sort((a, b) => {
+        const dateA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.date);
+        const dateB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.date);
+        return dateA.getTime() - dateB.getTime();
+    });
     
     let runningBalance = openingBalance;
     const processedLedger = allTransactions.map(tx => {
@@ -492,6 +499,4 @@ export default function MyAccountPage() {
     return <MyAccountPageContent />;
 }
 
-
-
-
+    

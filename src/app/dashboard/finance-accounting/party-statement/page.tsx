@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -29,7 +28,7 @@ import { Label } from '@/components/ui/label';
 import { CircleDollarSign, ArrowUpCircle, ArrowDownCircle, Download, Loader2, Check, ChevronsUpDown, ShieldCheck } from 'lucide-react';
 import { format } from 'date-fns';
 import { useFirestore, useDoc, useCollection } from '@/firebase';
-import { collection, query, doc, where } from 'firebase/firestore';
+import { collection, query, doc, where, Timestamp } from 'firebase/firestore';
 import type { JournalVoucher, CoaLedger, Party, CompanyInfo, SalesInvoice } from '@/lib/types';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
@@ -44,6 +43,41 @@ const formatIndianCurrency = (num: number) => {
     minimumFractionDigits: 2,
   }).format(num || 0);
 };
+
+const numberToWords = (num: number): string => {
+    const a = ['', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen'];
+    const b = ['', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety'];
+    const number = parseFloat(num.toFixed(2));
+    if (isNaN(number)) return '';
+    if (number === 0) return 'zero';
+
+    const [integerPart, decimalPart] = number.toString().split('.');
+    
+    let words = '';
+    // This simplified function only handles up to thousands.
+    // A production-ready function would need to handle lakhs, crores, etc.
+    if (integerPart.length > 3) {
+      words += a[parseInt(integerPart.slice(0, -3), 10)] + ' thousand ';
+    }
+    const lastThree = parseInt(integerPart.slice(-3), 10);
+    if (lastThree >= 100) {
+      words += a[Math.floor(lastThree / 100)] + ' hundred ';
+    }
+    const lastTwo = lastThree % 100;
+    if (lastTwo >= 20) {
+      words += b[Math.floor(lastTwo / 20)] + ' ' + a[lastTwo % 10];
+    } else if (lastTwo > 0) {
+      words += a[lastTwo];
+    }
+
+    let finalString = words.trim() + ' rupees';
+    if (decimalPart && parseInt(decimalPart) > 0) {
+        finalString += ' and ' + (b[Math.floor(parseInt(decimalPart) / 10)] + ' ' + a[parseInt(decimalPart) % 10]).trim() + ' paise';
+    }
+    
+    return finalString.charAt(0).toUpperCase() + finalString.slice(1) + ' only.';
+};
+
 
 function PartyStatementPageContent() {
   const searchParams = useSearchParams();
@@ -114,6 +148,7 @@ function PartyStatementPageContent() {
         return {
           id: jv.id,
           date: jv.date,
+          createdAt: jv.createdAt,
           description: jv.narration,
           debit: entry.debit || 0,
           credit: entry.credit || 0,
@@ -124,12 +159,17 @@ function PartyStatementPageContent() {
     const invoiceTransactions = relevantInvoices.map(inv => ({
         id: inv.id,
         date: inv.date,
+        createdAt: new Timestamp(new Date(inv.date).getTime() / 1000, 0), // Fallback createdAt
         description: `Sales Invoice #${inv.invoiceNumber}`,
         debit: inv.grandTotal,
         credit: 0
     }));
 
-    const allTransactions = [...jvTransactions, ...invoiceTransactions].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    const allTransactions = [...jvTransactions, ...invoiceTransactions].sort((a, b) => {
+        const dateA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.date);
+        const dateB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.date);
+        return dateA.getTime() - dateB.getTime();
+    });
     
     const transactionsBeforePeriod = allTransactions.filter(tx => dateFrom && new Date(tx.date) < new Date(dateFrom));
 
@@ -438,5 +478,4 @@ export default function PartyStatementPage() {
     return <PartyStatementPageContent />;
 }
 
-
-
+    
