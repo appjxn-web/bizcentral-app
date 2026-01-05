@@ -404,7 +404,7 @@ function OrderRow({ order, onGenerateInvoice, onUpdateStatus, pickupPoints, dyna
   )
 }
 
-function GeneratedInvoiceRow({ invoice, onView, onUpdateStatus }: { invoice: SalesInvoice, onView: (id: string) => void, onUpdateStatus: (id: string, status: 'Paid' | 'Unpaid') => void }) {
+function GeneratedInvoiceRow({ invoice, order, onViewInvoice, onUpdateStatus }: { invoice: SalesInvoice, order?: Order, onViewInvoice: (id: string) => void, onUpdateStatus: (id: string, status: 'Paid' | 'Unpaid') => void }) {
     const [isOpen, setIsOpen] = React.useState(false);
 
     return (
@@ -432,7 +432,7 @@ function GeneratedInvoiceRow({ invoice, onView, onUpdateStatus }: { invoice: Sal
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4"/></Button></DropdownMenuTrigger>
                             <DropdownMenuContent>
-                                <DropdownMenuItem onClick={() => onView(invoice.invoiceNumber)}>
+                                <DropdownMenuItem onClick={() => onViewInvoice(invoice.invoiceNumber)}>
                                     <Eye className="mr-2 h-4 w-4"/> View
                                 </DropdownMenuItem>
                                 {invoice.status !== 'Paid' && (
@@ -447,30 +447,45 @@ function GeneratedInvoiceRow({ invoice, onView, onUpdateStatus }: { invoice: Sal
                 <CollapsibleContent asChild>
                     <TableRow>
                         <TableCell colSpan={7} className="p-0">
-                            <div className="p-6 bg-muted/50 space-y-4">
-                                 <h4 className="font-semibold text-sm mb-2">Invoice Items:</h4>
-                                <Table>
-                                    <TableHeader>
-                                        <TableRow>
-                                            <TableHead>Product</TableHead>
-                                            <TableHead className="text-right">Qty</TableHead>
-                                            <TableHead className="text-right">Rate</TableHead>
-                                            <TableHead className="text-right">Amount</TableHead>
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {invoice.items.map((item, index) => (
-                                            <TableRow key={index}>
-                                                <TableCell>{item.name}</TableCell>
-                                                <TableCell className="text-right">{item.quantity}</TableCell>
-                                                <TableCell className="text-right">{formatIndianCurrency(item.rate)}</TableCell>
-                                                <TableCell className="text-right">{formatIndianCurrency(item.rate * item.quantity)}</TableCell>
-                                            </TableRow>
-                                        ))}
-                                    </TableBody>
-                                </Table>
-                                <div className="flex justify-end pt-4">
-                                    <div className="w-full max-w-sm space-y-2">
+                             <div className="grid md:grid-cols-2 gap-6 p-6 bg-muted/50">
+                                <div className="space-y-4">
+                                  <h4 className="font-semibold text-sm mb-2">Invoice Items:</h4>
+                                  <Table>
+                                      <TableHeader>
+                                          <TableRow>
+                                              <TableHead>Product</TableHead>
+                                              <TableHead className="text-right">Qty</TableHead>
+                                              <TableHead className="text-right">Rate</TableHead>
+                                              <TableHead className="text-right">Amount</TableHead>
+                                          </TableRow>
+                                      </TableHeader>
+                                      <TableBody>
+                                          {invoice.items.map((item, index) => (
+                                              <TableRow key={index}>
+                                                  <TableCell>{item.name}</TableCell>
+                                                  <TableCell className="text-right">{item.quantity}</TableCell>
+                                                  <TableCell className="text-right">{formatIndianCurrency(item.rate)}</TableCell>
+                                                  <TableCell className="text-right">{formatIndianCurrency(item.rate * item.quantity)}</TableCell>
+                                              </TableRow>
+                                          ))}
+                                      </TableBody>
+                                  </Table>
+                                </div>
+                                <div className="space-y-4">
+                                    <div className="flex justify-between items-center">
+                                      <h4 className="font-semibold text-sm">Summary</h4>
+                                      {order && (
+                                        <div className="p-3 rounded-md border bg-background">
+                                          <h5 className="font-semibold text-xs mb-2">Pickup From:</h5>
+                                          {order.assignedToUid ? (
+                                            <PartnerPickupDetails userId={order.assignedToUid} />
+                                          ) : (
+                                            <CompanyPickupDetails />
+                                          )}
+                                        </div>
+                                      )}
+                                    </div>
+                                    <div className="w-full space-y-1 text-sm">
                                         <div className="flex justify-between"><span>Subtotal</span><span className="font-mono">{formatIndianCurrency(invoice.subtotal)}</span></div>
                                         {invoice.discount > 0 && <div className="flex justify-between text-green-600"><span>Discount</span><span className="font-mono">- {formatIndianCurrency(invoice.discount)}</span></div>}
                                         <Separator/>
@@ -688,9 +703,12 @@ function InvoicePage() {
                     <TableRow><TableCell colSpan={7} className="h-24 text-center">Loading invoices...</TableCell></TableRow>
                  </TableBody>
               ) : allSalesInvoices && allSalesInvoices.length > 0 ? (
-                allSalesInvoices.map((invoice) => (
-                  <GeneratedInvoiceRow key={invoice.id} invoice={invoice} onView={(id) => handleViewInvoice(id)} onUpdateStatus={handleInvoicePaymentStatus} />
-                ))
+                allSalesInvoices.map((invoice) => {
+                  const correspondingOrder = orders?.find(o => o.orderNumber === invoice.orderNumber);
+                  return (
+                    <GeneratedInvoiceRow key={invoice.id} invoice={invoice} order={correspondingOrder} onViewInvoice={(id) => handleViewInvoice(id)} onUpdateStatus={handleInvoicePaymentStatus} />
+                  )
+                })
               ) : (
                  <TableBody>
                     <TableRow><TableCell colSpan={7} className="h-24 text-center">No invoices created yet.</TableCell></TableRow>
