@@ -42,7 +42,7 @@ const createLedger = (
     type: 'OTHER', // Default type
     posting: {
         isPosting: true,
-        normalBalance: nature === 'ASSET' || nature === 'EXPENSE' ? 'DEBIT' : 'CREDIT',
+        normalBalance: nature === 'ASSET' || nature === 'EXPENSE' ? 'DR' : 'CR',
         isSystem: false,
         allowManualJournal: true,
     },
@@ -170,7 +170,6 @@ export const defaultCoaLedgers: Omit<CoaLedger, 'createdAt' | 'updatedAt'>[] = [
   createLedger('L-2.1.3-1', 'Outstanding Expenses', '2.1.3', 'LIABILITY'),
   createLedger('L-2.1.3-2', 'Salary Payable', '2.1.3', 'LIABILITY'),
   createLedger('L-2.1.3-3', 'Interest Payable', '2.1.3', 'LIABILITY'),
-  createLedger('L-2.1.3-5', 'Unearned Revenue', '2.1.3', 'LIABILITY'),
   
   createLedger('L-2.2.1-1', 'Term Loan – Bank', '2.2.1', 'LIABILITY'),
   createLedger('L-2.2.1-2', 'Vehicle Loan', '2.2.1', 'LIABILITY'),
@@ -261,5 +260,3 @@ export const defaultCoaLedgers: Omit<CoaLedger, 'createdAt' | 'updatedAt'>[] = [
   createLedger('SYS-4', 'Exchange Rate Gain / Loss', '8', 'EXPENSE'),
   createLedger('SYS-5', 'Suspense Account', '8', 'ASSET'),
 ];
-
-    
