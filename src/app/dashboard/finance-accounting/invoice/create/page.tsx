@@ -55,7 +55,7 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
-import { useRole } from '@/app/dashboard/_components/role-provider';
+import { useRole } from '../../_components/role-provider';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useFirestore, useCollection, useUser, useDoc } from '@/firebase';
 import { collection, doc, addDoc, serverTimestamp, setDoc, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
@@ -125,7 +125,7 @@ export default function CreateInvoicePage() {
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = React.useState(false);
   const [salesOrderNumber, setSalesOrderNumber] = React.useState('');
   
-  const { data: allProducts, loading: productsLoading } = useCollection<Product>(query(collection(firestore, 'products'), where('saleable', '==', true)));
+  const { data: allProducts, loading: productsLoading } = useCollection<Product>(query(collection(firestore, 'products')));
 
   const [paymentDate, setPaymentDate] = React.useState(format(new Date(), 'yyyy-MM-dd'));
   const [paymentMode, setPaymentMode] = React.useState('UPI');
@@ -151,31 +151,36 @@ export default function CreateInvoicePage() {
 
   React.useEffect(() => {
     const rawData = localStorage.getItem('invoiceDataToCreate');
-    if (rawData && allProducts) {
+    if (rawData && allProducts && allProducts.length > 0) {
         const data = JSON.parse(rawData);
         setSelectedPartyId(data.customerId);
-        setItems(data.items.map((item: any, i: number) => {
-            const product = allProducts?.find(p => p.id === item.productId);
+
+        const mappedItems = data.items.map((item: any, i: number) => {
+            const product = allProducts.find(p => p.id === item.productId);
             const rate = item.price || item.rate || 0;
             const quantity = item.quantity || item.qty || 1;
+            
             return {
                 id: `item-${Date.now()}-${i}`,
                 productId: item.productId,
-                name: item.name,
-                hsn: product?.hsn || '',
+                name: item.name || product?.name,
+                hsn: product?.hsn || item.hsn || '',
                 quantity: quantity,
-                unit: product?.unit || 'pcs',
+                unit: product?.unit || item.unit || 'pcs',
                 rate: rate,
-                gstRate: item.gstRate || 18,
+                gstRate: item.gstRate || (product as any)?.gstRate || 18,
                 amount: rate * quantity,
                 category: product?.category || item.category,
                 discount: 0,
             };
-        }));
+        });
+
+        setItems(mappedItems);
         setOverallDiscount(data.overallDiscount || 0);
         setSalesOrderNumber(data.orderNumber || data.id);
         setBookingAmount(data.paymentReceived || 0);
         setPaymentDetails(data.paymentDetails || '');
+        
         localStorage.removeItem('invoiceDataToCreate');
         toast({ title: "Pre-filled from Sales Order" });
     }
