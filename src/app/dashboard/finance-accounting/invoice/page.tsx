@@ -467,7 +467,7 @@ function GeneratedInvoiceRow({ invoice, order, onViewInvoice, onUpdateStatus, al
                                                     </div>
                                                 </div>
                                             </div>
-                                            <p className="font-medium">{formatIndianCurrency(item.price * item.quantity)}</p>
+                                            <p className="font-medium">{formatIndianCurrency((item.price || 0) * item.quantity)}</p>
                                         </div>
                                     )
                                 })}
@@ -704,6 +704,7 @@ function InvoicePage() {
                 <TableHead>Invoice #</TableHead>
                 <TableHead>Customer</TableHead>
                 <TableHead>Date</TableHead>
+                <TableHead>Exp. Delivery Date</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Amount</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
@@ -711,7 +712,7 @@ function InvoicePage() {
             </TableHeader>
               {invoicesLoading ? (
                  <TableBody>
-                    <TableRow><TableCell colSpan={7} className="h-24 text-center">Loading invoices...</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={8} className="h-24 text-center">Loading invoices...</TableCell></TableRow>
                  </TableBody>
               ) : allSalesInvoices && allSalesInvoices.length > 0 ? (
                 allSalesInvoices.map((invoice) => {
@@ -722,7 +723,7 @@ function InvoicePage() {
                 })
               ) : (
                  <TableBody>
-                    <TableRow><TableCell colSpan={7} className="h-24 text-center">No invoices created yet.</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={8} className="h-24 text-center">No invoices created yet.</TableCell></TableRow>
                  </TableBody>
               )}
           </Table>
