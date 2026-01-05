@@ -35,7 +35,8 @@ const db = getFirestore();
 const findOrCreateSpecificCustomerLedger = async (transaction: admin.firestore.Transaction, order: Order | SalesInvoice): Promise<string> => {
     const userId = 'userId' in order ? order.userId : order.customerId;
     const customerName = order.customerName;
-    const customerEmail = 'customerEmail' in order ? order.customerEmail : '';
+    const customerEmail = 'customerEmail' in order ? ('customerEmail' in order ? order.customerEmail : '') : '';
+
 
     const partyRef = db.collection('parties').doc(userId);
     const partySnap = await transaction.get(partyRef);
@@ -48,9 +49,11 @@ const findOrCreateSpecificCustomerLedger = async (transaction: admin.firestore.T
     }
 
     // Try finding by name (e.g. "Kartik Kumawat")
-    const existingLedgerQuery = await db.collection('coa_ledgers').where('name', '==', customerName).limit(1).get();
-    if (!existingLedgerQuery.empty) {
-        const existingId = existingLedgerQuery.docs[0].id;
+    const existingLedgerQuery = db.collection('coa_ledgers').where('name', '==', customerName).limit(1);
+    const existingLedgerSnapshot = await transaction.get(existingLedgerQuery);
+    
+    if (!existingLedgerSnapshot.empty) {
+        const existingId = existingLedgerSnapshot.docs[0].id;
         transaction.set(partyRef, { coaLedgerId: existingId, name: customerName, id: userId, type: 'Customer', email: customerEmail }, { merge: true });
         return existingId;
     }
@@ -162,7 +165,8 @@ export const handleOrderCreation = onDocumentCreated("orders/{orderId}",
             const companySnap = await transaction.get(db.doc("company/info"));
             const primaryUpi = companySnap.data()?.primaryUpiId;
             if (primaryUpi) {
-                const ledgerSearch = await db.collection("coa_ledgers").where("bank.upiId", "==", primaryUpi).limit(1).get();
+                const ledgerSearchQuery = db.collection("coa_ledgers").where("bank.upiId", "==", primaryUpi).limit(1);
+                const ledgerSearch = await transaction.get(ledgerSearchQuery);
                 if (!ledgerSearch.empty) bankAccountId = ledgerSearch.docs[0].id;
             }
         
@@ -339,3 +343,5 @@ export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}",
       });
     } catch (e) { console.error(e); }
   });
+
+    
