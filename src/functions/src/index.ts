@@ -137,19 +137,30 @@ export const handleQuotationCreation = onDocumentCreated("quotations/{docId}",
  * Handles the creation of Sales Orders and associated accounting entries.
  */
 export const handleOrderCreation = onDocumentCreated("orders/{orderId}",
-  async (event: FirestoreEvent<QueryDocumentSnapshot | undefined>) => {
+  async (event) => {
     const snap = event.data;
     if (!snap) return;
 
     // 1. Generate SO Number
     const now = new Date();
     const datePrefix = `SO-${now.getFullYear().toString().slice(-2)}${(now.getMonth() + 1).toString().padStart(2, "0")}-`;
-    const lastDoc = await db.collection("orders").where("orderNumber", ">=", datePrefix).orderBy("orderNumber", "desc").limit(1).get();
-    let nextNum = 1;
-    if (!lastDoc.empty) {
-        nextNum = parseInt(lastDoc.docs[0].data().orderNumber.split("-")[2], 10) + 1;
+    let orderNumber;
+    try {
+        const lastDocQuery = db.collection("orders").where("orderNumber", ">=", datePrefix).orderBy("orderNumber", "desc").limit(1);
+        const lastDoc = await lastDocQuery.get();
+        let nextNum = 1;
+        if (!lastDoc.empty) {
+            const lastNumStr = lastDoc.docs[0].data().orderNumber;
+            const lastNumFromDb = parseInt(lastNumStr.split("-")[2], 10);
+            if (!isNaN(lastNumFromDb)) {
+                nextNum = lastNumFromDb + 1;
+            }
+        }
+        orderNumber = `${datePrefix}${nextNum.toString().padStart(4, "0")}`;
+    } catch (e) {
+        // Fallback for initial creation or query error
+        orderNumber = `${datePrefix}0001`;
     }
-    const orderNumber = `${datePrefix}${nextNum.toString().padStart(4, "0")}`;
     await snap.ref.update({ orderNumber });
 
     const order = (await snap.ref.get()).data() as Order;
@@ -343,5 +354,3 @@ export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}",
       });
     } catch (e) { console.error(e); }
   });
-
-    

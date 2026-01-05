@@ -105,7 +105,7 @@ export const defaultCoaGroups: Omit<CoaGroup, 'createdAt' | 'updatedAt' | 'path'
   createGroup('8', 'SYSTEM / AUTO-CREATED GROUPS', 'ASSET', null, 0, 8, true),
 ];
 
-export const defaultCoaLedgers: Omit<CoaLedger, 'createdAt' | 'updatedAt'>[] = [
+export const defaultCoaLedgers: Omit<CoaLedger, 'id' | 'createdAt' | 'updatedAt'>[] = [
   // ASSETS
   createLedger('L-1.1.1-1', 'Cash in Hand', '1.1.1', 'ASSET'),
   createLedger('L-1.1.1-2', 'Bank – Current Account', '1.1.1', 'ASSET'),
