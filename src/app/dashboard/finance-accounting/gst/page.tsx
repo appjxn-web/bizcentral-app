@@ -75,12 +75,12 @@ export default function GstPage() {
         invoiceNo: invoice.invoiceNumber,
         partyName: invoice.customerName,
         gstin: partiesData?.find(p => p.id === invoice.customerId)?.gstin || 'N/A',
-        taxableValue: invoice.taxableAmount,
-        cgst: invoice.cgst,
-        sgst: invoice.sgst,
+        taxableValue: invoice.taxableAmount || 0,
+        cgst: invoice.cgst || 0,
+        sgst: invoice.sgst || 0,
         igst: invoice.igst || 0,
-        totalGst: invoice.cgst + invoice.sgst + (invoice.igst || 0),
-        totalAmount: invoice.grandTotal
+        totalGst: (invoice.cgst || 0) + (invoice.sgst || 0) + (invoice.igst || 0),
+        totalAmount: invoice.grandTotal || 0,
       }));
   }, [invoicesData, year, month, partiesData]);
 
@@ -111,12 +111,12 @@ export default function GstPage() {
               invoiceNo: jv.id, // Using JV ID as a proxy
               partyName: party.name,
               gstin: party.gstin || 'N/A',
-              taxableValue,
-              cgst: isInterstate ? 0 : totalGst / 2,
-              sgst: isInterstate ? 0 : totalGst / 2,
+              taxableValue: taxableValue || 0,
+              cgst: isInterstate ? 0 : (totalGst / 2) || 0,
+              sgst: isInterstate ? 0 : (totalGst / 2) || 0,
               igst: isInterstate ? totalGst : 0,
-              totalGst,
-              totalAmount: taxableValue + totalGst
+              totalGst: totalGst || 0,
+              totalAmount: (taxableValue || 0) + (totalGst || 0),
           };
       }).filter(Boolean) as GstTransaction[];
   }, [jvData, partiesData, year, month]);
