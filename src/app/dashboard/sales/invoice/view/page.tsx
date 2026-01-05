@@ -91,6 +91,18 @@ export default function InvoiceViewPage() {
     const firestore = useFirestore();
     const invoiceRef = invoiceId ? doc(firestore, 'salesInvoices', invoiceId) : null;
     const { data: invoiceData, loading: invoiceLoading } = useDoc<SalesInvoice>(invoiceRef);
+    
+    const orderQuery = React.useMemo(() => {
+        if (!invoiceData?.orderNumber || !firestore) return null;
+        return query(
+            collection(firestore, 'orders'),
+            where('orderNumber', '==', invoiceData.orderNumber),
+            limit(1)
+        );
+    }, [invoiceData, firestore]);
+    
+    const { data: orderResult, loading: orderLoading } = useCollection<Order>(orderQuery);
+    const orderData = orderResult?.[0];
 
     const { data: companyInfo, loading: companyInfoLoading } = useDoc<CompanyInfo>(doc(firestore, 'company', 'info'));
     
@@ -167,7 +179,7 @@ export default function InvoiceViewPage() {
         setIsDownloading(false);
     };
 
-    const isLoading = invoiceLoading || companyInfoLoading || customerLoading || bankLedgerLoading;
+    const isLoading = invoiceLoading || companyInfoLoading || customerLoading || bankLedgerLoading || orderLoading;
 
     if (isLoading) {
         return (
@@ -239,11 +251,11 @@ export default function InvoiceViewPage() {
                                     <h3 className="font-semibold text-sm">Billed To:</h3>
                                     <p className="font-bold">{customerData?.name}</p>
                                     <p className="text-sm">
-                                        {[customerAddress?.line1, customerAddress?.line2].filter(Boolean).join(', ')}
+                                        {[customerData?.address?.line1, customerData?.address?.line2].filter(Boolean).join(', ')}
                                     </p>
                                     <p className="text-sm">
-                                        {customerAddress?.city && `${customerAddress.city} - ${customerAddress.pin}, `}
-                                        {customerAddress?.district}, {customerAddress?.state}, {customerAddress?.country}
+                                        {customerData?.address?.city && `${customerData.address.city} - ${customerData.address.pin}, `}
+                                        {customerData?.address?.district}, {customerData?.address?.state}, {customerData?.address?.country}
                                     </p>
                                     <p className="text-sm">
                                         {customerData?.contactPerson && `Attn: ${customerData.contactPerson}, `}
@@ -356,6 +368,12 @@ export default function InvoiceViewPage() {
                                         </div>
                                     )}
                                 </div>
+                                {orderData?.paymentDetails && (
+                                    <div>
+                                        <h4 className="font-bold mb-1">Payment Notes:</h4>
+                                        <p className="whitespace-pre-wrap">{orderData.paymentDetails}</p>
+                                    </div>
+                                )}
                             </div>
                             <div className="text-right flex flex-col justify-end items-end">
                                 <p className="font-semibold text-sm mb-16">For, {companyInfo?.companyName}</p>
@@ -370,4 +388,3 @@ export default function InvoiceViewPage() {
         </>
       );
 }
-
