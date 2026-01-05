@@ -185,7 +185,7 @@ function TransactionsPageContent() {
 
     const liveBalances = React.useMemo(() => {
         const balances = new Map<string, number>();
-        if (!coaLedgers || !journalVouchers) return balances;
+        if (!coaLedgers) return balances;
 
         coaLedgers.forEach(acc => {
             const openingBal = acc.openingBalance?.amount || 0;
@@ -210,37 +210,30 @@ function TransactionsPageContent() {
 
 
      const { receivables, payables } = React.useMemo(() => {
-      const ar: BalanceEntry[] = [];
-      const ap: BalanceEntry[] = [];
-  
-      if (!parties || !coaLedgers || liveBalances.size === 0) {
-        return { receivables: ar, payables: ap };
-      }
-  
-      parties.forEach(party => {
-        if (!party.coaLedgerId) return;
-  
-        const balance = liveBalances.get(party.coaLedgerId) || 0;
-  
-        if (Math.abs(balance) < 0.01) return;
-  
-        const partyType = party.type;
-        const ledger = coaLedgers.find(l => l.id === party.coaLedgerId);
-        const ledgerNature = ledger?.nature;
-
-        if ((partyType === 'Customer') || (ledgerNature === 'ASSET')) {
-             if (balance > 0) {
-                ar.push({ id: party.id, name: party.name, balance: balance, type: 'Receivable' });
-             }
-        } else if ((partyType === 'Supplier' || partyType === 'Vendor') || (ledgerNature === 'LIABILITY')) {
-             if (balance < 0) {
-                ap.push({ id: party.id, name: party.name, balance: Math.abs(balance), type: 'Payable' });
-             }
+        const ar: BalanceEntry[] = [];
+        const ap: BalanceEntry[] = [];
+    
+        if (!parties || liveBalances.size === 0) {
+            return { receivables: ar, payables: ap };
         }
-      });
-  
-      return { receivables: ar, payables: ap };
-    }, [parties, coaLedgers, liveBalances]);
+    
+        parties.forEach(party => {
+            if (!party.coaLedgerId) return;
+    
+            const balance = liveBalances.get(party.coaLedgerId) || 0;
+            
+            // Only add if there is a non-zero balance
+            if (Math.abs(balance) > 0.01) {
+                if (party.type === 'Customer' && balance > 0) {
+                    ar.push({ id: party.id, name: party.name, balance: balance, type: 'Receivable' });
+                } else if ((party.type === 'Supplier' || party.type === 'Vendor') && balance < 0) {
+                    ap.push({ id: party.id, name: party.name, balance: Math.abs(balance), type: 'Payable' });
+                }
+            }
+        });
+    
+        return { receivables: ar, payables: ap };
+    }, [parties, liveBalances]);
 
 
     const resetForms = () => {
@@ -902,3 +895,4 @@ export default function TransactionsPageWrapper() {
     
 
     
+
