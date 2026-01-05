@@ -250,7 +250,16 @@ export interface OrderItem {
     category?: string;
 }
 
-export type OrderStatus = 'Ordered' | 'Manufacturing' | 'Ready for Dispatch' | 'Awaiting Payment' | 'Shipped' | 'Delivered' | 'Canceled' | 'Cancellation Requested';
+export type OrderStatus =
+  | "Ordered"
+  | "Manufacturing"
+  | "Ready for Dispatch"
+  | "Awaiting Payment"
+  | "Shipped"
+  | "Delivered"
+  | "Canceled"
+  | "Cancellation Requested"
+  | "Invoice Sent";
   
 export interface Order {
   id: string;

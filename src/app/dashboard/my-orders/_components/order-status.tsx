@@ -1,8 +1,9 @@
 
+
 'use client';
 
 import * as React from 'react';
-import { CheckCircle, Factory, CreditCard, Truck, Package, PackageCheck } from 'lucide-react';
+import { CheckCircle, Factory, CreditCard, Truck, Package, PackageCheck, FileText } from 'lucide-react';
 import type { OrderStatus } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
@@ -11,6 +12,7 @@ const steps: { status: OrderStatus; icon: React.ElementType; label: string }[] =
   { status: 'Manufacturing', icon: Factory, label: 'Manufacturing' },
   { status: 'Ready for Dispatch', icon: Package, label: 'Ready for Dispatch' },
   { status: 'Awaiting Payment', icon: CreditCard, label: 'Awaiting Payment' },
+  { status: 'Invoice Sent', icon: FileText, label: 'Invoice Sent' },
   { status: 'Shipped', icon: Truck, label: 'Shipped' },
   { status: 'Delivered', icon: CheckCircle, label: 'Delivered' },
 ];

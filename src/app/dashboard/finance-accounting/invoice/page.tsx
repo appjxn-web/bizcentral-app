@@ -49,18 +49,6 @@ import { useRole } from '../../_components/role-provider';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuTrigger,
-  DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
-  DropdownMenuPortal,
-} from '@/components/ui/dropdown-menu';
 
 
 function getStatusBadgeVariant(status: Order['status'] | 'Refund Pending' | 'Refund Complete') {
@@ -73,6 +61,7 @@ function getStatusBadgeVariant(status: Order['status'] | 'Refund Pending' | 'Ref
     Manufacturing: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300',
     'Ready for Dispatch': 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-300',
     'Awaiting Payment': 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300',
+    'Invoice Sent': 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300',
     Canceled: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300',
     'Cancellation Requested': 'bg-rose-100 text-rose-800 dark:bg-rose-900/50 dark:text-rose-300'
   };
@@ -316,13 +305,17 @@ export default function InvoicePage() {
         return { totalBilled, totalPaid, totalOutstanding };
     }, [orders]);
 
-    const handleGenerateInvoice = (order: Order) => {
+    const handleGenerateInvoice = async (order: Order) => {
         const dataToPass = {
             ...order,
             customerId: order.userId,
             overallDiscount: (order.discount / order.subtotal) * 100 || 0,
         };
         localStorage.setItem('invoiceDataToCreate', JSON.stringify(dataToPass));
+        
+        const orderRef = doc(firestore, 'orders', order.id);
+        await updateDoc(orderRef, { status: 'Invoice Sent' });
+
         router.push('/dashboard/finance-accounting/invoice/create');
     };
     

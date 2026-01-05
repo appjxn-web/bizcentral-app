@@ -58,7 +58,7 @@ import { cn } from '@/lib/utils';
 import { useRole } from '@/app/dashboard/_components/role-provider';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useFirestore, useCollection, useUser, useDoc } from '@/firebase';
-import { collection, doc, addDoc, serverTimestamp, setDoc, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
+import { collection, doc, addDoc, serverTimestamp, setDoc, query, where, orderBy, limit, getDocs, updateDoc } from 'firebase/firestore';
 import { getNextDocNumber } from '@/lib/number-series';
 import { estimateDispatchDate, type EstimateDispatchDateOutput } from '@/ai/flows/estimate-dispatch-date-flow';
 import { QRCodeSVG } from 'qrcode.react';
@@ -158,7 +158,7 @@ export default function CreateInvoicePage() {
         const mappedItems = data.items.map((item: any, i: number) => {
             const product = allProducts.find(p => p.id === item.productId);
             const rate = item.price || item.rate || 0;
-            const quantity = item.quantity || item.qty || 1;
+            const quantity = item.quantity || 1;
             
             return {
                 id: `item-${Date.now()}-${i}`,
@@ -188,7 +188,7 @@ export default function CreateInvoicePage() {
   
     React.useEffect(() => {
     const fetchEstimate = async () => {
-        if (items.some(item => item.category === 'Plants & Machinery')) {
+        if (items.length > 0) {
             setIsEstimating(true);
             try {
                 const estimateInput = {
@@ -292,7 +292,7 @@ export default function CreateInvoicePage() {
                 let product: Product | undefined;
                 
                 if (field === 'productId') {
-                    const product = saleableProducts.find(p => p.id === value);
+                    const product = allProducts?.find(p => p.id === value);
                     if (product) {
                         updatedItem.name = product.name;
                         updatedItem.hsn = product.hsn || product.id.slice(0,4).toUpperCase();
@@ -492,7 +492,7 @@ export default function CreateInvoicePage() {
                   <TableRow>
                     <TableHead className="w-[35%]">Item</TableHead>
                     <TableHead className="w-[10%]">HSN</TableHead>
-                    <TableHead className="w-[8%]">Qty</TableHead>
+                    <TableHead className="w-[8%]">Quantity</TableHead>
                     <TableHead className="w-[8%]">Unit</TableHead>
                     <TableHead className="w-[12%]">Rate</TableHead>
                     <TableHead className="w-[8%]">GST %</TableHead>

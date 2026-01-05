@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -90,6 +91,7 @@ function getStatusBadgeVariant(status: Order['status'] | 'Refund Pending' | 'Ref
     Manufacturing: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300',
     'Ready for Dispatch': 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-300',
     'Awaiting Payment': 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300',
+    'Invoice Sent': 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300',
     Canceled: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300',
     'Cancellation Requested': 'bg-rose-100 text-rose-800 dark:bg-rose-900/50 dark:text-rose-300'
   };
@@ -261,7 +263,7 @@ function CompanyPickupDetails() {
     );
 }
 
-function OrderRow({ order, pickupPoints, dynamicStatus, allProducts, getOrderInHand }: { order: Order, onGenerateInvoice: (order: Order) => void, onUpdateStatus: (orderId: string, status: OrderStatus) => void, pickupPoints: PickupPoint[] | null, dynamicStatus: OrderStatus, allProducts: Product[] | null, getOrderInHand: (productId: string) => number }) {
+function OrderRow({ order, onGenerateInvoice, onUpdateStatus, pickupPoints, dynamicStatus, allProducts, getOrderInHand }: { order: Order, onGenerateInvoice: (order: Order) => void, onUpdateStatus: (orderId: string, status: OrderStatus) => void, pickupPoints: PickupPoint[] | null, dynamicStatus: OrderStatus, allProducts: Product[] | null, getOrderInHand: (productId: string) => number }) {
   const [isOpen, setIsOpen] = React.useState(false);
   const orderStatuses: OrderStatus[] = ['Manufacturing', 'Ready for Dispatch', 'Awaiting Payment', 'Shipped', 'Delivered'];
 
@@ -412,13 +414,13 @@ function OrdersPageContent() {
     }
     
     const getOrderInHand = React.useCallback((productId: string) => {
-        if (!orders || !productsLoading) return 0;
+        if (!orders) return 0;
         return orders
           .filter(order => order.status !== 'Delivered' && order.status !== 'Canceled')
           .flatMap(order => order.items)
           .filter(item => item.productId === productId)
           .reduce((sum, item) => sum + item.quantity, 0);
-      }, [orders, productsLoading]);
+    }, [orders]);
 
 
     const kpis = React.useMemo(() => {
@@ -488,7 +490,7 @@ function OrdersPageContent() {
             <RefreshCcw className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{kpis.pending}</div>
+            <div className="text-2xl font-bold">{kpis.inProcess}</div>
             <p className="text-xs text-muted-foreground">Orders being processed</p>
           </CardContent>
         </Card>
