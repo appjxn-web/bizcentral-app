@@ -79,6 +79,7 @@ const formatIndianCurrency = (num: number) => {
     style: 'currency',
     currency: 'INR',
     minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   }).format(num || 0);
 };
 
@@ -264,9 +265,11 @@ export default function InvoiceViewPage() {
                             <Table>
                                 <TableHeader>
                                     <TableRow className="bg-muted">
-                                        <TableHead>Item Description</TableHead>
+                                        <TableHead>Sr.</TableHead>
+                                        <TableHead>Items</TableHead>
                                         <TableHead>HSN</TableHead>
                                         <TableHead className="text-right">QTY</TableHead>
+                                        <TableHead>Unit</TableHead>
                                         <TableHead className="text-right">Rate</TableHead>
                                         <TableHead className="text-right">Amount</TableHead>
                                     </TableRow>
@@ -274,9 +277,11 @@ export default function InvoiceViewPage() {
                                 <TableBody>
                                     {calculations.items.map((item: any, index: number) => (
                                         <TableRow key={`${item.productId}-${index}`}>
-                                            <TableCell>{item.name}</TableCell>
+                                            <TableCell>{index + 1}</TableCell>
+                                            <TableCell className="font-medium">{item.name}</TableCell>
                                             <TableCell>{item.hsn}</TableCell>
                                             <TableCell className="text-right">{item.quantity}</TableCell>
+                                            <TableCell>{item.unit}</TableCell>
                                             <TableCell className="text-right">{formatIndianCurrency(item.rate)}</TableCell>
                                             <TableCell className="text-right font-medium">{formatIndianCurrency(item.rate * item.quantity)}</TableCell>
                                         </TableRow>
@@ -284,38 +289,38 @@ export default function InvoiceViewPage() {
                                 </TableBody>
                                 <TableFooter>
                                     <TableRow>
-                                        <TableCell colSpan={4} className="text-right font-semibold">Subtotal</TableCell>
+                                        <TableCell colSpan={6} className="text-right font-semibold">Subtotal</TableCell>
                                         <TableCell className="text-right font-semibold">{formatIndianCurrency(calculations.subtotal)}</TableCell>
                                     </TableRow>
-                                    {calculations.totalDiscountAmount > 0 && (
+                                     {calculations.totalDiscountAmount > 0 && (
                                         <TableRow>
-                                            <TableCell colSpan={4} className="text-right text-green-600">Discount</TableCell>
+                                            <TableCell colSpan={6} className="text-right text-green-600">Discount</TableCell>
                                             <TableCell className="text-right text-green-600">- {formatIndianCurrency(calculations.totalDiscountAmount)}</TableCell>
                                         </TableRow>
                                     )}
-                                     <TableRow>
-                                        <TableCell colSpan={4} className="text-right font-semibold">Taxable Value</TableCell>
+                                    <TableRow>
+                                        <TableCell colSpan={6} className="text-right font-semibold">Taxable Value</TableCell>
                                         <TableCell className="text-right font-semibold">{formatIndianCurrency(calculations.taxableAmount)}</TableCell>
                                     </TableRow>
                                     {isInterstate ? (
                                         <TableRow>
-                                            <TableCell colSpan={4} className="text-right">IGST</TableCell>
+                                            <TableCell colSpan={6} className="text-right">IGST</TableCell>
                                             <TableCell className="text-right">{formatIndianCurrency(calculations.igst)}</TableCell>
                                         </TableRow>
                                     ) : (
                                         <>
                                             <TableRow>
-                                                <TableCell colSpan={4} className="text-right">CGST</TableCell>
+                                                <TableCell colSpan={6} className="text-right">CGST</TableCell>
                                                 <TableCell className="text-right">{formatIndianCurrency(calculations.cgst)}</TableCell>
                                             </TableRow>
                                             <TableRow>
-                                                <TableCell colSpan={4} className="text-right">SGST</TableCell>
+                                                <TableCell colSpan={6} className="text-right">SGST</TableCell>
                                                 <TableCell className="text-right">{formatIndianCurrency(calculations.sgst)}</TableCell>
                                             </TableRow>
                                         </>
                                     )}
                                      <TableRow className="text-base bg-muted">
-                                        <TableCell colSpan={4} className="text-right font-bold">Grand Total</TableCell>
+                                        <TableCell colSpan={6} className="text-right font-bold">Grand Total</TableCell>
                                         <TableCell className="text-right font-bold">{formatIndianCurrency(grandTotal)}</TableCell>
                                     </TableRow>
                                 </TableFooter>
@@ -326,9 +331,32 @@ export default function InvoiceViewPage() {
                             Amount in words: {numberToWords(grandTotal)}
                         </div>
                         
-                         <footer className="text-center text-xs text-muted-foreground pt-16">
-                            <p>This is a computer-generated document.</p>
-                            <p>{companyInfo?.companyName} | {companyInfo?.contactEmail}</p>
+                         <footer className="flex justify-between items-end mt-16">
+                            <div className="text-xs space-y-4">
+                                <div className="flex gap-4 p-3 bg-slate-50 rounded-lg">
+                                    {bankDetails && (
+                                        <div className="text-xs flex-1">
+                                            <h4 className="font-bold mb-2">Bank Details:</h4>
+                                            <p><strong>Bank:</strong> {bankDetails.bankName}</p>
+                                            <p><strong>A/C:</strong> {bankDetails.accountNumber}</p>
+                                            <p><strong>IFSC:</strong> {bankDetails.ifscCode}</p>
+                                            {(bankDetails as any).branch && <p><strong>Branch:</strong> {(bankDetails as any).branch}</p>}
+                                        </div>
+                                    )}
+                                    {companyInfo?.primaryUpiId && invoiceData.balanceDue > 0 && (
+                                        <div className="flex flex-col items-center">
+                                            <p className="text-[10px] font-bold mb-1">Scan to Pay Balance</p>
+                                            <QRCodeSVG value={`upi://pay?pa=${companyInfo.primaryUpiId}&pn=${encodeURIComponent(companyInfo.companyName || '')}&am=${invoiceData.balanceDue?.toFixed(2)}&cu=INR`} size={64} />
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                            <div className="text-right">
+                                <p className="font-semibold mb-16">For, {companyInfo?.companyName}</p>
+                                <div className="h-16 w-32"></div>
+                                <Separator className="w-full max-w-[200px] ml-auto"/>
+                                <p className="text-xs pt-1">Authorized Signatory</p>
+                            </div>
                         </footer>
                     </div>
                 </CardContent>
@@ -336,3 +364,4 @@ export default function InvoiceViewPage() {
         </>
       );
 }
+
