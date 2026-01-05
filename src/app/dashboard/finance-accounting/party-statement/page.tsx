@@ -59,11 +59,8 @@ function PartyStatementPageContent() {
   const { data: parties, loading: partiesLoading } = useCollection<Party>(collection(firestore, 'parties'));
   const { data: ledgers, loading: ledgersLoading } = useCollection<CoaLedger>(collection(firestore, 'coa_ledgers'));
   
-  const jvQuery = selectedAccountId ? query(collection(firestore, 'journalVouchers'), where('entries', 'array-contains-any', [{ accountId: selectedAccountId }])) : null;
-  const { data: journalVouchers, loading: vouchersLoading } = useCollection<JournalVoucher>(jvQuery);
-  
-  const salesInvoicesQuery = selectedAccountId ? query(collection(firestore, 'salesInvoices'), where('coaLedgerId', '==', selectedAccountId)) : null;
-  const { data: salesInvoices, loading: invoicesLoading } = useCollection<SalesInvoice>(salesInvoicesQuery);
+  const { data: allJournalVouchers, loading: vouchersLoading } = useCollection<JournalVoucher>(collection(firestore, 'journalVouchers'));
+  const { data: salesInvoices, loading: invoicesLoading } = useCollection<SalesInvoice>(collection(firestore, 'salesInvoices'));
 
   const pdfRef = React.useRef<HTMLDivElement>(null);
   const [isDownloading, setIsDownloading] = React.useState(false);
@@ -110,7 +107,8 @@ function PartyStatementPageContent() {
 
     const openingBalance = targetLedger.openingBalance?.amount || 0;
     
-    const jvTransactions = (journalVouchers || [])
+    const jvTransactions = (allJournalVouchers || [])
+      .filter(jv => jv.entries.some(e => e.accountId === selectedAccountId))
       .map(jv => {
         const entry = jv.entries.find(e => e.accountId === selectedAccountId)!;
         return {
@@ -122,7 +120,8 @@ function PartyStatementPageContent() {
         };
       });
 
-    const invoiceTransactions = (salesInvoices || []).map(inv => ({
+    const relevantInvoices = (salesInvoices || []).filter(inv => inv.customerId === selectedAccountId || inv.coaLedgerId === selectedAccountId);
+    const invoiceTransactions = relevantInvoices.map(inv => ({
         id: inv.id,
         date: inv.date,
         description: `Sales Invoice #${inv.invoiceNumber}`,
@@ -166,7 +165,7 @@ function PartyStatementPageContent() {
         totalDebit: periodTransactions.reduce((s, t) => s + t.debit, 0) 
       },
     };
-  }, [selectedAccountId, journalVouchers, ledgers, dateFrom, dateTo, salesInvoices]);
+  }, [selectedAccountId, allJournalVouchers, ledgers, dateFrom, dateTo, salesInvoices]);
 
   const handleDownloadPdf = async () => {
     const element = pdfRef.current;
@@ -322,8 +321,8 @@ function PartyStatementPageContent() {
       <div className="absolute -left-[9999px] top-auto" aria-hidden="true">
         <div 
           className="w-[210mm] bg-white text-slate-900 p-12 font-sans shadow-none" 
+          style={{ minHeight: '297mm', display: 'flex', flexDirection: 'column' }}
           ref={pdfRef}
-          style={{ minHeight: '297mm' }}
         >
           {accountHolder && (
             <>
@@ -438,5 +437,6 @@ export default function PartyStatementPage() {
     if (!isClient) return <div className="flex h-screen items-center justify-center"><Loader2 className="animate-spin" /></div>;
     return <PartyStatementPageContent />;
 }
+
 
 

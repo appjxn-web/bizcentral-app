@@ -105,12 +105,7 @@ function MyAccountPageContent() {
   const userLedgerRef = userLedgerId ? doc(firestore, 'coa_ledgers', userLedgerId) : null;
   const { data: userLedger, loading: ledgerLoading } = useDoc<CoaLedger>(userLedgerRef);
   
-  const ninetyDaysAgo = subDays(new Date(), 90);
-  
-  const jvQuery = userLedgerId ? query(
-      collection(firestore, 'journalVouchers'),
-      where('entries', 'array-contains-any', [{ accountId: userLedgerId }])
-  ) : null;
+  const { data: allJournalVouchers, loading: vouchersLoading } = useCollection<JournalVoucher>(collection(firestore, 'journalVouchers'));
   
   const salesInvoicesQuery = targetId ? query(
       collection(firestore, 'salesInvoices'),
@@ -118,7 +113,6 @@ function MyAccountPageContent() {
   ) : null;
 
 
-  const { data: recentJournalVouchers, loading: vouchersLoading } = useCollection<JournalVoucher>(jvQuery);
   const { data: salesInvoices, loading: invoicesLoading } = useCollection<SalesInvoice>(salesInvoicesQuery);
   
   const pdfRef = React.useRef<HTMLDivElement>(null);
@@ -129,12 +123,11 @@ function MyAccountPageContent() {
 
   const { ledger, kpis } = React.useMemo(() => {
     const defaultKpis = { balance: 0, totalCredit: 0, totalDebit: 0 };
-    if (!userLedger || (!recentJournalVouchers && !salesInvoices)) return { ledger: [], kpis: defaultKpis };
+    if (!userLedger || (!allJournalVouchers && !salesInvoices)) return { ledger: [], kpis: defaultKpis };
 
     const openingBalance = userLedger.openingBalance?.amount || 0;
     
-    // Combine JVs and Invoices into a unified transaction list
-    const jvTransactions = (recentJournalVouchers || [])
+    const jvTransactions = (allJournalVouchers || [])
       .filter(jv => jv.entries.some(e => e.accountId === userLedger.id))
       .map(jv => {
         const entry = jv.entries.find(e => e.accountId === userLedger.id)!;
@@ -151,7 +144,7 @@ function MyAccountPageContent() {
         id: inv.id,
         date: inv.date,
         description: `Sales Invoice #${inv.invoiceNumber}`,
-        debit: inv.grandTotal, // Debit the customer
+        debit: inv.grandTotal,
         credit: 0
     }));
 
@@ -170,7 +163,7 @@ function MyAccountPageContent() {
       ledger: processedLedger.reverse(),
       kpis: { balance: runningBalance, totalCredit, totalDebit },
     };
-  }, [userLedger, recentJournalVouchers, salesInvoices]);
+  }, [userLedger, allJournalVouchers, salesInvoices]);
   
   const earningsKpis = React.useMemo(() => {
     if (!referrals) return { totalEarnings: 0, totalWithdrawn: 0 };
@@ -498,6 +491,7 @@ export default function MyAccountPage() {
 
     return <MyAccountPageContent />;
 }
+
 
 
 
