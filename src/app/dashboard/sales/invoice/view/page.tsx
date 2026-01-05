@@ -203,22 +203,6 @@ export default function InvoiceViewPage() {
     }
 
     const { grandTotal, subtotal, discount, cgst, sgst, igst, items, totalDiscountAmount, taxableAmount } = calculations;
-    
-    const paymentNotes = orderData?.paymentDetails?.split('\n').map(line => {
-      const parts = line.split(',').map(part => part.trim());
-      const details: Record<string, string> = {};
-      parts.forEach(part => {
-        const [key, ...value] = part.split(':');
-        if (key && value.length > 0) {
-          details[key.trim().toLowerCase()] = value.join(':').trim();
-        } else if (key.toLowerCase().includes('transaction id')) {
-            // Handle cases where the whole line is the transaction ID
-            const [label, ...val] = key.split(':');
-            details['ref'] = val.join(':').trim();
-        }
-      });
-      return details;
-    });
 
     return (
         <>
@@ -245,15 +229,15 @@ export default function InvoiceViewPage() {
                                 )}
                             </div>
                             <div className="text-right">
-                                <h1 className="text-xl md:text-2xl font-bold text-primary">{companyInfo?.companyName}</h1>
-                                <p className="text-xs md:text-sm text-muted-foreground">
+                                <h1 className="text-2xl font-bold text-primary">{companyInfo?.companyName}</h1>
+                                <p className="text-sm text-muted-foreground">
                                     {[companyAddress?.line1, companyAddress?.line2].filter(Boolean).join(', ')}
                                 </p>
-                                <p className="text-xs md:text-sm text-muted-foreground">
+                                <p className="text-sm text-muted-foreground">
                                     {companyAddress?.city && `${companyAddress.city} - ${companyAddress.pin}, `}
                                     {companyAddress?.district}, {companyAddress?.state}, {companyAddress?.country}
                                 </p>
-                                <p className="text-xs md:text-sm text-muted-foreground">{companyInfo?.contactEmail} | {companyInfo?.contactNumber}</p>
+                                <p className="text-sm text-muted-foreground">{companyInfo?.contactEmail} | {companyInfo?.contactNumber}</p>
                                 <div className="text-xs md:text-sm mt-2 space-y-1">
                                     <p><strong>GSTIN:</strong> {companyInfo?.taxInfo?.gstin?.value}</p>
                                     <p><strong>CIN:</strong> {companyInfo?.taxInfo?.cin?.value}</p>
@@ -385,20 +369,6 @@ export default function InvoiceViewPage() {
                                         </div>
                                     )}
                                 </div>
-                                {orderData?.paymentDetails && (
-                                    <div>
-                                        <h4 className="font-bold mb-1">Payment Notes:</h4>
-                                         <div className="text-xs text-muted-foreground space-y-1">
-                                            {paymentNotes?.map((details, index) => (
-                                                <div key={index} className="p-2 border-b">
-                                                    {Object.entries(details).map(([key, value]) => (
-                                                        <p key={key}><span className="font-semibold capitalize">{key}:</span> {value}</p>
-                                                    ))}
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                )}
                             </div>
                             <div className="text-right flex flex-col justify-end items-end">
                                 <p className="font-semibold text-sm mb-16">For, {companyInfo?.companyName}</p>
@@ -413,4 +383,3 @@ export default function InvoiceViewPage() {
         </>
       );
 }
-
