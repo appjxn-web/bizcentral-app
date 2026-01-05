@@ -143,3 +143,14 @@ export interface SalesInvoice {
     status: 'Paid' | 'Unpaid' | 'Overdue';
     dueDate?: string;
 }
+
+export interface Party {
+    id: string;
+    name: string;
+    type: 'Customer' | 'Supplier' | 'Vendor' | 'Partner';
+    coaLedgerId?: string;
+    email?: string;
+    // other party fields
+}
+
+    

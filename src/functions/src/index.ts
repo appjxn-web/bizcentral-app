@@ -1,3 +1,4 @@
+
 'use server';
 /**
  * @fileoverview Cloud Functions for Firebase.
@@ -145,8 +146,7 @@ export const handleOrderCreation = onDocumentCreated("orders/{orderId}",
     const datePrefix = `SO-${now.getFullYear().toString().slice(-2)}${(now.getMonth() + 1).toString().padStart(2, "0")}-`;
     let orderNumber;
     try {
-        const lastDocQuery = db.collection("orders").where("orderNumber", ">=", datePrefix).orderBy("orderNumber", "desc").limit(1);
-        const lastDoc = await lastDocQuery.get();
+        const lastDocQuery = await db.collection("orders").where("orderNumber", ">=", datePrefix).orderBy("orderNumber", "desc").limit(1).get();
         let nextNum = 1;
         if (!lastDoc.empty) {
             const lastNumStr = lastDoc.docs[0].data().orderNumber;
@@ -353,3 +353,5 @@ export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}",
       });
     } catch (e) { console.error(e); }
   });
+
+    

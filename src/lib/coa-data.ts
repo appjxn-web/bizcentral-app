@@ -260,3 +260,5 @@ export const defaultCoaLedgers: Omit<CoaLedger, 'id' | 'createdAt' | 'updatedAt'
   createLedger('SYS-4', 'Exchange Rate Gain / Loss', '8', 'EXPENSE'),
   createLedger('SYS-5', 'Suspense Account', '8', 'ASSET'),
 ];
+
+    
