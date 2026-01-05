@@ -127,7 +127,7 @@ export default function CheckoutPage() {
 
   const subtotal = React.useMemo(() => cartItems.reduce((acc, item) => acc + item.price * item.quantity, 0), [cartItems]);
   
-  React.useEffect(() => {
+    React.useEffect(() => {
     const fetchEstimate = async () => {
         if (cartItems.length > 0) {
             setIsEstimating(true);
@@ -152,7 +152,9 @@ export default function CheckoutPage() {
         }
     };
 
-    fetchEstimate();
+    if (cartItems.length > 0) {
+      fetchEstimate();
+    }
   }, [cartItems]);
 
   const handleApplyCoupon = (coupon: Offer) => {

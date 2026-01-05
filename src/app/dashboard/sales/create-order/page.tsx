@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -59,6 +60,7 @@ import { useFirestore, useCollection, useUser, useDoc } from '@/firebase';
 import { collection, doc, addDoc, serverTimestamp, setDoc, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
 import { getNextDocNumber } from '@/lib/number-series';
 import { estimateDispatchDate, type EstimateDispatchDateOutput } from '@/ai/flows/estimate-dispatch-date-flow';
+import { QRCodeSVG } from 'qrcode.react';
 
 interface OrderItem {
   id: string;
@@ -640,3 +642,4 @@ export default function CreateSalesOrderPage() {
     </>
   );
 }
+
