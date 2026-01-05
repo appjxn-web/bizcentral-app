@@ -404,7 +404,7 @@ function OrderRow({ order, onGenerateInvoice, onUpdateStatus, pickupPoints, dyna
   )
 }
 
-function GeneratedInvoiceRow({ invoice, order, onViewInvoice, onUpdateStatus }: { invoice: SalesInvoice, order?: Order, onViewInvoice: (id: string) => void, onUpdateStatus: (id: string, status: 'Paid' | 'Unpaid') => void }) {
+function GeneratedInvoiceRow({ invoice, order, onViewInvoice, onUpdateStatus, allProducts, getOrderInHand }: { invoice: SalesInvoice, order?: Order, onViewInvoice: (id: string) => void, onUpdateStatus: (id: string, status: 'Paid' | 'Unpaid') => void, allProducts: Product[] | null, getOrderInHand: (productId: string) => number }) {
     const [isOpen, setIsOpen] = React.useState(false);
 
     return (
@@ -422,6 +422,7 @@ function GeneratedInvoiceRow({ invoice, order, onViewInvoice, onUpdateStatus }: 
                     <TableCell className="font-mono">{invoice.invoiceNumber}</TableCell>
                     <TableCell>{invoice.customerName}</TableCell>
                     <TableCell>{format(new Date(invoice.date), 'dd/MM/yyyy')}</TableCell>
+                    <TableCell>{order?.expectedDeliveryDate ? format(new Date(order.expectedDeliveryDate!), 'dd/MM/yyyy') : 'N/A'}</TableCell>
                     <TableCell>
                         <Badge className={cn('text-xs', getStatusBadgeVariant(invoice.status))} variant="outline">
                         {invoice.status}
@@ -445,58 +446,68 @@ function GeneratedInvoiceRow({ invoice, order, onViewInvoice, onUpdateStatus }: 
                     </TableCell>
                 </TableRow>
                 <CollapsibleContent asChild>
-                    <TableRow>
-                        <TableCell colSpan={7} className="p-0">
-                             <div className="grid md:grid-cols-2 gap-6 p-6 bg-muted/50">
-                                <div className="space-y-4">
-                                  <h4 className="font-semibold text-sm mb-2">Invoice Items:</h4>
-                                  <Table>
-                                      <TableHeader>
-                                          <TableRow>
-                                              <TableHead>Product</TableHead>
-                                              <TableHead className="text-right">Qty</TableHead>
-                                              <TableHead className="text-right">Rate</TableHead>
-                                              <TableHead className="text-right">Amount</TableHead>
-                                          </TableRow>
-                                      </TableHeader>
-                                      <TableBody>
-                                          {invoice.items.map((item, index) => (
-                                              <TableRow key={index}>
-                                                  <TableCell>{item.name}</TableCell>
-                                                  <TableCell className="text-right">{item.quantity}</TableCell>
-                                                  <TableCell className="text-right">{formatIndianCurrency(item.rate)}</TableCell>
-                                                  <TableCell className="text-right">{formatIndianCurrency(item.rate * item.quantity)}</TableCell>
-                                              </TableRow>
-                                          ))}
-                                      </TableBody>
-                                  </Table>
-                                </div>
-                                <div className="space-y-4">
-                                    <div className="flex justify-between items-center">
-                                      <h4 className="font-semibold text-sm">Summary</h4>
-                                      {order && (
-                                        <div className="p-3 rounded-md border bg-background">
-                                          <h5 className="font-semibold text-xs mb-2">Pickup From:</h5>
-                                          {order.assignedToUid ? (
-                                            <PartnerPickupDetails userId={order.assignedToUid} />
-                                          ) : (
-                                            <CompanyPickupDetails />
-                                          )}
+                  <TableRow>
+                      <TableCell colSpan={8} className="p-0">
+                          <div className="p-6 space-y-6 bg-muted/50">
+                              <div className="space-y-2">
+                                {invoice.items.map(item => {
+                                    const product = allProducts?.find(p => p.id === item.productId);
+                                    const stock = product?.openingStock || 0;
+                                    const orderInHand = getOrderInHand(item.productId);
+                                    return (
+                                        <div key={item.productId} className="flex items-center justify-between py-2 border-b">
+                                            <div className="flex items-center gap-4">
+                                                <Image src={`https://picsum.photos/seed/${item.productId}/64/64`} alt={item.name} width={64} height={64} className="rounded-md object-cover" />
+                                                <div>
+                                                    <p className="font-medium">{item.name}</p>
+                                                    <p className="text-sm text-muted-foreground">Qty: {item.quantity}</p>
+                                                    <div className="flex gap-4 text-xs text-muted-foreground">
+                                                        <span>Available Stock: {stock}</span>
+                                                        <span>Order in Hand: {orderInHand}</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <p className="font-medium">{formatIndianCurrency(item.price * item.quantity)}</p>
                                         </div>
+                                    )
+                                })}
+                              </div>
+                              <Separator />
+                              <div className="grid md:grid-cols-2 gap-6">
+                                  <div className="space-y-4">
+                                      <h4 className="font-semibold">Payment Summary</h4>
+                                      <div className="text-sm space-y-2 text-muted-foreground">
+                                          <div className="flex justify-between"><span>Subtotal:</span> <span className="font-mono">{formatIndianCurrency(invoice.subtotal)}</span></div>
+                                          <div className="flex justify-between"><span>Discount:</span> <span className="font-mono">{formatIndianCurrency(invoice.discount)}</span></div>
+                                          <div className="flex justify-between"><span>Taxes (CGST+SGST):</span> <span className="font-mono">{formatIndianCurrency(invoice.cgst + invoice.sgst)}</span></div>
+                                          <div className="flex justify-between font-bold text-foreground"><span>Grand Total:</span> <span className="font-mono">{formatIndianCurrency(invoice.grandTotal)}</span></div>
+                                          <Separator/>
+                                          <div className="flex justify-between font-medium text-green-600"><span>Paid:</span> <span className="font-mono">{formatIndianCurrency(invoice.amountPaid || 0)}</span></div>
+                                          <div className="flex justify-between font-bold text-red-600"><span>Balance Due:</span> <span className="font-mono">{formatIndianCurrency(invoice.balanceDue || 0)}</span></div>
+                                      </div>
+                                       {order?.paymentDetails && (
+                                          <div>
+                                              <p className="text-xs font-semibold">Transaction Note:</p>
+                                              <p className="text-xs text-muted-foreground font-mono">{order.paymentDetails}</p>
+                                          </div>
                                       )}
-                                    </div>
-                                    <div className="w-full space-y-1 text-sm">
-                                        <div className="flex justify-between"><span>Subtotal</span><span className="font-mono">{formatIndianCurrency(invoice.subtotal)}</span></div>
-                                        {invoice.discount > 0 && <div className="flex justify-between text-green-600"><span>Discount</span><span className="font-mono">- {formatIndianCurrency(invoice.discount)}</span></div>}
-                                        <Separator/>
-                                        <div className="flex justify-between font-bold"><span>Total</span><span className="font-mono">{formatIndianCurrency(invoice.grandTotal)}</span></div>
-                                        <div className="flex justify-between font-bold text-green-600"><span>Paid</span><span className="font-mono">{formatIndianCurrency(invoice.amountPaid)}</span></div>
-                                        <div className="flex justify-between font-bold text-red-600"><span>Balance Due</span><span className="font-mono">{formatIndianCurrency(invoice.balanceDue)}</span></div>
-                                    </div>
-                                </div>
-                            </div>
-                        </TableCell>
-                    </TableRow>
+                                  </div>
+                                  {order && (
+                                      <div className="space-y-4">
+                                          <h4 className="font-semibold">Pickup Details</h4>
+                                          <div className="p-3 rounded-md border bg-background">
+                                              {order.assignedToUid ? (
+                                                  <PartnerPickupDetails userId={order.assignedToUid} />
+                                              ) : (
+                                                  <CompanyPickupDetails />
+                                              )}
+                                          </div>
+                                      </div>
+                                  )}
+                              </div>
+                          </div>
+                      </TableCell>
+                  </TableRow>
                 </CollapsibleContent>
             </TableBody>
         </Collapsible>
@@ -585,12 +596,12 @@ function InvoicePage() {
       toast({ title: "Status Updated", description: `Invoice marked as ${status}.`});
     }
 
-    const handleViewInvoice = (invoiceId: string) => {
-      const invoiceData = allSalesInvoices?.find(inv => inv.invoiceNumber === invoiceId);
-      if (invoiceData) {
-        localStorage.setItem('invoiceToView', JSON.stringify(invoiceData));
-        router.push(`/dashboard/sales/invoice/view?id=${invoiceId}`);
-      }
+    const onViewInvoice = (invoiceId: string) => {
+        const invoiceData = allSalesInvoices?.find(inv => inv.invoiceNumber === invoiceId);
+        if (invoiceData) {
+            localStorage.setItem('invoiceToView', JSON.stringify(invoiceData));
+            router.push(`/dashboard/sales/invoice/view?id=${invoiceId}`);
+        }
     };
 
     const loading = ordersLoading || workOrdersLoading || productsLoading || invoicesLoading;
@@ -664,7 +675,7 @@ function InvoicePage() {
                 orders.map((order) => {
                   const dynamicStatus = getDynamicOrderStatus(order);
                   return (
-                    <OrderRow key={order.id} order={order} pickupPoints={pickupPoints} onGenerateInvoice={handleGenerateInvoice} onUpdateStatus={handleUpdateStatus} dynamicStatus={dynamicStatus} allProducts={allProducts} getOrderInHand={getOrderInHand} allSalesInvoices={allSalesInvoices || []} onViewInvoice={handleViewInvoice} />
+                    <OrderRow key={order.id} order={order} pickupPoints={pickupPoints} onGenerateInvoice={handleGenerateInvoice} onUpdateStatus={handleUpdateStatus} dynamicStatus={dynamicStatus} allProducts={allProducts} getOrderInHand={getOrderInHand} allSalesInvoices={allSalesInvoices || []} onViewInvoice={onViewInvoice} />
                   )
                 })
               ) : (
@@ -706,7 +717,7 @@ function InvoicePage() {
                 allSalesInvoices.map((invoice) => {
                   const correspondingOrder = orders?.find(o => o.orderNumber === invoice.orderNumber);
                   return (
-                    <GeneratedInvoiceRow key={invoice.id} invoice={invoice} order={correspondingOrder} onViewInvoice={(id) => handleViewInvoice(id)} onUpdateStatus={handleInvoicePaymentStatus} />
+                    <GeneratedInvoiceRow key={invoice.id} invoice={invoice} order={correspondingOrder} onViewInvoice={(id) => onViewInvoice(id)} onUpdateStatus={handleInvoicePaymentStatus} allProducts={allProducts} getOrderInHand={getOrderInHand} />
                   )
                 })
               ) : (
