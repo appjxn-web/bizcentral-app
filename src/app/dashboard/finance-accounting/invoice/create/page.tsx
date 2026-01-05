@@ -33,7 +33,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { PlusCircle, Save, Trash2, Check, ChevronsUpDown, CalendarClock, Loader2, DollarSign } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import type { Party, Product, UserRole, SalesOrder, Quotation, CoaLedger, SalesInvoice, CompanyInfo, PartyType, CoaNature, Offer } from '@/lib/types';
-import { format, startOfMonth } from 'date-fns';
+import { format } from 'date-fns';
 import { Separator } from '@/components/ui/separator';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
@@ -139,6 +139,8 @@ export default function CreateInvoicePage() {
   const [dispatchEstimate, setDispatchEstimate] = React.useState<EstimateDispatchDateOutput | null>(null);
   const [isEstimating, setIsEstimating] = React.useState(false);
   const [openProductCombobox, setOpenProductCombobox] = React.useState<string | null>(null);
+  const [isEditMode, setIsEditMode] = React.useState(false);
+  const [invoiceIdToEdit, setInvoiceIdToEdit] = React.useState<string | null>(null);
 
   const { data: parties, loading: partiesLoading } = useCollection<Party>(collection(firestore, 'parties'));
   const { data: coaLedgers, loading: ledgersLoading } = useCollection<CoaLedger>(collection(firestore, 'coa_ledgers'));
@@ -152,43 +154,63 @@ export default function CreateInvoicePage() {
   }, [coaLedgers]);
 
 
-  React.useEffect(() => {
-    const rawData = localStorage.getItem('invoiceDataToCreate');
-    if (rawData && allProducts && allProducts.length > 0) {
-        const data = JSON.parse(rawData);
-        setSelectedPartyId(data.customerId);
+   React.useEffect(() => {
+    const editId = searchParams.get('id');
+    if (editId && firestore && allSalesInvoices) {
+      const invoiceToEdit = allSalesInvoices.find(inv => inv.invoiceNumber === editId);
+      if (invoiceToEdit) {
+        setIsEditMode(true);
+        setInvoiceIdToEdit(editId);
+        setSelectedPartyId(invoiceToEdit.customerId);
+        setInvoiceDate(invoiceToEdit.date);
+        setDueDate(invoiceToEdit.dueDate || '');
+        setItems(invoiceToEdit.items.map((item, i) => ({
+          ...item,
+          id: `item-${Date.now()}-${i}`,
+        })));
+        setOverallDiscount((invoiceToEdit.discount / invoiceToEdit.subtotal) * 100 || 0);
+        setBookingAmount(invoiceToEdit.amountPaid || 0);
+        setSalesOrderNumber(invoiceToEdit.orderNumber || '');
+        setAppliedCoupons(invoiceToEdit.appliedCoupons || []);
+      }
+    } else {
+      const rawData = localStorage.getItem('invoiceDataToCreate');
+      if (rawData && allProducts && allProducts.length > 0) {
+          const data = JSON.parse(rawData);
+          setSelectedPartyId(data.customerId);
 
-        const mappedItems = data.items.map((item: any, i: number) => {
-            const product = allProducts.find(p => p.id === item.productId);
-            const rate = item.price || item.rate || 0;
-            const quantity = item.quantity || 1;
-            
-            return {
-                id: `item-${Date.now()}-${i}`,
-                productId: item.productId,
-                name: item.name || product?.name,
-                hsn: product?.hsn || item.hsn || '',
-                quantity: quantity,
-                unit: product?.unit || item.unit || 'pcs',
-                rate: rate,
-                gstRate: (product as any)?.gstRate || item.gstRate || 18,
-                amount: rate * quantity,
-                category: product?.category || item.category,
-                discount: 0,
-            };
-        });
+          const mappedItems = data.items.map((item: any, i: number) => {
+              const product = allProducts.find(p => p.id === item.productId);
+              const rate = item.price || item.rate || 0;
+              const quantity = item.quantity || 1;
+              
+              return {
+                  id: `item-${Date.now()}-${i}`,
+                  productId: item.productId,
+                  name: item.name || product?.name,
+                  hsn: product?.hsn || item.hsn || '',
+                  quantity: quantity,
+                  unit: product?.unit || item.unit || 'pcs',
+                  rate: rate,
+                  gstRate: (product as any)?.gstRate || item.gstRate || 18,
+                  amount: rate * quantity,
+                  category: product?.category || item.category,
+                  discount: 0,
+              };
+          });
 
-        setItems(mappedItems);
-        setOverallDiscount(data.overallDiscount || 0);
-        setSalesOrderNumber(data.orderNumber || data.id);
-        setBookingAmount(data.paymentReceived || 0);
-        setPaymentDetails(data.paymentDetails || '');
-        setAppliedCoupons(data.appliedCoupons || []);
-        
-        localStorage.removeItem('invoiceDataToCreate');
-        toast({ title: "Pre-filled from Sales Order" });
+          setItems(mappedItems);
+          setOverallDiscount(data.overallDiscount || 0);
+          setSalesOrderNumber(data.orderNumber || data.id);
+          setBookingAmount(data.paymentReceived || 0);
+          setPaymentDetails(data.paymentDetails || '');
+          setAppliedCoupons(data.appliedCoupons || []);
+          
+          localStorage.removeItem('invoiceDataToCreate');
+          toast({ title: "Pre-filled from Sales Order" });
+      }
     }
-  }, [toast, allProducts]);
+  }, [searchParams, firestore, allSalesInvoices, allProducts, toast]);
   
     React.useEffect(() => {
     const fetchEstimate = async () => {
@@ -328,10 +350,7 @@ export default function CreateInvoicePage() {
     if (!firestore || !settingsData?.prefixes || !allSalesInvoices) return;
 
     try {
-      const newInvoiceId = getNextDocNumber('Sales Invoice', settingsData.prefixes, allSalesInvoices);
-
-      const newInvoiceData: Omit<SalesInvoice, 'id'> = {
-          invoiceNumber: newInvoiceId,
+      const invoiceData: Omit<SalesInvoice, 'id' | 'invoiceNumber'> = {
           orderId: salesOrderNumber,
           orderNumber: salesOrderNumber,
           customerId: selectedPartyId,
@@ -351,10 +370,17 @@ export default function CreateInvoicePage() {
           appliedCoupons: appliedCoupons
       };
       
-      const invoiceRef = doc(firestore, 'salesInvoices', newInvoiceId);
-      await setDoc(invoiceRef, { ...newInvoiceData, id: newInvoiceId });
+      if (isEditMode && invoiceIdToEdit) {
+        const invoiceRef = doc(firestore, 'salesInvoices', invoiceIdToEdit);
+        await updateDoc(invoiceRef, invoiceData);
+        toast({ title: 'Invoice Updated', description: `Invoice ${invoiceIdToEdit} has been updated.` });
+      } else {
+        const newInvoiceId = getNextDocNumber('Sales Invoice', settingsData.prefixes, allSalesInvoices);
+        const invoiceRef = doc(firestore, 'salesInvoices', newInvoiceId);
+        await setDoc(invoiceRef, { ...invoiceData, id: newInvoiceId, invoiceNumber: newInvoiceId });
+        toast({ title: 'Invoice Saved', description: `Invoice ${newInvoiceId} has been saved.` });
+      }
 
-      toast({ title: 'Invoice Saved', description: `Invoice ${newInvoiceId} has been saved.` });
       router.push('/dashboard/finance-accounting/invoice');
     } catch (e) {
         console.error(e);
@@ -443,9 +469,9 @@ export default function CreateInvoicePage() {
 
   return (
     <>
-      <PageHeader title="Create Invoice">
+      <PageHeader title={isEditMode ? 'Edit Invoice' : 'Create Invoice'}>
         <Button onClick={handleSaveInvoice} disabled={isSaveDisabled}>
-          <Save className="mr-2 h-4 w-4" /> Save Invoice
+          <Save className="mr-2 h-4 w-4" /> {isEditMode ? 'Update' : 'Save'} Invoice
         </Button>
       </PageHeader>
       
@@ -677,7 +703,10 @@ export default function CreateInvoicePage() {
               <div className="flex justify-between"><span>Subtotal</span><span className="font-mono">{formatIndianCurrency(calculations.subtotal)}</span></div>
                <div className="flex justify-between items-center">
                   <Label htmlFor="overall-discount" className="text-sm">Discount (%)</Label>
-                  <Input id="overall-discount" type="number" value={overallDiscount} onChange={(e) => setOverallDiscount(Number(e.target.value))} className="w-24 h-8 text-right font-mono" placeholder="%" />
+                  <div className="w-24">
+                      <Input id="overall-discount" type="number" value={overallDiscount} onChange={(e) => setOverallDiscount(Number(e.target.value))} className="text-right" placeholder="%" />
+                      <p className="text-xs text-muted-foreground mt-1">Max: {maxAllowedDiscount}%</p>
+                  </div>
               </div>
                <div className="flex justify-between text-green-600">
                   <span>Discount Amount</span>
@@ -728,5 +757,6 @@ export default function CreateInvoicePage() {
     </>
   );
 }
+
 
 
