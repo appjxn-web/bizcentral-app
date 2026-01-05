@@ -67,7 +67,7 @@ interface OrderItem {
   productId: string;
   name: string;
   hsn: string;
-  qty: number;
+  quantity: number;
   unit: string;
   discount: number;
   rate: number;
@@ -155,7 +155,11 @@ export default function CreateSalesOrderPage() {
         const data = JSON.parse(rawData);
         // Map these to your Sales Order state
         setSelectedPartyId(data.customerId);
-        setItems(data.items.map((item: any, i: number) => ({...item, id: `item-${Date.now()}-${i}`})));
+        setItems(data.items.map((item: any, i: number) => ({
+            ...item, 
+            quantity: item.quantity || item.qty || 1,
+            id: `item-${Date.now()}-${i}`
+        })));
         setOverallDiscount(data.overallDiscount || 0);
         setTerms(data.terms || '50% advance payment required.');
         
@@ -174,7 +178,7 @@ export default function CreateSalesOrderPage() {
                 const estimateInput = {
                     items: machineryItems.map(item => ({
                         productId: item.productId,
-                        quantity: item.qty,
+                        quantity: item.quantity,
                         category: item.category,
                     }))
                 };
@@ -208,11 +212,11 @@ export default function CreateSalesOrderPage() {
   const [overallDiscount, setOverallDiscount] = React.useState(0);
 
   const calculations = React.useMemo(() => {
-    const subtotal = items.reduce((acc, item) => acc + (item.qty * item.rate), 0);
+    const subtotal = items.reduce((acc, item) => acc + (item.quantity * item.rate), 0);
     const totalDiscountAmount = subtotal * (overallDiscount / 100);
     const taxableAmount = subtotal - totalDiscountAmount;
     const totalGst = items.reduce((acc, item) => {
-        const itemSubtotal = item.rate * item.qty;
+        const itemSubtotal = item.rate * item.quantity;
         const itemDiscount = itemSubtotal * (overallDiscount / 100);
         const discountedAmount = itemSubtotal - itemDiscount;
         return acc + (discountedAmount * (item.gstRate / 100));
@@ -252,7 +256,7 @@ export default function CreateSalesOrderPage() {
       productId: '',
       name: '',
       hsn: '',
-      qty: 1,
+      quantity: 1,
       unit: 'pcs',
       discount: 0,
       rate: 0,
@@ -280,7 +284,7 @@ export default function CreateSalesOrderPage() {
                     }
                 }
                 
-                updatedItem.amount = updatedItem.qty * updatedItem.rate;
+                updatedItem.amount = updatedItem.quantity * updatedItem.rate;
                 return updatedItem;
             }
             return item;
@@ -520,11 +524,11 @@ export default function CreateSalesOrderPage() {
                         </Popover>
                       </TableCell>
                       <TableCell><Input value={item.hsn} onChange={e => handleItemChange(item.id, 'hsn', e.target.value)} /></TableCell>
-                      <TableCell><Input type="number" value={item.qty} onChange={e => handleItemChange(item.id, 'qty', Number(e.target.value))} /></TableCell>
+                      <TableCell><Input type="number" value={item.quantity} onChange={e => handleItemChange(item.id, 'quantity', Number(e.target.value))} /></TableCell>
                       <TableCell><Input value={item.unit} onChange={e => handleItemChange(item.id, 'unit', e.target.value)} /></TableCell>
                       <TableCell><Input type="number" value={item.rate} onChange={e => handleItemChange(item.id, 'rate', Number(e.target.value))} /></TableCell>
                       <TableCell><Input type="number" value={item.gstRate} onChange={e => handleItemChange(item.id, 'gstRate', Number(e.target.value))} /></TableCell>
-                      <TableCell className="text-right font-mono">{formatIndianCurrency(item.qty * item.rate)}</TableCell>
+                      <TableCell className="text-right font-mono">{formatIndianCurrency(item.quantity * item.rate)}</TableCell>
                       <TableCell>
                         <Button variant="ghost" size="icon" onClick={() => handleRemoveItem(item.id)}>
                           <Trash2 className="h-4 w-4 text-destructive" />
@@ -642,4 +646,3 @@ export default function CreateSalesOrderPage() {
     </>
   );
 }
-
