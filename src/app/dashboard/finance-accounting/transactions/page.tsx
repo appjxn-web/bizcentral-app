@@ -224,10 +224,18 @@ function TransactionsPageContent() {
   
         if (Math.abs(balance) < 0.01) return;
   
-        if (party.type === 'Customer' && balance > 0) {
-          ar.push({ id: party.id, name: party.name, balance: balance, type: 'Receivable' });
-        } else if ((party.type === 'Supplier' || party.type === 'Vendor') && balance < 0) {
-          ap.push({ id: party.id, name: party.name, balance: Math.abs(balance), type: 'Payable' });
+        const partyType = party.type;
+        const ledger = coaLedgers.find(l => l.id === party.coaLedgerId);
+        const ledgerNature = ledger?.nature;
+
+        if ((partyType === 'Customer') || (ledgerNature === 'ASSET')) {
+             if (balance > 0) {
+                ar.push({ id: party.id, name: party.name, balance: balance, type: 'Receivable' });
+             }
+        } else if ((partyType === 'Supplier' || partyType === 'Vendor') || (ledgerNature === 'LIABILITY')) {
+             if (balance < 0) {
+                ap.push({ id: party.id, name: party.name, balance: Math.abs(balance), type: 'Payable' });
+             }
         }
       });
   
