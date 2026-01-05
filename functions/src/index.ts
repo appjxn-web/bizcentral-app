@@ -284,9 +284,7 @@ export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}",
         const jvRef = db.collection("journalVouchers").doc();
         
         // Find customer's ledger, default to a generic "Trade Debtors" if not found
-        const customerPartyRef = db.doc(`parties/${invoice.customerId}`);
-        const customerPartySnap = await transaction.get(customerPartyRef);
-        const customerCoaId = customerPartySnap.data()?.coaLedgerId || await getLedgerId("Trade Debtors – Domestic");
+        const customerCoaId = await findOrCreateSpecificCustomerLedger(transaction, invoice);
         if (!customerCoaId) throw new Error("Customer ledger not found.");
 
         const salesLedgerId = await getLedgerId("Sales – Domestic");
@@ -322,8 +320,8 @@ export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}",
         // --- 2. Adjust Advance from customer if any ---
         if (invoice.amountPaid > 0) {
             const advanceJvRef = db.collection("journalVouchers").doc();
-            const customerAdvancesLedgerId = await getLedgerId("Customer Advances");
-            if (!customerAdvancesLedgerId) throw new Error("Customer Advances ledger not found.");
+            // This needs to be a specific Customer Advances ledger if you track them per-customer
+            const customerAdvancesLedgerId = await findOrCreateSpecificCustomerLedger(transaction, invoice);
 
             const advanceJvData = {
                 date: invoice.date,
@@ -379,3 +377,5 @@ export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}",
       console.error("Invoice JV creation failed: ", e);
     }
   });
+
+
