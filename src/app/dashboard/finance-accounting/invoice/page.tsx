@@ -300,6 +300,7 @@ function OrderRow({ order, onGenerateInvoice, onUpdateStatus, pickupPoints, dyna
               {dynamicStatus}
             </Badge>
           </TableCell>
+          <TableCell>{order.expectedDeliveryDate ? format(new Date(order.expectedDeliveryDate), 'dd/MM/yyyy') : 'N/A'}</TableCell>
           <TableCell className="text-right font-mono">{formatIndianCurrency(order.grandTotal)}</TableCell>
           <TableCell className="text-right">
               <div className="flex gap-2 justify-end">
@@ -342,7 +343,7 @@ function OrderRow({ order, onGenerateInvoice, onUpdateStatus, pickupPoints, dyna
         </TableRow>
         <CollapsibleContent asChild>
           <TableRow>
-              <TableCell colSpan={7} className="p-0">
+              <TableCell colSpan={8} className="p-0">
                   <div className="p-6 space-y-6 bg-muted/50">
                       <div className="space-y-2">
                         {order.items.map(item => {
@@ -407,9 +408,10 @@ function OrderRow({ order, onGenerateInvoice, onUpdateStatus, pickupPoints, dyna
   )
 }
 
-function GeneratedInvoiceRow({ invoice, order, onViewInvoice, onUpdateStatus, allProducts, getOrderInHand, allSalesInvoices, journalVouchers, allCoaLedgers, allParties, liveBalances, onEdit }: { invoice: SalesInvoice, order?: Order, onViewInvoice: (id: string) => void, onUpdateStatus: (id: string, status: 'Paid' | 'Unpaid') => void, allProducts: Product[] | null, getOrderInHand: (productId: string) => number, allSalesInvoices: SalesInvoice[] | null, journalVouchers: JournalVoucher[] | null, allCoaLedgers: CoaLedger[] | null, allParties: Party[] | null, liveBalances: Map<string, number>, onEdit: (invoiceId: string) => void }) {
+function GeneratedInvoiceRow({ invoice, onUpdateStatus, allProducts, getOrderInHand, allSalesInvoices, journalVouchers, allCoaLedgers, allParties, liveBalances, onEdit }: { invoice: SalesInvoice, onUpdateStatus: (id: string, status: 'Paid' | 'Unpaid') => void, allProducts: Product[] | null, getOrderInHand: (productId: string) => number, allSalesInvoices: SalesInvoice[] | null, journalVouchers: JournalVoucher[] | null, allCoaLedgers: CoaLedger[] | null, allParties: Party[] | null, liveBalances: Map<string, number>, onEdit: (invoiceId: string) => void }) {
     const [isOpen, setIsOpen] = React.useState(false);
-    
+    const router = useRouter();
+
     const paymentTransactions = React.useMemo(() => {
         if (!journalVouchers || !invoice.orderNumber) return [];
         return journalVouchers.filter(jv => 
@@ -451,7 +453,7 @@ function GeneratedInvoiceRow({ invoice, order, onViewInvoice, onUpdateStatus, al
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4"/></Button></DropdownMenuTrigger>
                             <DropdownMenuContent>
-                                <DropdownMenuItem onClick={() => onViewInvoice(invoice.invoiceNumber)}>
+                                <DropdownMenuItem onClick={() => router.push(`/dashboard/sales/invoice/view?id=${invoice.invoiceNumber}`)}>
                                     <Eye className="mr-2 h-4 w-4"/> View
                                 </DropdownMenuItem>
                                  <DropdownMenuItem onClick={() => onEdit(invoice.invoiceNumber)}>
@@ -523,18 +525,6 @@ function GeneratedInvoiceRow({ invoice, order, onViewInvoice, onUpdateStatus, al
                                         </div>
                                       )}
                                   </div>
-                                  {order && (
-                                      <div className="space-y-4">
-                                          <h4 className="font-semibold">Pickup Details</h4>
-                                          <div className="p-3 rounded-md border bg-background">
-                                              {order.assignedToUid ? (
-                                                  <PartnerPickupDetails userId={order.assignedToUid} />
-                                              ) : (
-                                                  <CompanyPickupDetails />
-                                              )}
-                                          </div>
-                                      </div>
-                                  )}
                               </div>
                           </div>
                       </TableCell>
@@ -726,12 +716,13 @@ function InvoicePage() {
                 <TableHead>Customer</TableHead>
                 <TableHead>Date</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead>Exp. Delivery Date</TableHead>
                 <TableHead className="text-right">Total</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
               {loading ? (
-                <TableBody><TableRow><TableCell colSpan={7} className="h-24 text-center">Loading orders...</TableCell></TableRow></TableBody>
+                <TableBody><TableRow><TableCell colSpan={8} className="h-24 text-center">Loading orders...</TableCell></TableRow></TableBody>
               ) : orders && orders.length > 0 ? (
                 orders.map((order) => {
                   const dynamicStatus = getDynamicOrderStatus(order);
@@ -741,7 +732,7 @@ function InvoicePage() {
                 })
               ) : (
                 <TableBody><TableRow>
-                  <TableCell colSpan={7} className="h-24 text-center">
+                  <TableCell colSpan={8} className="h-24 text-center">
                     No sales orders found.
                   </TableCell>
                 </TableRow></TableBody>
@@ -776,14 +767,10 @@ function InvoicePage() {
                     <TableRow><TableCell colSpan={8} className="h-24 text-center">Loading invoices...</TableCell></TableRow>
                  </TableBody>
               ) : allSalesInvoices && allSalesInvoices.length > 0 ? (
-                allSalesInvoices.map((invoice) => {
-                  const correspondingOrder = orders?.find(o => o.orderNumber === invoice.orderNumber);
-                  return (
+                allSalesInvoices.map((invoice) => (
                     <GeneratedInvoiceRow 
                       key={invoice.id} 
                       invoice={invoice} 
-                      order={correspondingOrder} 
-                      onViewInvoice={onViewInvoice} 
                       onUpdateStatus={handleInvoicePaymentStatus} 
                       allProducts={allProducts || []} 
                       getOrderInHand={getOrderInHand} 
@@ -794,8 +781,7 @@ function InvoicePage() {
                       liveBalances={liveBalances}
                       onEdit={handleEditInvoice}
                     />
-                  )
-                })
+                  ))
               ) : (
                  <TableBody>
                     <TableRow><TableCell colSpan={8} className="h-24 text-center">No invoices created yet.</TableCell></TableRow>
@@ -821,3 +807,5 @@ export default function InvoicePageWrapper() {
 
     return <InvoicePage />;
 }
+
+    
