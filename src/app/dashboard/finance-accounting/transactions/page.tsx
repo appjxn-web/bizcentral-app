@@ -32,8 +32,8 @@ import { useToast } from '@/hooks/use-toast';
 import { PlusCircle, FileUp, Camera, Loader2, Trash2, MoreHorizontal, Search, CheckCheck, FileText, Printer, Eye, Edit } from 'lucide-react';
 import { format } from 'date-fns';
 import { useFirestore, useCollection, useUser, useDoc } from '@/firebase';
-import { collection, orderBy, query, addDoc, serverTimestamp, doc, updateDoc, deleteDoc, setDoc, Timestamp } from 'firebase/firestore';
-import type { CoaLedger, JournalVoucher, Party, CoaNature, PartyType, UserProfile } from '@/lib/types';
+import { collection, orderBy, query, addDoc, serverTimestamp, doc, updateDoc, deleteDoc, setDoc, Timestamp, writeBatch } from 'firebase/firestore';
+import type { CoaLedger, JournalVoucher, Party, CoaNature, PartyType, UserProfile, SalesInvoice } from '@/lib/types';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose, DialogTrigger } from '@/components/ui/dialog';
 import {
@@ -138,6 +138,7 @@ function TransactionsPageContent() {
     const { data: coaLedgers, loading: ledgersLoading } = useCollection<CoaLedger>(collection(firestore, 'coa_ledgers'));
     const { data: journalVouchers, loading: vouchersLoading } = useCollection<JournalVoucher>(query(collection(firestore, 'journalVouchers'), orderBy('createdAt', 'desc')));
     const { data: parties, loading: partiesLoading } = useCollection<Party>(collection(firestore, 'parties'));
+    const { data: salesInvoices, loading: invoicesLoading } = useCollection<SalesInvoice>(collection(firestore, 'salesInvoices'));
     
     const [date, setDate] = React.useState(format(new Date(), 'yyyy-MM-dd'));
     const [narration, setNarration] = React.useState('');
@@ -187,30 +188,42 @@ function TransactionsPageContent() {
         const balances = new Map<string, number>();
         if (!coaLedgers) return balances;
 
+        // 1. Start with Opening Balances
         coaLedgers.forEach(acc => {
             const openingBal = acc.openingBalance?.amount || 0;
             const balance = acc.openingBalance?.drCr === 'CR' ? -openingBal : openingBal;
             balances.set(acc.id, balance);
         });
 
+        // 2. Add Journal Voucher entries (Debits - Credits)
         if (journalVouchers) {
-            const sortedVouchers = [...journalVouchers].sort((a, b) => {
-                const dateA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.date);
-                const dateB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.date);
-                return dateA.getTime() - dateB.getTime();
-            });
-            sortedVouchers.forEach(jv => {
+            journalVouchers.forEach(jv => {
                 jv.entries.forEach(entry => {
-                if (balances.has(entry.accountId)) {
-                    const currentBal = balances.get(entry.accountId)!;
-                    const newBal = currentBal + (entry.debit || 0) - (entry.credit || 0);
-                    balances.set(entry.accountId, newBal);
-                }
+                    if (balances.has(entry.accountId)) {
+                        const currentBal = balances.get(entry.accountId)!;
+                        const newBal = currentBal + (entry.debit || 0) - (entry.credit || 0);
+                        balances.set(entry.accountId, newBal);
+                    }
                 });
             });
         }
+
+        // 3. ADD THIS: Add Sales Invoice totals (They are Debits to the Customer)
+        if (salesInvoices && parties) {
+            salesInvoices.forEach(inv => {
+                const party = parties.find(p => p.id === inv.customerId);
+                const ledgerId = party?.coaLedgerId;
+                
+                if (ledgerId && balances.has(ledgerId)) {
+                    const currentBal = balances.get(ledgerId)!;
+                    // Invoice is always a DEBIT (increases receivable)
+                    balances.set(ledgerId, currentBal + inv.grandTotal);
+                }
+            });
+        }
+
         return balances;
-    }, [coaLedgers, journalVouchers]);
+    }, [coaLedgers, journalVouchers, salesInvoices, parties]);
 
 
      const { receivables, payables } = React.useMemo(() => {
@@ -222,38 +235,20 @@ function TransactionsPageContent() {
         }
     
         parties.forEach(party => {
-            // Find the ledger ID linked to this party
             const ledgerId = party.coaLedgerId;
             if (!ledgerId) return;
-    
             const balance = liveBalances.get(ledgerId) || 0;
             
-            // Filter out tiny rounding differences
             if (Math.abs(balance) > 0.01) {
                 if (balance > 0) {
-                    // DEBIT BALANCE: Someone owes us money (Receivable)
-                    ar.push({ 
-                        id: party.id, 
-                        name: party.name, 
-                        balance: balance, 
-                        type: 'Receivable' 
-                    });
+                    // DEBIT: Customer owes us money
+                    ar.push({ id: party.id, name: party.name, balance: balance, type: 'Receivable' });
                 } else {
-                    // CREDIT BALANCE: We owe money OR received an advance (Payable/Liability)
-                    ap.push({ 
-                        id: party.id, 
-                        name: party.name, 
-                        balance: Math.abs(balance), 
-                        type: 'Payable' 
-                    });
+                    // CREDIT: We owe money (or have an un-adjusted advance)
+                    ap.push({ id: party.id, name: party.name, balance: Math.abs(balance), type: 'Payable' });
                 }
             }
         });
-    
-        // Optional: Sort by balance amount descending
-        ar.sort((a, b) => b.balance - a.balance);
-        ap.sort((a, b) => b.balance - a.balance);
-    
         return { receivables: ar, payables: ap };
     }, [parties, liveBalances]);
 
@@ -910,5 +905,7 @@ export default function TransactionsPageWrapper() {
     if (!isClient) return <PageHeader title="Transactions" />;
     return <TransactionsPageContent />;
 }
+
+    
 
     
