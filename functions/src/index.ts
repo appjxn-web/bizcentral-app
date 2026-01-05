@@ -10,7 +10,7 @@ import {
 } from "firebase-functions/v2/firestore";
 import * as admin from "firebase-admin";
 import {getFirestore, FieldValue} from "firebase-admin/firestore";
-import type {Order, UserProfile, Goal} from "./types";
+import type {Order, UserProfile, Goal, SalesInvoice, CoaLedger, Product} from "./types";
 
 // Prevent double initialization
 if (admin.apps.length === 0) {
@@ -273,4 +273,125 @@ export const onGoalUpdate = onDocumentCreated("goalUpdates/{updateId}",
     // Placeholder for goal update logic
     console.log("Goal update recorded...");
     return null;
+  });
+
+// New Function to handle Invoice Creation
+export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}",
+  async (event) => {
+    const snap = event.data;
+    if (!snap) return;
+
+    const invoice = snap.data() as SalesInvoice;
+
+    try {
+      // Helper function to find a ledger by name
+      const getLedgerId = async (name: string): Promise<string | null> => {
+        const query = db.collection('coa_ledgers').where('name', '==', name).limit(1);
+        const snapshot = await query.get();
+        if (snapshot.empty) {
+            console.error(`Ledger not found: ${name}`);
+            return null;
+        }
+        return snapshot.docs[0].id;
+      };
+
+      await db.runTransaction(async (transaction) => {
+        // --- 1. Main Sales Journal Voucher ---
+        const jvRef = db.collection("journalVouchers").doc();
+        
+        // Find customer's ledger, default to a generic "Trade Debtors" if not found
+        const customerPartyRef = db.doc(`parties/${invoice.customerId}`);
+        const customerPartySnap = await transaction.get(customerPartyRef);
+        const customerCoaId = customerPartySnap.data()?.coaLedgerId || await getLedgerId("Trade Debtors – Domestic");
+        if (!customerCoaId) throw new Error("Customer ledger not found.");
+
+        const salesLedgerId = await getLedgerId("Sales – Domestic");
+        if (!salesLedgerId) throw new Error("Sales ledger not found.");
+        
+        const salesEntries = [
+          // Debit Customer (Trade Receivable)
+          { accountId: customerCoaId, debit: invoice.grandTotal, credit: 0 },
+          // Credit Sales Account
+          { accountId: salesLedgerId, credit: invoice.taxableAmount, debit: 0 },
+        ];
+
+        // Credit appropriate GST accounts
+        if(invoice.igst && invoice.igst > 0) {
+            const igstLedgerId = await getLedgerId("Output GST – IGST");
+            if(igstLedgerId) salesEntries.push({ accountId: igstLedgerId, credit: invoice.igst, debit: 0 });
+        } else {
+            const cgstLedgerId = await getLedgerId("Output GST – CGST");
+            const sgstLedgerId = await getLedgerId("Output GST – SGST");
+            if(cgstLedgerId) salesEntries.push({ accountId: cgstLedgerId, credit: invoice.cgst, debit: 0 });
+            if(sgstLedgerId) salesEntries.push({ accountId: sgstLedgerId, credit: invoice.sgst, debit: 0 });
+        }
+
+        const jvData = {
+          date: invoice.date,
+          narration: `Sales Invoice ${invoice.invoiceNumber} to ${invoice.customerName}`,
+          entries: salesEntries,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          voucherType: "Sales Voucher"
+        };
+        transaction.set(jvRef, jvData);
+        
+        // --- 2. Adjust Advance from customer if any ---
+        if (invoice.amountPaid > 0) {
+            const advanceJvRef = db.collection("journalVouchers").doc();
+            const customerAdvancesLedgerId = await getLedgerId("Customer Advances");
+            if (!customerAdvancesLedgerId) throw new Error("Customer Advances ledger not found.");
+
+            const advanceJvData = {
+                date: invoice.date,
+                narration: `Adjustment of advance for Invoice ${invoice.invoiceNumber}`,
+                entries: [
+                    { accountId: customerAdvancesLedgerId, debit: invoice.amountPaid, credit: 0 },
+                    { accountId: customerCoaId, credit: invoice.amountPaid, debit: 0 }
+                ],
+                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                voucherType: "Journal Voucher"
+            };
+            transaction.set(advanceJvRef, advanceJvData);
+        }
+
+        // --- 3. Handle Cost of Goods Sold (COGS) ---
+        let cogsAmount = 0;
+        const cogsEntries = [];
+
+        for (const item of invoice.items) {
+          const productSnap = await db.doc(`products/${item.productId}`).get();
+          const product = productSnap.data() as Product;
+          if (product && product.cost) {
+            const itemCost = product.cost * item.quantity;
+            cogsAmount += itemCost;
+            
+            // Credit the specific Inventory Account for the product
+            const inventoryLedgerId = product.coaAccountId || await getLedgerId("Stock-in-Hand – Finished Goods");
+            if (!inventoryLedgerId) throw new Error(`Inventory ledger for product ${product.name} not found.`);
+            
+            cogsEntries.push({ accountId: inventoryLedgerId, credit: itemCost, debit: 0 });
+          }
+        }
+
+        if (cogsAmount > 0) {
+            const cogsJvRef = db.collection("journalVouchers").doc();
+            const cogsLedgerId = await getLedgerId("COST OF GOODS SOLD (COGS)");
+            if (!cogsLedgerId) throw new Error("COGS ledger not found.");
+
+            // Debit COGS account
+            cogsEntries.unshift({ accountId: cogsLedgerId, debit: cogsAmount, credit: 0 });
+
+            const cogsJvData = {
+                date: invoice.date,
+                narration: `COGS for Invoice ${invoice.invoiceNumber}`,
+                entries: cogsEntries,
+                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                voucherType: "Journal Voucher"
+            };
+            transaction.set(cogsJvRef, cogsJvData);
+        }
+      });
+    } catch (e) {
+      console.error("Invoice JV creation failed: ", e);
+    }
   });
