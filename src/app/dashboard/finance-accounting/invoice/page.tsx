@@ -23,11 +23,12 @@ import {
   RefreshCcw,
   Receipt,
   CircleDollarSign,
+  Eye,
 } from 'lucide-react';
 
 import { PageHeader } from '@/components/page-header';
 import { cn } from '@/lib/utils';
-import type { Order, OrderStatus, UserProfile, UserRole, WorkOrder, PickupPoint, SalesOrder, RefundRequest, Product, ServiceInvoice, SalesInvoice } from '@/lib/types';
+import type { Order, OrderStatus, UserProfile, UserRole, WorkOrder, PickupPoint, SalesOrder, RefundRequest, Product, ServiceInvoice, SalesInvoiceItem } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -391,6 +392,73 @@ function OrderRow({ order, onGenerateInvoice, onUpdateStatus, pickupPoints, dyna
   )
 }
 
+function GeneratedInvoiceRow({ invoice, onMarkStatus, onView }: { invoice: SalesInvoice, onMarkStatus: (id: string, status: 'Paid' | 'Unpaid') => void, onView: (id: string) => void }) {
+    const [isOpen, setIsOpen] = React.useState(false);
+
+    return (
+        <Collapsible asChild key={invoice.id} open={isOpen} onOpenChange={setIsOpen}>
+            <TableBody>
+                <TableRow>
+                    <TableCell>
+                        <CollapsibleTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-8 w-8">
+                                {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                                <span className="sr-only">Toggle details</span>
+                            </Button>
+                        </CollapsibleTrigger>
+                    </TableCell>
+                    <TableCell className="font-mono">{invoice.invoiceNumber}</TableCell>
+                    <TableCell>{invoice.customerName}</TableCell>
+                    <TableCell>{format(new Date(invoice.date), 'dd/MM/yyyy')}</TableCell>
+                    <TableCell>
+                        <Badge className={cn('text-xs', getStatusBadgeVariant(invoice.status))} variant="outline">
+                        {invoice.status}
+                        </Badge>
+                    </TableCell>
+                    <TableCell className="text-right font-mono">{formatIndianCurrency(invoice.grandTotal)}</TableCell>
+                    <TableCell className="text-right space-x-2">
+                         <Button variant="outline" size="sm" onClick={() => onView(invoice.invoiceNumber)}>
+                            <Eye className="mr-2 h-4 w-4" /> View
+                        </Button>
+                        <Button variant="outline" size="sm" onClick={() => onMarkStatus(invoice.id, invoice.status === 'Paid' ? 'Unpaid' : 'Paid')}>
+                            Mark as {invoice.status === 'Paid' ? 'Unpaid' : 'Paid'}
+                        </Button>
+                    </TableCell>
+                </TableRow>
+                <CollapsibleContent asChild>
+                    <TableRow>
+                        <TableCell colSpan={7} className="p-0">
+                            <div className="p-6 bg-muted/50">
+                                 <h4 className="font-semibold text-sm mb-2">Invoice Items:</h4>
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead>Product</TableHead>
+                                            <TableHead className="text-right">Qty</TableHead>
+                                            <TableHead className="text-right">Rate</TableHead>
+                                            <TableHead className="text-right">Amount</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {invoice.items.map((item, index) => (
+                                            <TableRow key={index}>
+                                                <TableCell>{item.name}</TableCell>
+                                                <TableCell className="text-right">{item.quantity}</TableCell>
+                                                <TableCell className="text-right">{formatIndianCurrency(item.price)}</TableCell>
+                                                <TableCell className="text-right">{formatIndianCurrency(item.price * item.quantity)}</TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            </div>
+                        </TableCell>
+                    </TableRow>
+                </CollapsibleContent>
+            </TableBody>
+        </Collapsible>
+    )
+}
+
 function InvoicePage() {
     const router = useRouter();
     const firestore = useFirestore();
@@ -569,6 +637,7 @@ function InvoicePage() {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-12"><span className="sr-only">Expand</span></TableHead>
                 <TableHead>Invoice #</TableHead>
                 <TableHead>Customer</TableHead>
                 <TableHead>Date</TableHead>
@@ -577,32 +646,19 @@ function InvoicePage() {
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
-            <TableBody>
               {invoicesLoading ? (
-                <TableRow><TableCell colSpan={6} className="h-24 text-center">Loading invoices...</TableCell></TableRow>
+                 <TableBody>
+                    <TableRow><TableCell colSpan={7} className="h-24 text-center">Loading invoices...</TableCell></TableRow>
+                 </TableBody>
               ) : allSalesInvoices && allSalesInvoices.length > 0 ? (
                 allSalesInvoices.map((invoice) => (
-                  <TableRow key={invoice.id}>
-                    <TableCell className="font-mono">{invoice.invoiceNumber}</TableCell>
-                    <TableCell>{invoice.customerName}</TableCell>
-                    <TableCell>{format(new Date(invoice.date), 'dd/MM/yyyy')}</TableCell>
-                    <TableCell>
-                      <Badge className={cn('text-xs', getStatusBadgeVariant(invoice.status))} variant="outline">
-                        {invoice.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right font-mono">{formatIndianCurrency(invoice.grandTotal)}</TableCell>
-                    <TableCell className="text-right">
-                       <Button variant="outline" size="sm" onClick={() => handleInvoicePaymentStatus(invoice.id, invoice.status === 'Paid' ? 'Unpaid' : 'Paid')}>
-                          Mark as {invoice.status === 'Paid' ? 'Unpaid' : 'Paid'}
-                      </Button>
-                    </TableCell>
-                  </TableRow>
+                  <GeneratedInvoiceRow key={invoice.id} invoice={invoice} onMarkStatus={handleInvoicePaymentStatus} onView={(id) => router.push(`/dashboard/sales/invoice/view?id=${id}`)} />
                 ))
               ) : (
-                <TableRow><TableCell colSpan={6} className="h-24 text-center">No invoices created yet.</TableCell></TableRow>
+                 <TableBody>
+                    <TableRow><TableCell colSpan={7} className="h-24 text-center">No invoices created yet.</TableCell></TableRow>
+                 </TableBody>
               )}
-            </TableBody>
           </Table>
         </CardContent>
       </Card>
