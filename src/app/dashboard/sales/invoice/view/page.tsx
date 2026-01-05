@@ -293,8 +293,8 @@ export default function InvoiceViewPage() {
                                             <TableCell>{item.hsn}</TableCell>
                                             <TableCell className="text-right">{item.quantity}</TableCell>
                                             <TableCell>pcs</TableCell>
-                                            <TableCell className="text-right">{formatIndianCurrency(item.price)}</TableCell>
-                                            <TableCell className="text-right font-medium">{formatIndianCurrency(item.price * item.quantity)}</TableCell>
+                                            <TableCell className="text-right">{formatIndianCurrency(item.rate)}</TableCell>
+                                            <TableCell className="text-right font-medium">{formatIndianCurrency(item.rate * item.quantity)}</TableCell>
                                         </TableRow>
                                     ))}
                                 </TableBody>
@@ -375,3 +375,4 @@ export default function InvoiceViewPage() {
         </>
       );
 }
+
