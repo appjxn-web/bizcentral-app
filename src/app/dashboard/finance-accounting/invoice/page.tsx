@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -269,9 +270,11 @@ function CompanyPickupDetails() {
     );
 }
 
-function OrderRow({ order, onGenerateInvoice, onUpdateStatus, pickupPoints, dynamicStatus, allProducts, getOrderInHand }: { order: Order, onGenerateInvoice: (order: Order) => void, onUpdateStatus: (orderId: string, status: OrderStatus) => void, pickupPoints: PickupPoint[] | null, dynamicStatus: OrderStatus, allProducts: Product[] | null, getOrderInHand: (productId: string) => number }) {
+function OrderRow({ order, onGenerateInvoice, onUpdateStatus, pickupPoints, dynamicStatus, allProducts, getOrderInHand, allSalesInvoices, onViewInvoice }: { order: Order, onGenerateInvoice: (order: Order) => void, onUpdateStatus: (orderId: string, status: OrderStatus) => void, pickupPoints: PickupPoint[] | null, dynamicStatus: OrderStatus, allProducts: Product[] | null, getOrderInHand: (productId: string) => number, allSalesInvoices: SalesInvoice[] | null, onViewInvoice: (invoiceId: string) => void }) {
   const [isOpen, setIsOpen] = React.useState(false);
   const orderStatuses: OrderStatus[] = ['Manufacturing', 'Ready for Dispatch', 'Awaiting Payment', 'Shipped', 'Delivered'];
+  
+  const existingInvoice = allSalesInvoices?.find(inv => inv.orderNumber === order.orderNumber);
 
   const pickupPointName = pickupPoints?.find(p => p.id === order.pickupPointId)?.name || 'N/A';
   
@@ -299,14 +302,20 @@ function OrderRow({ order, onGenerateInvoice, onUpdateStatus, pickupPoints, dyna
           <TableCell className="text-right font-mono">{formatIndianCurrency(order.grandTotal)}</TableCell>
           <TableCell className="text-right">
               <div className="flex gap-2 justify-end">
-                <Button 
-                    variant="outline" 
-                    size="sm" 
-                    disabled={!['Awaiting Payment', 'Ready for Dispatch', 'Shipped', 'Delivered'].includes(dynamicStatus)}
-                    onClick={() => onGenerateInvoice(order)}
-                >
-                    Generate Invoice
-                </Button>
+                {existingInvoice ? (
+                    <Button variant="secondary" size="sm" onClick={() => onViewInvoice(existingInvoice.invoiceNumber)}>
+                        View Invoice
+                    </Button>
+                ) : (
+                    <Button 
+                        variant="outline" 
+                        size="sm" 
+                        disabled={!['Awaiting Payment', 'Ready for Dispatch', 'Shipped', 'Delivered'].includes(dynamicStatus)}
+                        onClick={() => onGenerateInvoice(order)}
+                    >
+                        Generate Invoice
+                    </Button>
+                )}
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4"/></Button>
@@ -391,7 +400,7 @@ function OrderRow({ order, onGenerateInvoice, onUpdateStatus, pickupPoints, dyna
   )
 }
 
-function GeneratedInvoiceRow({ invoice, onMarkStatus, onView }: { invoice: SalesInvoice, onMarkStatus: (id: string, status: 'Paid' | 'Unpaid') => void, onView: (id: string) => void }) {
+function GeneratedInvoiceRow({ invoice, onView }: { invoice: SalesInvoice, onView: (id: string) => void }) {
     const [isOpen, setIsOpen] = React.useState(false);
 
     return (
@@ -418,9 +427,6 @@ function GeneratedInvoiceRow({ invoice, onMarkStatus, onView }: { invoice: Sales
                     <TableCell className="text-right space-x-2">
                          <Button variant="outline" size="sm" onClick={() => onView(invoice.invoiceNumber)}>
                             <Eye className="mr-2 h-4 w-4" /> View
-                        </Button>
-                        <Button variant="outline" size="sm" onClick={() => onMarkStatus(invoice.id, invoice.status === 'Paid' ? 'Unpaid' : 'Paid')}>
-                            Mark as {invoice.status === 'Paid' ? 'Unpaid' : 'Paid'}
                         </Button>
                     </TableCell>
                 </TableRow>
@@ -540,6 +546,15 @@ function InvoicePage() {
       toast({ title: "Status Updated", description: `Invoice marked as ${status}.`});
     }
 
+    const handleViewInvoice = (invoiceId: string) => {
+      // Find the full invoice data to pass to the view page
+      const invoiceData = allSalesInvoices?.find(inv => inv.invoiceNumber === invoiceId);
+      if (invoiceData) {
+        localStorage.setItem('invoiceToView', JSON.stringify(invoiceData));
+        router.push(`/dashboard/sales/invoice/view?id=${invoiceId}`);
+      }
+    };
+
     const loading = ordersLoading || workOrdersLoading || productsLoading || invoicesLoading;
 
   return (
@@ -611,7 +626,7 @@ function InvoicePage() {
                 orders.map((order) => {
                   const dynamicStatus = getDynamicOrderStatus(order);
                   return (
-                    <OrderRow key={order.id} order={order} pickupPoints={pickupPoints} onGenerateInvoice={handleGenerateInvoice} onUpdateStatus={handleUpdateStatus} dynamicStatus={dynamicStatus} allProducts={allProducts} getOrderInHand={getOrderInHand} />
+                    <OrderRow key={order.id} order={order} pickupPoints={pickupPoints} onGenerateInvoice={handleGenerateInvoice} onUpdateStatus={handleUpdateStatus} dynamicStatus={dynamicStatus} allProducts={allProducts} getOrderInHand={getOrderInHand} allSalesInvoices={allSalesInvoices || []} onViewInvoice={handleViewInvoice} />
                   )
                 })
               ) : (
@@ -651,7 +666,7 @@ function InvoicePage() {
                  </TableBody>
               ) : allSalesInvoices && allSalesInvoices.length > 0 ? (
                 allSalesInvoices.map((invoice) => (
-                  <GeneratedInvoiceRow key={invoice.id} invoice={invoice} onMarkStatus={handleInvoicePaymentStatus} onView={(id) => router.push(`/dashboard/sales/invoice/view?id=${id}`)} />
+                  <GeneratedInvoiceRow key={invoice.id} invoice={invoice} onView={(id) => handleViewInvoice(id)} />
                 ))
               ) : (
                  <TableBody>
