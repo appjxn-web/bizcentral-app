@@ -44,16 +44,6 @@
       ]
     },
     {
-      "collectionGroup": "journalVouchers",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "createdAt",
-          "order": "DESCENDING"
-        }
-      ]
-    },
-    {
       "collectionGroup": "milestones",
       "queryScope": "COLLECTION_GROUP",
       "fields": [
