@@ -1,5 +1,4 @@
 
-
 import type {Timestamp} from "firebase/firestore";
 
 export type CoaNature = "ASSET" | "LIABILITY" | "EQUITY" | "INCOME" | "EXPENSE";
@@ -142,4 +141,12 @@ export interface SalesInvoice {
     balanceDue: number;
     status: 'Paid' | 'Unpaid' | 'Overdue';
     dueDate?: string;
+}
+
+export interface Party {
+    id: string;
+    name: string;
+    type: 'Customer' | 'Supplier' | 'Vendor' | 'Partner';
+    coaLedgerId?: string;
+    // other party fields
 }
