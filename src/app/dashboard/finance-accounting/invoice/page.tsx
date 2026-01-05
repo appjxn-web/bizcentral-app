@@ -716,13 +716,12 @@ function InvoicePage() {
                 <TableHead>Customer</TableHead>
                 <TableHead>Date</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead>Exp. Delivery Date</TableHead>
                 <TableHead className="text-right">Total</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
               {loading ? (
-                <TableBody><TableRow><TableCell colSpan={8} className="h-24 text-center">Loading orders...</TableCell></TableRow></TableBody>
+                <TableBody><TableRow><TableCell colSpan={7} className="h-24 text-center">Loading orders...</TableCell></TableRow></TableBody>
               ) : orders && orders.length > 0 ? (
                 orders.map((order) => {
                   const dynamicStatus = getDynamicOrderStatus(order);
@@ -732,7 +731,7 @@ function InvoicePage() {
                 })
               ) : (
                 <TableBody><TableRow>
-                  <TableCell colSpan={8} className="h-24 text-center">
+                  <TableCell colSpan={7} className="h-24 text-center">
                     No sales orders found.
                   </TableCell>
                 </TableRow></TableBody>
