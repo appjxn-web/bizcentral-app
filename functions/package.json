@@ -19,5 +19,6 @@
   },
   "devDependencies": {
     "typescript": "^5"
-  }
+  },
+  "private": true
 }

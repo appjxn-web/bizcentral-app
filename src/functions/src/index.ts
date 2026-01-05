@@ -1,5 +1,3 @@
-
-'use server';
 import {
   onDocumentCreated,
   onDocumentUpdated,
@@ -286,7 +284,7 @@ export const handleOrderUpdates = onDocumentUpdated("orders/{orderId}",
         transaction.set(wRef, {
           commissionPayable: admin.firestore.FieldValue.increment(comm),
         }, {merge: true});
-        const oRef = db.doc(`orders/${event.params.orderId}`);
+        const oRef = doc(firestore, 'orders', event.params.orderId);
         transaction.update(oRef, {commission: comm});
       }
     });
