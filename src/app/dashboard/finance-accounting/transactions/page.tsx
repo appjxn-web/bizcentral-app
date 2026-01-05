@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -168,7 +169,7 @@ function TransactionsPageContent() {
     const [endDate, setEndDate] = React.useState('');
 
     const [isCameraOpen, setIsCameraOpen] = React.useState(false);
-    const [hasCameraPermission] = React.useState<boolean | undefined>(undefined);
+    const [hasCameraPermission, setHasCameraPermission] = React.useState<boolean | undefined>(undefined);
     const videoRef = React.useRef<HTMLVideoElement>(null);
     
     // PDF Print state
@@ -218,19 +219,37 @@ function TransactionsPageContent() {
         }
     
         parties.forEach(party => {
-            if (!party.coaLedgerId) return;
+            // Find the ledger ID linked to this party
+            const ledgerId = party.coaLedgerId;
+            if (!ledgerId) return;
     
-            const balance = liveBalances.get(party.coaLedgerId) || 0;
+            const balance = liveBalances.get(ledgerId) || 0;
             
-            // Only add if there is a non-zero balance
+            // Filter out tiny rounding differences
             if (Math.abs(balance) > 0.01) {
-                if (party.type === 'Customer' && balance > 0) {
-                    ar.push({ id: party.id, name: party.name, balance: balance, type: 'Receivable' });
-                } else if ((party.type === 'Supplier' || party.type === 'Vendor') && balance < 0) {
-                    ap.push({ id: party.id, name: party.name, balance: Math.abs(balance), type: 'Payable' });
+                if (balance > 0) {
+                    // DEBIT BALANCE: Someone owes us money (Receivable)
+                    ar.push({ 
+                        id: party.id, 
+                        name: party.name, 
+                        balance: balance, 
+                        type: 'Receivable' 
+                    });
+                } else {
+                    // CREDIT BALANCE: We owe money OR received an advance (Payable/Liability)
+                    ap.push({ 
+                        id: party.id, 
+                        name: party.name, 
+                        balance: Math.abs(balance), 
+                        type: 'Payable' 
+                    });
                 }
             }
         });
+    
+        // Optional: Sort by balance amount descending
+        ar.sort((a, b) => b.balance - a.balance);
+        ap.sort((a, b) => b.balance - a.balance);
     
         return { receivables: ar, payables: ap };
     }, [parties, liveBalances]);
@@ -896,3 +915,4 @@ export default function TransactionsPageWrapper() {
 
     
 
+    
