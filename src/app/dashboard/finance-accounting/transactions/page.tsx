@@ -132,7 +132,7 @@ function TransactionsPageContent() {
     const { currentRole } = useRole();
     const router = useRouter();
     const firestore = useFirestore();
-    const { user } = useUser();
+    const { user: authUser } = useUser();
     
     const { data: settingsData, loading: settingsLoading } = useDoc<any>(doc(firestore, 'company', 'settings'));
     const { data: coaLedgers, loading: ledgersLoading } = useCollection<CoaLedger>(collection(firestore, 'coa_ledgers'));
@@ -209,7 +209,7 @@ function TransactionsPageContent() {
     }, [coaLedgers, journalVouchers]);
 
 
-    const { receivables, payables } = React.useMemo(() => {
+     const { receivables, payables } = React.useMemo(() => {
       const ar: BalanceEntry[] = [];
       const ap: BalanceEntry[] = [];
   
