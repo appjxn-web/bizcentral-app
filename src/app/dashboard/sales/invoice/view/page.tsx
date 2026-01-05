@@ -40,11 +40,19 @@ const numberToWords = (num: number): string => {
 
     const numToWords = (n: number): string => {
         let str = '';
-        if (n > 999) {
+        if (n >= 10000000) {
+            str += numToWords(Math.floor(n / 10000000)) + ' crore ';
+            n %= 10000000;
+        }
+        if (n >= 100000) {
+            str += numToWords(Math.floor(n / 100000)) + ' lakh ';
+            n %= 100000;
+        }
+        if (n >= 1000) {
             str += numToWords(Math.floor(n / 1000)) + ' thousand ';
             n %= 1000;
         }
-        if (n > 99) {
+        if (n >= 100) {
             str += a[Math.floor(n / 100)] + ' hundred ';
             n %= 100;
         }
@@ -317,7 +325,7 @@ export default function InvoiceViewPage() {
                          <div className="text-right my-2 text-sm font-semibold italic">
                             Amount in words: {numberToWords(grandTotal)}
                         </div>
-
+                        
                          <footer className="text-center text-xs text-muted-foreground pt-16">
                             <p>This is a computer-generated document.</p>
                             <p>{companyInfo?.companyName} | {companyInfo?.contactEmail}</p>

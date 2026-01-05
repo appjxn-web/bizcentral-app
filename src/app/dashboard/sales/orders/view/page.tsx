@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -32,8 +31,8 @@ import { format } from 'date-fns';
 const formatIndianCurrency = (num: number) => {
   return new Intl.NumberFormat('en-IN', {
     style: 'currency',
-    currency = 'INR',
-    minimumFractionDigits = 2,
+    currency: 'INR',
+    minimumFractionDigits: 2,
   }).format(num || 0);
 };
 
@@ -331,5 +330,3 @@ export default function SalesOrderViewPage() {
         </>
     );
 }
-
-    

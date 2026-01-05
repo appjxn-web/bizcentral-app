@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -41,7 +42,6 @@ const formatIndianCurrency = (num: number) => {
     style: 'currency',
     currency: 'INR',
     minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
   }).format(num || 0);
 };
 
@@ -303,116 +303,107 @@ function PartyStatementPageContent() {
           ref={pdfRef}
           style={{ minHeight: '297mm' }}
         >
-          {/* Letterhead Header */}
-          <header className="flex justify-between items-start border-b-2 border-slate-900 pb-6 mb-8">
-            <div className="flex-1">
-              {companyInfo?.logo && (
-                <Image 
-                  src={companyInfo.logo} 
-                  alt="Company Logo" 
-                  crossOrigin="anonymous" 
-                  width={180}
-                  height={50}
-                  style={{ objectFit: 'contain', marginBottom: '15px' }} 
-                />
-              )}
-              <h1 className="text-3xl font-black uppercase tracking-tighter text-slate-950">
-                {companyInfo?.companyName || 'BIZCENTRAL'}
-              </h1>
-              <div className="text-[10px] text-slate-500 font-medium leading-tight mt-1">
-                <p>{(companyInfo?.addresses?.[0] as any)?.line1}</p>
-                <p>Email: {companyInfo?.contactEmail} | Web: {companyInfo?.website || 'www.jxninfra.com'}</p>
-                <p className="font-bold text-slate-700 mt-1 uppercase tracking-widest">GSTIN: {companyInfo?.gstin || '08AAXCJ1234P1Z1'}</p>
+          {accountHolder && (
+            <>
+            <header className="flex justify-between items-start border-b-2 border-slate-900 pb-6 mb-8">
+              <div className="flex-1">
+                {companyInfo?.logo && (
+                  <Image 
+                    src={companyInfo.logo} 
+                    alt="Company Logo" 
+                    crossOrigin="anonymous" 
+                    width={180}
+                    height={50}
+                    style={{ objectFit: 'contain', marginBottom: '15px' }} 
+                  />
+                )}
+                <h1 className="text-3xl font-black uppercase tracking-tighter text-slate-950">
+                  {companyInfo?.companyName || 'BIZCENTRAL'}
+                </h1>
+              </div>
+              <div className="text-right flex flex-col items-end">
+                <Badge className="bg-slate-900 text-white rounded-none px-4 py-1 mb-4 uppercase tracking-[0.2em] font-bold">
+                  Account Statement
+                </Badge>
+              </div>
+            </header>
+
+            <div className="grid grid-cols-2 gap-10 mb-8">
+              <div className="space-y-1">
+                <h3 className="text-xs font-black uppercase text-slate-400 tracking-widest mb-2">Statement For:</h3>
+                <p className="text-xl font-bold">{accountHolder?.name}</p>
+                <p className="text-xs text-slate-600">ID: {accountHolder?.id}</p>
+                <p className="text-xs text-slate-600 italic">{accountHolder?.email}</p>
+              </div>
+              <div className="bg-slate-50 border-l-4 border-slate-900 p-4 grid grid-cols-2 gap-4">
+                 <div>
+                    <p className="text-[9px] font-bold text-slate-400 uppercase">Opening Bal.</p>
+                    <p className="text-sm font-black">{formatIndianCurrency(kpis.openingBalance)}</p>
+                 </div>
+                 <div>
+                    <p className="text-[9px] font-bold text-slate-400 uppercase">Closing Bal.</p>
+                    <p className="text-sm font-black underline decoration-2">{formatIndianCurrency(kpis.balance)}</p>
+                 </div>
+                 <div>
+                    <p className="text-[9px] font-bold text-slate-400 uppercase">Net Debit</p>
+                    <p className="text-xs font-bold text-red-600">{formatIndianCurrency(kpis.totalDebit)}</p>
+                 </div>
+                 <div>
+                    <p className="text-[9px] font-bold text-slate-400 uppercase">Net Credit</p>
+                    <p className="text-xs font-bold text-green-600">{formatIndianCurrency(kpis.totalCredit)}</p>
+                 </div>
               </div>
             </div>
-            <div className="text-right flex flex-col items-end">
-              <Badge className="bg-slate-900 text-white rounded-none px-4 py-1 mb-4 uppercase tracking-[0.2em] font-bold">
-                Account Statement
-              </Badge>
-              <div className="text-[10px] space-y-1 font-bold text-slate-600">
-                <p>Statement Date: {format(new Date(), 'dd/MM/yyyy')}</p>
-                <p>Period: {dateFrom ? format(new Date(dateFrom), 'dd/MM/yy') : 'Opening'} to {dateTo ? format(new Date(dateTo), 'dd/MM/yy') : 'Current'}</p>
-              </div>
-            </div>
-          </header>
 
-          {/* Recipient Details & Summary Box */}
-          <div className="grid grid-cols-2 gap-10 mb-8">
-            <div className="space-y-1">
-              <h3 className="text-xs font-black uppercase text-slate-400 tracking-widest mb-2">Statement For:</h3>
-              <p className="text-xl font-bold">{accountHolder?.name}</p>
-              <p className="text-xs text-slate-600">ID: {accountHolder?.id}</p>
-              <p className="text-xs text-slate-600 italic">{accountHolder?.email}</p>
-            </div>
-            <div className="bg-slate-50 border-l-4 border-slate-900 p-4 grid grid-cols-2 gap-4">
-               <div>
-                  <p className="text-[9px] font-bold text-slate-400 uppercase">Opening Bal.</p>
-                  <p className="text-sm font-black">{formatIndianCurrency(kpis.openingBalance)}</p>
-               </div>
-               <div>
-                  <p className="text-[9px] font-bold text-slate-400 uppercase">Closing Bal.</p>
-                  <p className="text-sm font-black underline decoration-2">{formatIndianCurrency(kpis.balance)}</p>
-               </div>
-               <div>
-                  <p className="text-[9px] font-bold text-slate-400 uppercase">Net Debit</p>
-                  <p className="text-xs font-bold text-red-600">{formatIndianCurrency(kpis.totalDebit)}</p>
-               </div>
-               <div>
-                  <p className="text-[9px] font-bold text-slate-400 uppercase">Net Credit</p>
-                  <p className="text-xs font-bold text-green-600">{formatIndianCurrency(kpis.totalCredit)}</p>
-               </div>
-            </div>
-          </div>
-
-          {/* Statement Table */}
-          <Table className="border-t-2 border-slate-900">
-            <TableHeader className="bg-slate-100">
-              <TableRow className="h-10">
-                <TableHead className="text-slate-950 font-black text-[10px] uppercase">Date</TableHead>
-                <TableHead className="text-slate-950 font-black text-[10px] uppercase">Transaction Description</TableHead>
-                <TableHead className="text-right text-slate-950 font-black text-[10px] uppercase">Debit (Dr)</TableHead>
-                <TableHead className="text-right text-slate-950 font-black text-[10px] uppercase">Credit (Cr)</TableHead>
-                <TableHead className="text-right text-slate-950 font-black text-[10px] uppercase">Balance</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              <TableRow className="bg-slate-50/50 italic border-b">
-                <TableCell colSpan={4} className="text-[10px] font-bold">Opening Balance Brought Forward</TableCell>
-                <TableCell className="text-right text-[10px] font-black">{formatIndianCurrency(kpis.openingBalance)}</TableCell>
-              </TableRow>
-              {ledger.map((tx) => (
-                <TableRow key={tx.id} className="border-b border-slate-100 h-10">
-                  <TableCell className="text-[10px] whitespace-nowrap">{format(new Date(tx.date), 'dd/MM/yyyy')}</TableCell>
-                  <TableCell className="text-[10px] font-medium leading-tight max-w-[200px]">{tx.description}</TableCell>
-                  <TableCell className="text-right text-[10px] font-mono text-red-600">{tx.debit ? formatIndianCurrency(tx.debit) : ''}</TableCell>
-                  <TableCell className="text-right text-[10px] font-mono text-green-600">{tx.credit ? formatIndianCurrency(tx.credit) : ''}</TableCell>
-                  <TableCell className="text-right text-[10px] font-black">{formatIndianCurrency(tx.balance)}</TableCell>
+            <Table className="border-t-2 border-slate-900">
+              <TableHeader className="bg-slate-100">
+                <TableRow className="h-10">
+                  <TableHead className="text-slate-950 font-black text-[10px] uppercase">Date</TableHead>
+                  <TableHead className="text-slate-950 font-black text-[10px] uppercase">Transaction Description</TableHead>
+                  <TableHead className="text-right text-slate-950 font-black text-[10px] uppercase">Debit (Dr)</TableHead>
+                  <TableHead className="text-right text-slate-950 font-black text-[10px] uppercase">Credit (Cr)</TableHead>
+                  <TableHead className="text-right text-slate-950 font-black text-[10px] uppercase">Balance</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-            <TableFooter>
-               <TableRow className="bg-slate-900 text-white h-12 font-black">
-                  <TableCell colSpan={2} className="text-[11px] uppercase tracking-widest pl-4">Closing Statement Balance</TableCell>
-                  <TableCell colSpan={3} className="text-right text-lg pr-4">{formatIndianCurrency(kpis.balance)}</TableCell>
-               </TableRow>
-            </TableFooter>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                <TableRow className="bg-slate-50/50 italic border-b h-8">
+                  <TableCell colSpan={4} className="text-[10px] font-bold">Opening Balance</TableCell>
+                  <TableCell className="text-right text-[10px] font-black">{formatIndianCurrency(kpis.openingBalance)}</TableCell>
+                </TableRow>
+                {ledger.map((tx) => (
+                  <TableRow key={tx.id} className="border-b border-slate-100 h-9">
+                    <TableCell className="text-[10px] whitespace-nowrap">{format(new Date(tx.date), 'dd/MM/yyyy')}</TableCell>
+                    <TableCell className="text-[10px] font-medium leading-tight max-w-[200px]">{tx.description}</TableCell>
+                    <TableCell className="text-right text-[10px] font-mono text-red-600">{tx.debit ? formatIndianCurrency(tx.debit) : ''}</TableCell>
+                    <TableCell className="text-right text-[10px] font-mono text-green-600">{tx.credit ? formatIndianCurrency(tx.credit) : ''}</TableCell>
+                    <TableCell className="text-right text-[10px] font-black">{formatIndianCurrency(tx.balance)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+              <TableFooter>
+                 <TableRow className="bg-slate-900 text-white h-12 font-black">
+                    <TableCell colSpan={4} className="text-[11px] uppercase tracking-widest pl-4">Closing Statement Balance</TableCell>
+                    <TableCell className="text-right text-lg pr-4">{formatIndianCurrency(kpis.balance)}</TableCell>
+                 </TableRow>
+              </TableFooter>
+            </Table>
 
-          {/* Professional Footer */}
-          <footer className="mt-auto pt-20 flex justify-between items-end border-t border-slate-200">
-            <div className="text-[8px] text-slate-400 font-bold uppercase tracking-widest space-y-1">
-                <div className="flex items-center gap-1 text-slate-900 bg-slate-50 px-2 py-1 rounded-sm w-fit mb-2">
-                  <ShieldCheck className="h-2.5 w-2.5" /> Verified Statement
-                </div>
-                <p>Doc. Verification ID: {Math.random().toString(36).substr(2, 9).toUpperCase()}</p>
-                <p>Generated: {format(new Date(), 'PPP p')}</p>
-            </div>
-            <div className="text-center w-64">
-              <div className="border-b-2 border-slate-950 mb-3 h-12"></div>
-              <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-950">Authorized Signatory</p>
-              <p className="text-[7px] text-slate-400 mt-1 font-medium italic">This is a system generated statement and does not require a physical signature.</p>
-            </div>
-          </footer>
+            <footer className="mt-auto pt-20 flex justify-between items-end border-t border-slate-200">
+              <div className="text-[8px] text-slate-400 font-bold uppercase tracking-widest space-y-1">
+                  <div className="flex items-center gap-1 text-slate-900 bg-slate-50 px-2 py-1 rounded-sm w-fit mb-2">
+                    <ShieldCheck className="h-2.5 w-2.5" /> Verified Statement
+                  </div>
+                  <p>Doc. Verification ID: {Math.random().toString(36).substr(2, 9).toUpperCase()}</p>
+                  <p>Generated: {format(new Date(), 'PPP p')}</p>
+              </div>
+              <div className="text-center w-64">
+                <div className="border-b-2 border-slate-950 mb-3 h-12"></div>
+                <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-950">Authorized Signatory</p>
+                <p className="text-[7px] text-slate-400 mt-1 font-medium italic">This is a system generated statement and does not require a physical signature.</p>
+              </div>
+            </footer>
+            </>
+          )}
         </div>
       </div>
     </>
