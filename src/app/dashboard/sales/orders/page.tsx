@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -21,6 +20,7 @@ import {
   ListFilter,
   DollarSign,
   RefreshCcw,
+  Eye,
 } from 'lucide-react';
 
 import { PageHeader } from '@/components/page-header';
@@ -86,12 +86,12 @@ function getStatusBadgeVariant(status: Order['status'] | 'Refund Pending' | 'Ref
     Delivered: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300',
     'Refund Complete': 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300',
     Shipped: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300',
+    'Invoice Sent': 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300',
     Ordered: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300',
     'Refund Pending': 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300',
     Manufacturing: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300',
     'Ready for Dispatch': 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-300',
     'Awaiting Payment': 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300',
-    'Invoice Sent': 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300',
     Canceled: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300',
     'Cancellation Requested': 'bg-rose-100 text-rose-800 dark:bg-rose-900/50 dark:text-rose-300'
   };
@@ -263,9 +263,12 @@ function CompanyPickupDetails() {
     );
 }
 
-function OrderRow({ order, onGenerateInvoice, onUpdateStatus, pickupPoints, dynamicStatus, allProducts, getOrderInHand }: { order: Order, onGenerateInvoice: (order: Order) => void, onUpdateStatus: (orderId: string, status: OrderStatus) => void, pickupPoints: PickupPoint[] | null, dynamicStatus: OrderStatus, allProducts: Product[] | null, getOrderInHand: (productId: string) => number }) {
+function OrderRow({ order, onGenerateInvoice, onUpdateStatus, pickupPoints, dynamicStatus, allProducts, getOrderInHand, allSalesInvoices, onViewInvoice }: { order: Order, onGenerateInvoice: (order: Order) => void, onUpdateStatus: (orderId: string, status: OrderStatus) => void, pickupPoints: PickupPoint[] | null, dynamicStatus: OrderStatus, allProducts: Product[] | null, getOrderInHand: (productId: string) => number, allSalesInvoices: SalesInvoice[] | null, onViewInvoice: (invoiceId: string) => void }) {
   const [isOpen, setIsOpen] = React.useState(false);
+  const router = useRouter();
   const orderStatuses: OrderStatus[] = ['Manufacturing', 'Ready for Dispatch', 'Awaiting Payment', 'Shipped', 'Delivered'];
+  
+  const existingInvoice = allSalesInvoices?.find(inv => inv.orderNumber === order.orderNumber);
 
   const pickupPointName = pickupPoints?.find(p => p.id === order.pickupPointId)?.name || 'N/A';
   
@@ -293,20 +296,29 @@ function OrderRow({ order, onGenerateInvoice, onUpdateStatus, pickupPoints, dyna
           <TableCell className="text-right font-mono">{formatIndianCurrency(order.grandTotal)}</TableCell>
           <TableCell className="text-right">
               <div className="flex gap-2 justify-end">
-                <Button 
-                    variant="outline" 
-                    size="sm" 
-                    disabled={!['Awaiting Payment', 'Ready for Dispatch', 'Shipped', 'Delivered'].includes(dynamicStatus)}
-                    onClick={() => onGenerateInvoice(order)}
-                >
-                    Generate Invoice
-                </Button>
+                {existingInvoice ? (
+                    <Button variant="secondary" size="sm" onClick={() => onViewInvoice(existingInvoice.invoiceNumber)}>
+                        View Invoice
+                    </Button>
+                ) : (
+                    <Button 
+                        variant="outline" 
+                        size="sm" 
+                        disabled={!['Awaiting Payment', 'Ready for Dispatch', 'Shipped', 'Delivered'].includes(dynamicStatus)}
+                        onClick={() => onGenerateInvoice(order)}
+                    >
+                        Generate Invoice
+                    </Button>
+                )}
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4"/></Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent>
-                    <DropdownMenuLabel>Change Status</DropdownMenuLabel>
+                    <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                     <DropdownMenuItem onClick={() => router.push(`/dashboard/sales/orders/view?id=${order.id}`)}>
+                        <Eye className="mr-2 h-4 w-4" /> View Order
+                    </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     {orderStatuses.map(status => (
                       <DropdownMenuItem key={status} onClick={() => onUpdateStatus(order.id, status)}>
@@ -461,17 +473,16 @@ function OrdersPageContent() {
             });
         }
     };
+    
+    const onViewInvoice = (invoiceId: string) => {
+        router.push(`/dashboard/sales/invoice/view?id=${invoiceId}`);
+    };
 
     const loading = ordersLoading || workOrdersLoading || productsLoading;
 
   return (
     <>
-      <PageHeader title="Sales Orders">
-         <Button onClick={() => router.push('/dashboard/sales/create-order')}>
-            <PlusCircle className="mr-2 h-4 w-4" />
-            Create Sales Order
-        </Button>
-      </PageHeader>
+      <PageHeader title="Sales Orders" />
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
@@ -543,7 +554,7 @@ function OrdersPageContent() {
                 orders.map((order) => {
                   const dynamicStatus = getDynamicOrderStatus(order);
                   return (
-                    <OrderRow key={order.id} order={order} pickupPoints={pickupPoints} onGenerateInvoice={handleGenerateInvoice} onUpdateStatus={handleUpdateStatus} dynamicStatus={dynamicStatus} allProducts={allProducts} getOrderInHand={getOrderInHand} />
+                    <OrderRow key={order.id} order={order} pickupPoints={pickupPoints} onGenerateInvoice={handleGenerateInvoice} onUpdateStatus={handleUpdateStatus} dynamicStatus={dynamicStatus} allProducts={allProducts} getOrderInHand={getOrderInHand} allSalesInvoices={allSalesInvoices || []} onViewInvoice={onViewInvoice} />
                   )
                 })
               ) : (
@@ -567,7 +578,9 @@ export default function OrdersPage() {
         setIsClient(true);
     }, []);
 
-    if (!isClient) return null;
+    if (!isClient) {
+        return null;
+    }
 
     return <OrdersPageContent />;
 }
