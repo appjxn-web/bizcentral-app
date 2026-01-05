@@ -65,6 +65,8 @@ import {
   Database,
   SlidersHorizontal,
   Goal,
+  FilePlus,
+  FileMinus,
 } from 'lucide-react';
 import type { UserRole } from './types';
 
@@ -140,6 +142,8 @@ export const navItems: NavItem[] = [
         { id: 'finance-party-statement', href: '/dashboard/finance-accounting/party-statement', icon: BookUser, label: 'Party / Ledger Statement' },
         { id: 'finance-bank-cash', href: '/dashboard/finance-accounting/bank-cash', icon: Banknote, label: 'Bank & Cash' },
         { id: 'finance-invoice', href: '/dashboard/finance-accounting/invoice', icon: FileText, label: 'Invoice' },
+        { id: 'finance-credit-note', href: '/dashboard/finance-accounting/credit-note', icon: FileMinus, label: 'Credit Note' },
+        { id: 'finance-debit-note', href: '/dashboard/finance-accounting/debit-note', icon: FilePlus, label: 'Debit Note' },
         { id: 'finance-gst', href: '/dashboard/finance-accounting/gst', icon: FileText, label: 'GST' },
         { id: 'finance-day-book', href: '/dashboard/finance-accounting/day-book', icon: BookOpen, label: 'Day Book' },
         { id: 'finance-statutory-metrix', href: '/dashboard/finance-accounting/statutory-metrix', icon: PieChart, label: 'Statutory Metrix' },

@@ -1003,6 +1003,41 @@ export interface SalesInvoice {
     appliedCoupons?: Offer[];
 }
 
+export interface DebitNote {
+    id: string;
+    debitNoteNumber: string;
+    partyId: string;
+    partyName: string;
+    date: string;
+    originalInvoiceId?: string;
+    amount: number;
+    reason: string;
+    status: 'Draft' | 'Issued' | 'Settled';
+}
+
+export interface CreditNote {
+    id: string;
+    creditNoteNumber: string;
+    partyId: string;
+    partyName: string;
+    date: string;
+    originalInvoiceId?: string;
+    amount: number;
+    reason: string;
+    status: 'Draft' | 'Issued' | 'Settled';
+}
+
+export interface ServiceInvoice {
+  id: string;
+  invoiceNumber: string;
+  serviceRequestId: string;
+  customerId: string;
+  customerName: string;
+  date: string;
+  amount: number;
+  status: 'Unpaid' | 'Paid';
+}
+
 export interface TdsRate {
   id: string;
   section: string;
@@ -1034,3 +1069,5 @@ export interface Goal {
     health: GoalHealth;
     weight: number;
 }
+
+```

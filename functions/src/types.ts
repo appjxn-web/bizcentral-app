@@ -144,6 +144,33 @@ export interface SalesInvoice {
     dueDate?: string;
 }
 
+export interface DebitNote {
+    id: string;
+    debitNoteNumber: string;
+    partyId: string;
+    partyName: string;
+    date: string;
+    originalInvoiceId?: string;
+    amount: number;
+    reason: string;
+    status: 'Draft' | 'Issued' | 'Settled';
+    createdAt: any;
+}
+
+export interface CreditNote {
+    id: string;
+    creditNoteNumber: string;
+    partyId: string;
+    partyName: string;
+    date: string;
+    originalInvoiceId?: string;
+    amount: number;
+    reason: string;
+    status: 'Draft' | 'Issued' | 'Settled';
+    createdAt: any;
+}
+
+
 export interface Party {
     id: string;
     name: string;
@@ -154,3 +181,4 @@ export interface Party {
 }
 
     
+```

@@ -116,6 +116,14 @@ service cloud.firestore {
         );
         allow create, update, delete: if isAdmin();
     }
+    
+    match /creditNotes/{noteId} {
+      allow read, list, create, update, delete: if isAdmin();
+    }
+    
+    match /debitNotes/{noteId} {
+      allow read, list, create, update, delete: if isAdmin();
+    }
 
     match /journalVouchers/{voucherId} {
       allow read, list: if signedIn(); 

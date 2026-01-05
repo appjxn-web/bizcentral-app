@@ -10,7 +10,7 @@ import {
 } from "firebase-functions/v2/firestore";
 import * as admin from "firebase-admin";
 import {getFirestore, FieldValue} from "firebase-admin/firestore";
-import type {Order, SalesInvoice, Party, Goal, UserProfile} from "./types";
+import type {Order, SalesInvoice, Party, Goal, UserProfile, CreditNote, DebitNote} from "./types";
 
 if (admin.apps.length === 0) { admin.initializeApp(); }
 const db = getFirestore();
@@ -187,6 +187,62 @@ export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}", a
     } catch (e) { console.error(e); }
 });
 
+export const onCreditNoteCreated = onDocumentCreated("creditNotes/{noteId}", async (event) => {
+    const snap = event.data;
+    if (!snap) return;
+    const note = snap.data() as CreditNote;
+
+    const jvRef = db.collection("journalVouchers").doc();
+    const narration = `Credit Note ${note.creditNoteNumber} issued to ${note.partyName} for: ${note.reason}`;
+    
+    // Assuming credit notes are mostly for sales returns.
+    // This credits the customer and debits a sales returns account.
+    const partyData = (await db.collection('parties').doc(note.partyId).get()).data() as Party | undefined;
+    const customerLedgerId = partyData?.coaLedgerId;
+    if (!customerLedgerId) return;
+
+    const jvData = {
+      date: note.date,
+      narration: narration,
+      entries: [
+        { accountId: "L-4.1-1", debit: note.amount, credit: 0 }, // Sales Domestic (or a specific Sales Return account)
+        { accountId: customerLedgerId, debit: 0, credit: note.amount },
+      ],
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      voucherType: 'Credit Note'
+    };
+
+    await jvRef.set(jvData);
+});
+
+export const onDebitNoteCreated = onDocumentCreated("debitNotes/{noteId}", async (event) => {
+    const snap = event.data;
+    if (!snap) return;
+    const note = snap.data() as DebitNote;
+
+    const jvRef = db.collection("journalVouchers").doc();
+    const narration = `Debit Note ${note.debitNoteNumber} issued to ${note.partyName} for: ${note.reason}`;
+
+    // Assuming debit notes are mostly for purchase returns.
+    // This debits the supplier and credits a purchase returns account.
+    const partyData = (await db.collection('parties').doc(note.partyId).get()).data() as Party | undefined;
+    const supplierLedgerId = partyData?.coaLedgerId;
+    if (!supplierLedgerId) return;
+
+    const jvData = {
+      date: note.date,
+      narration: narration,
+      entries: [
+        { accountId: supplierLedgerId, debit: note.amount, credit: 0 },
+        { accountId: "L-5-3", debit: 0, credit: note.amount }, // Purchase - Raw Material (or a specific Purchase Return account)
+      ],
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      voucherType: 'Debit Note'
+    };
+
+    await jvRef.set(jvData);
+});
+
 // Quotation and other functions remain as standard...
 export const handleQuotationCreation = onDocumentCreated("quotations/{docId}", async (event) => {
     const snapshot = event.data;
@@ -301,3 +357,4 @@ export const onMilestoneUpdate = onDocumentWritten("goals/{goalId}/milestones/{m
 export const onGoalUpdate = onDocumentCreated("goalUpdates/{updateId}", async () => {});
 
     
+```
