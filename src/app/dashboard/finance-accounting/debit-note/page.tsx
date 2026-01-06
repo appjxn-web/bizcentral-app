@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -11,7 +12,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { PlusCircle, Save } from 'lucide-react';
-import type { Party, DebitNote } from '@/lib/types';
+import type { Party, DebitNote, SalesInvoice } from '@/lib/types';
 import { useFirestore, useCollection, useDoc } from '@/firebase';
 import { collection, addDoc, serverTimestamp, doc, setDoc } from 'firebase/firestore';
 import { getNextDocNumber } from '@/lib/number-series';
@@ -23,6 +24,8 @@ export default function DebitNotePage() {
     const { data: parties } = useCollection<Party>(collection(firestore, 'parties'));
     const { data: allDebitNotes } = useCollection<DebitNote>(collection(firestore, 'debitNotes'));
     const { data: settingsData } = useDoc<any>(doc(firestore, 'company', 'settings'));
+    const { data: salesInvoices } = useCollection<SalesInvoice>(collection(firestore, 'salesInvoices'));
+
 
     const [partyId, setPartyId] = React.useState('');
     const [amount, setAmount] = React.useState('');
@@ -31,6 +34,10 @@ export default function DebitNotePage() {
     const [date, setDate] = React.useState(format(new Date(), 'yyyy-MM-dd'));
 
     const suppliers = parties?.filter(p => p.type === 'Supplier' || p.type === 'Vendor') || [];
+
+    // Note: A debit note to a supplier would reference a purchase invoice from them.
+    // As we don't have a purchase invoice collection, this part remains a text input.
+    // If we were to implement purchase invoices, this would mirror the credit note logic.
 
     const handleSave = async () => {
         if (!partyId || !amount || !reason) {

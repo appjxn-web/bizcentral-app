@@ -12,9 +12,9 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { PlusCircle, Save } from 'lucide-react';
-import type { Party, CreditNote } from '@/lib/types';
+import type { Party, CreditNote, SalesInvoice } from '@/lib/types';
 import { useFirestore, useCollection, useDoc } from '@/firebase';
-import { collection, addDoc, serverTimestamp, doc, setDoc } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, doc, setDoc, query, where } from 'firebase/firestore';
 import { getNextDocNumber } from '@/lib/number-series';
 import { format } from 'date-fns';
 
@@ -24,6 +24,7 @@ export default function CreditNotePage() {
     const { data: parties } = useCollection<Party>(collection(firestore, 'parties'));
     const { data: allCreditNotes } = useCollection<CreditNote>(collection(firestore, 'creditNotes'));
     const { data: settingsData } = useDoc<any>(doc(firestore, 'company', 'settings'));
+    const { data: salesInvoices } = useCollection<SalesInvoice>(collection(firestore, 'salesInvoices'));
 
     const [partyId, setPartyId] = React.useState('');
     const [amount, setAmount] = React.useState('');
@@ -32,6 +33,11 @@ export default function CreditNotePage() {
     const [date, setDate] = React.useState(format(new Date(), 'yyyy-MM-dd'));
 
     const customers = parties?.filter(p => p.type === 'Customer') || [];
+    
+    const customerInvoices = React.useMemo(() => {
+        if (!partyId || !salesInvoices) return [];
+        return salesInvoices.filter(inv => inv.customerId === partyId);
+    }, [partyId, salesInvoices]);
 
     const handleSave = async () => {
         if (!partyId || !amount || !reason) {
@@ -100,7 +106,18 @@ export default function CreditNotePage() {
                         </div>
                         <div className="space-y-2">
                             <Label htmlFor="invoice-id">Original Invoice ID (Optional)</Label>
-                            <Input id="invoice-id" placeholder="e.g., INV-001" value={originalInvoiceId} onChange={e => setOriginalInvoiceId(e.target.value)} />
+                            <Select value={originalInvoiceId} onValueChange={setOriginalInvoiceId} disabled={!partyId || customerInvoices.length === 0}>
+                                <SelectTrigger id="invoice-id">
+                                    <SelectValue placeholder="Select an invoice" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {customerInvoices.map(inv => (
+                                        <SelectItem key={inv.id} value={inv.invoiceNumber}>
+                                            {inv.invoiceNumber} - ({format(new Date(inv.date), 'dd/MM/yy')}) - ₹{inv.grandTotal.toFixed(2)}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
                         </div>
                          <div className="space-y-2 md:col-span-2">
                             <Label htmlFor="reason">Reason for Credit Note</Label>
