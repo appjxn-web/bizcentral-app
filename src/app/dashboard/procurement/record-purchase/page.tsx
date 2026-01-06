@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -33,8 +32,6 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { PlusCircle, Save, Trash2, Check, ChevronsUpDown } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { parties } from '@/lib/data';
-import { products } from '@/lib/product-data';
 import { useFirestore, useCollection } from '@/firebase';
 import { collection, doc, addDoc, serverTimestamp, updateDoc, writeBatch } from 'firebase/firestore';
 import type { Party, Product, UserRole, CoaLedger, PartyType, CoaNature } from '@/lib/types';
@@ -93,11 +90,13 @@ export default function RecordPurchasePage() {
 
   const firestore = useFirestore();
   const { data: coaLedgers } = useCollection<CoaLedger>(collection(firestore, 'coa_ledgers'));
-  const purchasableProducts = products.filter(p => p.source === 'Bought' || p.type === 'Raw Materials' || p.type === 'Components');
+  const { data: products } = useCollection<Product>(collection(firestore, 'products'));
+  const { data: parties } = useCollection<Party>(collection(firestore, 'parties'));
+  const purchasableProducts = products?.filter(p => p.source === 'Bought' || p.type === 'Raw Materials' || p.type === 'Components') || [];
   
   const selectedParty = React.useMemo(() => {
-    return parties.find(p => p.id === selectedPartyId) || null;
-  }, [selectedPartyId]);
+    return parties?.find(p => p.id === selectedPartyId) || null;
+  }, [selectedPartyId, parties]);
   
   const isInterstate = React.useMemo(() => {
     if (!selectedParty?.gstin) return false;
@@ -139,7 +138,7 @@ export default function RecordPurchasePage() {
                 let product: Product | undefined;
                 
                 if (field === 'productId') {
-                    product = products.find(p => p.id === value);
+                    product = products?.find(p => p.id === value);
                     if (product) {
                         updatedItem.name = product.name;
                         updatedItem.hsn = product.id.slice(0,4).toUpperCase();
@@ -204,7 +203,7 @@ export default function RecordPurchasePage() {
       return;
     }
     
-    const supplier = parties.find(p => p.id === selectedPartyId);
+    const supplier = parties?.find(p => p.id === selectedPartyId);
     if (!supplier) {
       toast({ variant: 'destructive', title: 'Supplier not found' });
       return;
@@ -283,6 +282,12 @@ export default function RecordPurchasePage() {
         });
     }
   };
+  
+  const suppliers = React.useMemo(() => {
+    if (!parties) return [];
+    return parties.filter(p => p.type === 'Supplier' || p.type === 'Vendor');
+  }, [parties]);
+
 
   return (
     <>
@@ -321,7 +326,7 @@ export default function RecordPurchasePage() {
                     <CommandList>
                       <CommandEmpty>No supplier found.</CommandEmpty>
                       <CommandGroup>
-                        {parties.filter(p => p.type === 'Supplier' || p.type === 'Vendor').map((party) => (
+                        {suppliers.map((party) => (
                           <CommandItem
                             key={party.id}
                             value={party.name}
