@@ -233,7 +233,7 @@ function GatePassDialog({ open, onOpenChange, invoice, companyInfo }: { open: bo
     const pdfRef = React.useRef<HTMLDivElement>(null);
 
     const handlePrint = () => {
-        const printContent = pdfRef.current?.innerHTML;
+        const printContent = pdfRef.current;
         if (printContent) {
           const printWindow = window.open('', '', 'width=800,height=600');
           printWindow?.document.write(`
@@ -244,38 +244,32 @@ function GatePassDialog({ open, onOpenChange, invoice, companyInfo }: { open: bo
                   @media print {
                     @page { 
                       size: A4; 
-                      margin: 10mm; 
+                      margin: 0; 
                     }
                     body { 
                       -webkit-print-color-adjust: exact;
                       print-color-adjust: exact;
+                      margin: 0;
+                    }
+                    .printable-area {
+                        padding: 20mm 15mm;
                     }
                   }
-                  body { font-family: sans-serif; }
-                  .print-header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1px solid #e2e8f0; padding-bottom: 1rem; margin-bottom: 1.5rem; }
-                  .print-header img { max-width: 150px; height: auto; }
-                  .print-header div { text-align: right; }
-                  .print-header h1 { font-size: 1.5rem; font-weight: bold; color: #1e40af; }
-                  .print-header p { font-size: 0.875rem; color: #475569; margin: 0; }
-                  .print-section { margin: 1.5rem 0; }
-                  .print-section h2 { font-size: 1.125rem; font-weight: 600; margin-bottom: 1rem; text-decoration: underline; text-align: center; }
-                  .print-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; font-size: 0.875rem; }
-                  .print-grid h3 { font-weight: 600; margin-bottom: 0.25rem; }
-                  .print-grid p { margin: 0; }
-                  .print-table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
-                  .print-table th, .print-table td { border: 1px solid #e2e8f0; padding: 0.5rem; text-align: left; }
-                  .print-table th { background-color: #f1f5f9; }
-                  .print-footer { margin-top: 4rem; display: flex; justify-content: space-between; align-items: flex-end; }
-                  .print-footer div { text-align: center; }
-                  .print-footer .signature-line { border-top: 1px solid #000; width: 150px; margin: 2rem auto 0.5rem auto; }
+                  body {
+                    font-family: sans-serif;
+                  }
                 </style>
+                <script src="https://cdn.tailwindcss.com"></script>
               </head>
-              <body>${printContent}</body>
+              <body><div class="printable-area">${printContent.innerHTML}</div></body>
             </html>
           `);
           printWindow?.document.close();
           printWindow?.focus();
-          printWindow?.print();
+          setTimeout(() => {
+            printWindow?.print();
+            printWindow?.close();
+          }, 250);
         }
     };
 
@@ -289,7 +283,7 @@ function GatePassDialog({ open, onOpenChange, invoice, companyInfo }: { open: bo
                 </DialogHeader>
                 <div className="p-4 border rounded-md">
                     <div className="w-[210mm] max-w-full mx-auto p-8 bg-white text-black font-sans" ref={pdfRef}>
-                         <header className="print-header">
+                        <header className="flex justify-between items-start border-b pb-4">
                             <div>
                                 {companyInfo?.logo && <Image src={companyInfo.logo} alt="Logo" width={150} height={40} crossOrigin="anonymous" />}
                             </div>
@@ -300,9 +294,9 @@ function GatePassDialog({ open, onOpenChange, invoice, companyInfo }: { open: bo
                                 <p className="text-sm"><strong>Date:</strong> {format(new Date(), 'dd/MM/yyyy')}</p>
                             </div>
                         </header>
-                         <section className="print-section">
+                         <section className="my-6">
                             <h2 className="font-semibold text-lg text-center underline">GATE PASS</h2>
-                            <div className="print-grid">
+                            <div className="grid grid-cols-2 gap-4 mt-4">
                                 <div>
                                     <h3 className="font-semibold">Deliver To:</h3>
                                     <p className="font-bold">{invoice.deliveryDetails?.customerName}</p>
@@ -319,42 +313,43 @@ function GatePassDialog({ open, onOpenChange, invoice, companyInfo }: { open: bo
                                 </div>
                             </div>
                         </section>
-                        <section className="print-section">
-                             <table className="print-table">
-                                <thead>
-                                    <tr>
-                                        <th>Sr.</th>
-                                        <th>Item Name</th>
-                                        <th style={{textAlign: 'right'}}>Quantity</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
+                        <section className="my-6">
+                             <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead>Sr.</TableHead>
+                                        <TableHead>Item Name</TableHead>
+                                        <TableHead className="text-right">Quantity</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
                                     {invoice.items.map((item, index) => (
-                                        <tr key={item.productId}>
-                                            <td>{index + 1}</td>
-                                            <td>{item.name}</td>
-                                            <td style={{textAlign: 'right'}}>{item.quantity}</td>
-                                        </tr>
+                                        <TableRow key={item.productId}>
+                                            <TableCell>{index + 1}</TableCell>
+                                            <TableCell>{item.name}</TableCell>
+                                            <TableCell className="text-right">{item.quantity}</TableCell>
+                                        </TableRow>
                                     ))}
-                                </tbody>
-                            </table>
+                                </TableBody>
+                            </Table>
                         </section>
-                         <footer className="print-footer">
+                         <footer className="mt-16 flex justify-between items-end">
                             <div className="text-xs space-y-4">
                                <p className="text-muted-foreground">Goods are received in good condition.</p>
-                                <div>
-                                    <div className="signature-line"></div>
-                                    <p className="font-semibold">Receiver's Signature</p>
+                                <div className="pt-12">
+                                    <div className="border-t border-black w-48"></div>
+                                    <p className="pt-1 font-semibold">Receiver's Signature</p>
                                 </div>
                             </div>
                              <div className="flex flex-col items-center">
                                 <QRCodeSVG value={`GATEPASS:${invoice.orderNumber}`} size={80} />
                                 <p className="text-xs mt-2">Scan for Gate Out</p>
                             </div>
-                            <div>
+                            <div className="text-right">
                                 <p className="font-semibold mb-12">For, {companyInfo?.companyName}</p>
-                                <div className="signature-line"></div>
-                                <p className="text-xs">Authorized Signatory</p>
+                                <div className="h-16 w-32"></div>
+                                <div className="border-t border-black w-48 ml-auto"></div>
+                                <p className="text-xs pt-1">Authorized Signatory</p>
                             </div>
                         </footer>
                     </div>
@@ -575,7 +570,7 @@ function InvoicePage() {
     const { data: pickupPoints } = useCollection<PickupPoint>(collection(firestore, 'pickupPoints'));
     const { data: allProducts, loading: productsLoading } = useCollection<Product>(collection(firestore, 'products'));
     const { data: parties, loading: partiesLoading } = useCollection<Party>(collection(firestore, 'parties'));
-    const { data: companyInfo } = useDoc<CompanyInfo>(doc(firestore, 'company', 'info'));
+    const { data: companyInfo, loading: companyInfoLoading } = useDoc<CompanyInfo>(doc(firestore, 'company', 'info'));
     
     const [isDeliveryNoteOpen, setIsDeliveryNoteOpen] = React.useState(false);
     const [selectedInvoiceForDelivery, setSelectedInvoiceForDelivery] = React.useState<SalesInvoice | null>(null);
@@ -694,6 +689,7 @@ function InvoicePage() {
       
       setGatePassData(updatedInvoiceData);
       setIsDeliveryNoteOpen(false);
+      setIsGatePassDialogOpen(true);
     };
 
     const onViewInvoice = (invoiceId: string) => {
