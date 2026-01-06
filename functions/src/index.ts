@@ -1,4 +1,5 @@
 
+
 'use server';
 import {
   onDocumentCreated,
@@ -11,6 +12,7 @@ import {
 import * as admin from "firebase-admin";
 import {getFirestore, FieldValue} from "firebase-admin/firestore";
 import type {Order, SalesInvoice, Party, Goal, UserProfile, CreditNote, DebitNote, RefundRequest, Product} from "./types";
+import { HttpsError, onCall } from "firebase-functions/v2/https";
 
 if (admin.apps.length === 0) { admin.initializeApp(); }
 const db = getFirestore();
@@ -65,6 +67,86 @@ const findOrCreateSpecificCustomerLedger = async (transaction: admin.firestore.T
     return newLedgerRef.id;
 };
 
+export const verifyUpiPaymentAndCreateOrder = onCall(async (request) => {
+    const { order, upiTransactionId } = request.data;
+
+    // --- 1. UPI Verification (Simulated) ---
+    // In a real app, you would call your payment gateway's API here.
+    // We'll simulate a successful check for demonstration.
+    console.log(`Verifying UPI transaction ID: ${upiTransactionId}...`);
+    const isPaymentValid = true; // Replace with actual API call result
+
+    if (!isPaymentValid) {
+        throw new HttpsError('invalid-argument', 'The UPI transaction ID is invalid or the payment was not received.');
+    }
+
+    // --- 2. Database Operations within a Transaction ---
+    const orderRef = db.collection('orders').doc();
+    let referralCommission = 0;
+    
+    try {
+        await db.runTransaction(async (transaction) => {
+            // a. Create Journal Voucher for the advance payment
+            const customerLedgerId = await findOrCreateSpecificCustomerLedger(transaction, order as Order);
+            const companySnap = await transaction.get(db.doc("company/info"));
+            const primaryUpi = companySnap.data()?.primaryUpiId;
+            let bankAccountId = "L-1.1.1-2"; // Default Current Account
+            
+            if (primaryUpi) {
+                const ledgerSearch = await db.collection("coa_ledgers").where("bank.upiId", "==", primaryUpi).limit(1).get();
+                if (!ledgerSearch.empty) bankAccountId = ledgerSearch.docs[0].id;
+            }
+        
+            const jvRef = db.collection("journalVouchers").doc();
+            transaction.set(jvRef, {
+                id: jvRef.id,
+                date: new Date().toISOString().split("T")[0],
+                narration: `Advance for new Order #${orderRef.id} via UPI`,
+                voucherType: "Receipt Voucher",
+                entries: [
+                    { accountId: bankAccountId, debit: order.paymentReceived, credit: 0 },
+                    { accountId: customerLedgerId, debit: 0, credit: order.paymentReceived }, 
+                ],
+                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+
+            // b. Handle Referral Logic
+            const userProfileRef = db.doc(`users/${order.userId}`);
+            const userProfileSnap = await transaction.get(userProfileRef);
+            const userProfile = userProfileSnap.data() as UserProfile | undefined;
+
+            if (userProfile?.referredBy) {
+                const ordersQuery = db.collection('orders').where('userId', '==', order.userId).limit(1);
+                const orderCountSnapshot = await transaction.get(ordersQuery);
+                if (orderCountSnapshot.empty) { // This is their first order
+                    const referralsQuery = db.collection('users').doc(userProfile.referredBy).collection('referrals').where('mobile', '==', userProfile.mobile).where('status', '==', 'Signed Up');
+                    const referralsSnapshot = await transaction.get(referralsQuery);
+                    if (!referralsSnapshot.empty) {
+                        const referralDoc = referralsSnapshot.docs[0];
+                        const commissionPercentage = referralDoc.data().commission || 0;
+                        referralCommission = order.grandTotal * (commissionPercentage / 100);
+                        transaction.update(referralDoc.ref, { status: 'First Purchased', commission: referralCommission });
+                    }
+                }
+            }
+
+            // c. Finally, create the order document
+            const newOrderData = {
+              ...order,
+              id: orderRef.id, // Ensure ID is consistent
+              commission: referralCommission,
+            };
+            transaction.set(orderRef, newOrderData);
+        });
+
+        return { success: true, message: "Order created successfully", orderId: orderRef.id };
+    } catch (error: any) {
+        console.error("Order creation transaction failed:", error);
+        throw new HttpsError('internal', 'An error occurred while creating the order.', error.message);
+    }
+});
+
+
 export const handleOrderCreation = onDocumentCreated("orders/{orderId}", async (event) => {
     const snap = event.data;
     if (!snap) return;
@@ -92,40 +174,6 @@ export const handleOrderCreation = onDocumentCreated("orders/{orderId}", async (
     }
 
     await snap.ref.update({ orderNumber });
-    const orderDoc = await snap.ref.get();
-    const order = orderDoc.data() as Order;
-    const pR = order.paymentReceived;
-
-    if (!pR || pR <= 0) return;
-
-    try {
-        await db.runTransaction(async (transaction) => {
-            const customerLedgerId = await findOrCreateSpecificCustomerLedger(transaction, order);
-            let bankAccountId = "L-1.1.1-2"; // Default Current Account
-            
-            const companySnap = await transaction.get(db.doc("company/info"));
-            const primaryUpi = companySnap.data()?.primaryUpiId;
-            if (primaryUpi) {
-                const ledgerSearch = await db.collection("coa_ledgers").where("bank.upiId", "==", primaryUpi).limit(1).get();
-                if (!ledgerSearch.empty) bankAccountId = ledgerSearch.docs[0].id;
-            }
-        
-            const jvRef = db.collection("journalVouchers").doc();
-            transaction.set(jvRef, {
-                id: jvRef.id,
-                date: new Date().toISOString().split("T")[0],
-                narration: `Advance for Order #${orderNumber} via UPI`,
-                voucherType: "Receipt Voucher",
-                entries: [
-                    { accountId: bankAccountId, debit: pR, credit: 0 },
-                    { accountId: customerLedgerId, debit: 0, credit: pR }, 
-                ],
-                createdAt: admin.firestore.FieldValue.serverTimestamp(),
-            });
-        });
-    } catch (error) {
-      console.error("Accounting automation failed: ", error);
-    }
 });
 
 export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}", async (event) => {

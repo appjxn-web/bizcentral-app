@@ -30,7 +30,7 @@ import { ArrowLeft, Info, Loader2, Building, User, CalendarClock } from 'lucide-
 import type { Product, Offer, UserRole, Party, CompanyInfo, Address, Order, OrderItem, CoaLedger, PickupPoint, UserProfile, SalesOrder } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useCollection, useUser, useDoc } from '@/firebase';
-import { collection, query, where, getDoc, getDocs, doc, addDoc, serverTimestamp, writeBatch, setDoc, orderBy, limit, getCountFromServer } from 'firebase/firestore';
+import { collection, query, where, getDoc, getDocs, doc, addDoc, serverTimestamp, writeBatch, setDoc, orderBy, limit, getCountFromServer, getFunctions, httpsCallable } from 'firebase/firestore';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { errorEmitter } from '@/firebase/error-emitter';
@@ -254,11 +254,7 @@ export default function CheckoutPage() {
         category: item.category,
     }));
     
-    const batch = writeBatch(firestore);
-    const orderRef = doc(collection(firestore, 'orders'));
-
-    const newOrder: Omit<Order, 'id'|'orderNumber'> & {id: string} = {
-        id: orderRef.id,
+    const newOrderPayload = {
         userId: user.uid,
         customerName: userProfile.name || user.displayName || 'Guest',
         customerEmail: user.email || 'N/A',
@@ -269,58 +265,44 @@ export default function CheckoutPage() {
         discount,
         cgst,
         sgst,
-        igst: igst, // Ensure igst is saved even if 0
+        igst: igst,
         grandTotal,
-        total: grandTotal,
         paymentReceived: advanceAmount,
         balance: grandTotal - advanceAmount,
         commission: 0,
         pickupPointId: selectedPickupPointId,
         assignedToUid: selectedPickup?.ownerUid || null,
         paymentDetails: `UPI Transaction ID: ${upiTransactionId}`,
-        createdAt: serverTimestamp() as any,
+        createdAt: new Date().toISOString(),
     };
-    batch.set(orderRef, newOrder);
+    
+    try {
+        const functions = getFunctions();
+        const verifyAndCreateOrder = httpsCallable(functions, 'verifyUpiPaymentAndCreateOrder');
+        
+        const result = await verifyAndCreateOrder({
+            order: newOrderPayload,
+            upiTransactionId: upiTransactionId,
+        });
 
-    // --- Referral Logic ---
-    if (userProfile?.referredBy) {
-      const ordersQuery = query(collection(firestore, 'orders'), where('userId', '==', user.uid), limit(1));
-      const orderCountSnapshot = await getCountFromServer(ordersQuery);
-      
-      // If count is 0, this is their first order (since the current one hasn't been committed yet)
-      if (orderCountSnapshot.data().count === 0) {
-        const referralsQuery = query(
-          collection(firestore, 'users', userProfile.referredBy, 'referrals'),
-          where('mobile', '==', userProfile.mobile),
-          where('status', '==', 'Signed Up')
-        );
-        const referralsSnapshot = await getDocs(referralsQuery);
-        if (!referralsSnapshot.empty) {
-          const referralDoc = referralsSnapshot.docs[0];
-          const commissionPercentage = referralDoc.data().commission || 0;
-          const commission = grandTotal * (commissionPercentage / 100);
-          batch.update(referralDoc.ref, { status: 'First Purchased', commission });
+        const data = result.data as { success: boolean; message: string; orderId?: string };
+
+        if (data.success) {
+            toast({ title: 'Order Placed!', description: `Your order #${data.orderId} has been successfully booked.` });
+            localStorage.removeItem('cart');
+            localStorage.removeItem('appliedCoupons');
+            window.dispatchEvent(new CustomEvent('cartUpdated'));
+            router.push('/checkout/success');
+        } else {
+            throw new Error(data.message || 'Verification failed.');
         }
-      }
-    }
 
-    batch.commit().then(() => {
-        toast({ title: 'Order Placed!', description: `Your order has been successfully booked.` });
-        localStorage.removeItem('cart');
-        localStorage.removeItem('appliedCoupons');
-        window.dispatchEvent(new CustomEvent('cartUpdated'));
-        router.push('/checkout/success');
-    }).catch(async (serverError: any) => {
-        errorEmitter.emit('permission-error', new FirestorePermissionError({
-            path: `/orders/${orderRef.id}`,
-            operation: 'create',
-            requestResourceData: newOrder,
-        }));
+    } catch (serverError: any) {
         console.error(serverError);
-        toast({ variant: 'destructive', title: 'Order Failed', description: 'Could not place your order. Please check your permissions and try again.' });
-    }).finally(() => {
+        toast({ variant: 'destructive', title: 'Order Failed', description: serverError.message || 'Could not place your order. Please check the transaction ID and try again.' });
+    } finally {
         setIsPlacingOrder(false);
-    });
+    }
   };
   
   return (
@@ -497,7 +479,7 @@ export default function CheckoutPage() {
                     </div>
                         <Button size="lg" className="w-full" onClick={handlePlaceOrder} disabled={isPlacingOrder}>
                             {isPlacingOrder ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                            Confirm Payment &amp; Book Order
+                            Verify & Place Order
                         </Button>
                 </CardFooter>
             ) : (
