@@ -38,9 +38,9 @@ import {
   DropdownMenuPortal,
 } from '@/components/ui/dropdown-menu';
 import { useFirestore, useCollection } from '@/firebase';
-import { collection, doc, setDoc, addDoc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { collection, doc, setDoc, addDoc, updateDoc, deleteDoc, writeBatch } from 'firebase/firestore';
 import type { Product, ProductCategory } from '@/lib/types';
-import { PlusCircle, AlertCircle, ListFilter, Archive, AlertTriangle, Boxes, ShoppingCart, Copy, MoreHorizontal } from 'lucide-react';
+import { PlusCircle, AlertCircle, ListFilter, Archive, AlertTriangle, Boxes, ShoppingCart, Copy, MoreHorizontal, Upload, Download } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { AddProductDialog } from './_components/add-product-dialog';
@@ -58,6 +58,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
+import * as XLSX from 'xlsx';
 
 const allStatuses: Product['status'][] = ['Active', 'Pre Sale', 'R & D', 'Discontinued'];
 
@@ -90,6 +91,9 @@ function ProductsPageContent() {
 
   const [typeFilters, setTypeFilters] = React.useState<string[]>([]);
   const [categoryFilters, setCategoryFilters] = React.useState<string[]>([]);
+  
+  const importFileRef = React.useRef<HTMLInputElement>(null);
+
 
   const handleTypeFilterChange = (type: string) => {
     setTypeFilters(prev => (prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type]));
@@ -179,17 +183,67 @@ function ProductsPageContent() {
     router.push(`/dashboard/products-services/catalogue/${encodeURIComponent(sku)}`);
   };
 
+  const handleExport = () => {
+    if (!products) {
+        toast({variant: "destructive", title: "No data to export"});
+        return;
+    }
+    const worksheet = XLSX.utils.json_to_sheet(products);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Products");
+    XLSX.writeFile(workbook, "ProductCatalog.xlsx");
+  };
+
+  const handleImport = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        const data = new Uint8Array(e.target?.result as ArrayBuffer);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        const json = XLSX.utils.sheet_to_json(worksheet) as Product[];
+
+        try {
+          const batch = writeBatch(firestore);
+          json.forEach(product => {
+            const docRef = doc(firestore, "products", product.id);
+            batch.set(docRef, product);
+          });
+          await batch.commit();
+          toast({
+            title: "Import Successful",
+            description: `${json.length} products have been imported/updated.`
+          });
+        } catch (error) {
+          console.error("Error importing products:", error);
+          toast({variant: "destructive", title: "Import Failed"});
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    }
+  };
+
+
   return (
     <>
       <PageHeader title="Products & Services">
         <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" className="h-8 gap-1" onClick={handleExport}>
+              <Download className="h-3.5 w-3.5" />
+              <span className="sr-only sm:not-sr-only sm:whitespace-nowrap">Export</span>
+            </Button>
+            <input type="file" ref={importFileRef} className="hidden" onChange={handleImport} accept=".xlsx, .xls" />
+             <Button variant="outline" size="sm" className="h-8 gap-1" onClick={() => importFileRef.current?.click()}>
+              <Upload className="h-3.5 w-3.5" />
+              <span className="sr-only sm:not-sr-only sm:whitespace-nowrap">Import</span>
+            </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="sm" className="h-8 gap-1">
                   <ListFilter className="h-3.5 w-3.5" />
-                  <span className="sr-only sm:not-sr-only sm:whitespace-nowrap">
-                    Filter
-                  </span>
+                  <span className="sr-only sm:not-sr-only sm:whitespace-nowrap">Filter</span>
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
