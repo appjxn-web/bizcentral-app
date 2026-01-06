@@ -99,40 +99,41 @@ export default function CreditNotePage() {
     };
 
     const calculations = React.useMemo(() => {
-      let subtotal = 0;
-      let totalDiscount = 0;
-      let taxableAmount = 0;
-      let totalOriginalAmount = 0;
-      let totalRevisedAmount = 0;
-
-      if (reason === 'Goods Return' && selectedInvoice) {
-          subtotal = creditItems.reduce((acc, item) => acc + (item.returnQty * item.rate), 0);
-          
-          if(selectedInvoice.subtotal > 0){
-             totalDiscount = (subtotal / selectedInvoice.subtotal) * selectedInvoice.discount;
-          }
-          
-          taxableAmount = subtotal - totalDiscount;
-
-      } else if (reason === 'Revised Rate') {
-          totalOriginalAmount = creditItems.reduce((acc, item) => acc + (item.quantity * item.rate), 0);
-          totalRevisedAmount = creditItems.reduce((acc, item) => acc + (item.quantity * item.revisedRate), 0);
-          taxableAmount = totalOriginalAmount - totalRevisedAmount;
-      } else if (reason === 'Revised discount' && selectedInvoice) {
-          const originalDiscountAmount = selectedInvoice.subtotal * (selectedInvoice.discount / 100);
-          const newDiscountAmount = selectedInvoice.subtotal * (revisedDiscount / 100);
-          taxableAmount = newDiscountAmount - originalDiscountAmount > 0 ? newDiscountAmount - originalDiscountAmount : 0;
-          subtotal = taxableAmount;
-      }
-      
-      const totalGst = taxableAmount * 0.18; // Simplified GST calculation
-      const grandTotal = taxableAmount + totalGst;
-      const cgst = isInterstate ? 0 : totalGst / 2;
-      const sgst = isInterstate ? 0 : totalGst / 2;
-      const igst = isInterstate ? totalGst : 0;
-      
-      return { subtotal, totalDiscount, taxableAmount, totalGst, grandTotal, cgst, sgst, igst, totalOriginalAmount, totalRevisedAmount };
-    }, [creditItems, isInterstate, reason, revisedDiscount, selectedInvoice]);
+        let subtotal = 0;
+        let totalDiscount = 0;
+        let taxableAmount = 0;
+        let totalOriginalAmount = 0;
+        let totalRevisedAmount = 0;
+  
+        if (reason === 'Goods Return' && selectedInvoice) {
+            subtotal = creditItems.reduce((acc, item) => acc + (item.returnQty * item.rate), 0);
+            const originalSubtotalOfReturned = creditItems.reduce((acc, item) => acc + (item.returnQty * item.rate), 0);
+            
+            if (selectedInvoice.subtotal > 0) {
+               totalDiscount = (originalSubtotalOfReturned / selectedInvoice.subtotal) * selectedInvoice.discount;
+            }
+            
+            taxableAmount = subtotal - totalDiscount;
+  
+        } else if (reason === 'Revised Rate') {
+            totalOriginalAmount = creditItems.reduce((acc, item) => acc + (item.quantity * item.rate), 0);
+            totalRevisedAmount = creditItems.reduce((acc, item) => acc + (item.quantity * item.revisedRate), 0);
+            taxableAmount = totalOriginalAmount - totalRevisedAmount;
+        } else if (reason === 'Revised discount' && selectedInvoice) {
+            const originalDiscountAmount = selectedInvoice.discount || 0;
+            const newDiscountAmount = selectedInvoice.subtotal * (revisedDiscount / 100);
+            taxableAmount = newDiscountAmount - originalDiscountAmount > 0 ? newDiscountAmount - originalDiscountAmount : 0;
+            subtotal = taxableAmount;
+        }
+        
+        const totalGst = taxableAmount * 0.18; // Simplified GST calculation
+        const grandTotal = taxableAmount + totalGst;
+        const cgst = isInterstate ? 0 : totalGst / 2;
+        const sgst = isInterstate ? 0 : totalGst / 2;
+        const igst = isInterstate ? totalGst : 0;
+        
+        return { subtotal, totalDiscount, taxableAmount, totalGst, grandTotal, cgst, sgst, igst, totalOriginalAmount, totalRevisedAmount };
+      }, [creditItems, isInterstate, reason, revisedDiscount, selectedInvoice]);
 
 
     const handleSave = async () => {
@@ -243,14 +244,14 @@ export default function CreditNotePage() {
                                         <TableHead className="text-right">Orig. Rate</TableHead>
                                         
                                         {reason === 'Goods Return' && <TableHead className="text-right">Orig. Disc. %</TableHead>}
-                                        
-                                        <TableHead className="text-right">Orig. Total</TableHead>
+                                        {reason === 'Revised Rate' && <TableHead className="text-right">Orig. Total</TableHead>}
                                         
                                         {reason === 'Goods Return' && <TableHead className="w-24 text-center">Return Qty</TableHead>}
                                         {reason === 'Revised Rate' && <TableHead className="w-32 text-right">Revised Rate</TableHead>}
                                         {reason === 'Revised Rate' && <TableHead className="text-right">Revised Total</TableHead>}
-
-                                        <TableHead className="text-right">Credit Amount</TableHead>
+                                        
+                                        {reason === 'Revised discount' && <TableHead className="text-right">Total</TableHead>}
+                                        {reason !== 'Revised discount' && <TableHead className="text-right">Credit Amount</TableHead>}
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
@@ -258,20 +259,16 @@ export default function CreditNotePage() {
                                         const originalTotal = item.quantity * item.rate;
                                         if (reason === 'Goods Return') {
                                             const itemCreditSubtotal = item.returnQty * item.rate;
-                                            const proRatedDiscount = selectedInvoice.subtotal > 0 ? (itemCreditSubtotal / selectedInvoice.subtotal) * selectedInvoice.discount : 0;
-                                            const creditAmount = itemCreditSubtotal - proRatedDiscount;
-
                                             return (
                                                 <TableRow key={item.productId}>
                                                     <TableCell>{item.name}</TableCell>
                                                     <TableCell className="text-center">{item.quantity}</TableCell>
                                                     <TableCell className="text-right">{formatIndianCurrency(item.rate)}</TableCell>
                                                     <TableCell className="text-right">{item.discount || 0}%</TableCell>
-                                                    <TableCell className="text-right font-mono">{formatIndianCurrency(originalTotal)}</TableCell>
                                                     <TableCell>
                                                         <Input type="number" value={item.returnQty} onChange={(e) => handleItemChange(index, 'returnQty', e.target.value)} max={item.quantity} className="text-center" />
                                                     </TableCell>
-                                                    <TableCell className="text-right font-mono font-semibold">{formatIndianCurrency(creditAmount)}</TableCell>
+                                                    <TableCell className="text-right font-mono font-semibold">{formatIndianCurrency(itemCreditSubtotal)}</TableCell>
                                                 </TableRow>
                                             )
                                         }
@@ -313,7 +310,14 @@ export default function CreditNotePage() {
                                             <TableCell className="text-right font-mono">{formatIndianCurrency(calculations.totalOriginalAmount)}</TableCell>
                                             <TableCell></TableCell>
                                             <TableCell className="text-right font-mono">{formatIndianCurrency(calculations.totalRevisedAmount)}</TableCell>
-                                            <TableCell className="text-right font-mono font-bold">{formatIndianCurrency(calculations.totalOriginalAmount - calculations.totalRevisedAmount)}</TableCell>
+                                            <TableCell></TableCell>
+                                        </TableRow>
+                                         <TableRow>
+                                            <TableCell colSpan={3} className="text-right font-semibold">Discount</TableCell>
+                                            <TableCell className="text-right font-mono text-red-600">- {formatIndianCurrency(0)}</TableCell>
+                                            <TableCell></TableCell>
+                                            <TableCell className="text-right font-mono text-red-600">- {formatIndianCurrency(0)}</TableCell>
+                                            <TableCell></TableCell>
                                         </TableRow>
                                         <TableRow>
                                             <TableCell colSpan={3} className="text-right font-semibold">Taxable Value</TableCell>
@@ -335,14 +339,14 @@ export default function CreditNotePage() {
                                                 <TableRow>
                                                     <TableCell colSpan={3} className="text-right">CGST</TableCell>
                                                     <TableCell className="text-right font-mono">{formatIndianCurrency(calculations.totalOriginalAmount * 0.09)}</TableCell>
-                                                    <TableCell></TableCell>
+                                                     <TableCell></TableCell>
                                                     <TableCell className="text-right font-mono">{formatIndianCurrency(calculations.totalRevisedAmount * 0.09)}</TableCell>
                                                     <TableCell className="text-right font-mono font-bold text-green-600">{formatIndianCurrency(calculations.cgst)}</TableCell>
                                                 </TableRow>
                                                 <TableRow>
                                                     <TableCell colSpan={3} className="text-right">SGST</TableCell>
                                                     <TableCell className="text-right font-mono">{formatIndianCurrency(calculations.totalOriginalAmount * 0.09)}</TableCell>
-                                                    <TableCell></TableCell>
+                                                     <TableCell></TableCell>
                                                     <TableCell className="text-right font-mono">{formatIndianCurrency(calculations.totalRevisedAmount * 0.09)}</TableCell>
                                                     <TableCell className="text-right font-mono font-bold text-green-600">{formatIndianCurrency(calculations.sgst)}</TableCell>
                                                 </TableRow>
@@ -374,7 +378,7 @@ export default function CreditNotePage() {
                                     <span>Subtotal</span>
                                     <span className="font-mono">{formatIndianCurrency(calculations.subtotal)}</span>
                                 </div>
-                                <div className="flex justify-between text-destructive">
+                                <div className="flex justify-between text-red-600">
                                     <span>Discount</span>
                                     <span className="font-mono">- {formatIndianCurrency(calculations.totalDiscount)}</span>
                                 </div>

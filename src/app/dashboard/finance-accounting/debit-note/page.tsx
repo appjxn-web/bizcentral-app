@@ -76,11 +76,11 @@ export default function DebitNotePage() {
                 setSelectedInvoice(invoice);
                 setDebitItems(invoice.items.map(item => ({
                     ...item,
-                    rate: item.rate || 0,
-                    price: item.rate || 0,
+                    rate: item.price || 0,
+                    price: item.price || 0,
                     discount: item.discount || 0,
                     adjustQty: 0,
-                    revisedRate: item.rate || 0,
+                    revisedRate: item.price || 0,
                 })));
             }
         } else {
@@ -266,13 +266,20 @@ export default function DebitNotePage() {
                                         </TableRow>
                                     )})}
                                 </TableBody>
-                                 <TableFooter>
+                                <TableFooter>
                                     <TableRow>
                                         <TableCell colSpan={3} className="text-right font-semibold">Subtotal</TableCell>
                                         <TableCell className="text-right font-mono">{formatIndianCurrency(calculations.totalOriginalAmount)}</TableCell>
                                         <TableCell></TableCell>
                                         <TableCell className="text-right font-mono">{formatIndianCurrency(calculations.totalRevisedAmount)}</TableCell>
-                                        <TableCell className="text-right font-mono font-bold">{formatIndianCurrency(calculations.totalOriginalAmount - calculations.totalRevisedAmount)}</TableCell>
+                                        <TableCell></TableCell>
+                                    </TableRow>
+                                    <TableRow>
+                                        <TableCell colSpan={3} className="text-right font-semibold">Discount</TableCell>
+                                        <TableCell className="text-right font-mono text-red-600">- {formatIndianCurrency(0)}</TableCell>
+                                        <TableCell></TableCell>
+                                        <TableCell className="text-right font-mono text-red-600">- {formatIndianCurrency(0)}</TableCell>
+                                        <TableCell></TableCell>
                                     </TableRow>
                                     <TableRow>
                                         <TableCell colSpan={3} className="text-right font-semibold">Taxable Value</TableCell>
@@ -294,14 +301,14 @@ export default function DebitNotePage() {
                                             <TableRow>
                                                 <TableCell colSpan={3} className="text-right">CGST</TableCell>
                                                 <TableCell className="text-right font-mono">{formatIndianCurrency(calculations.totalOriginalAmount * 0.09)}</TableCell>
-                                                <TableCell></TableCell>
+                                                 <TableCell></TableCell>
                                                 <TableCell className="text-right font-mono">{formatIndianCurrency(calculations.totalRevisedAmount * 0.09)}</TableCell>
                                                 <TableCell className="text-right font-mono font-bold text-green-600">{formatIndianCurrency(calculations.cgst)}</TableCell>
                                             </TableRow>
                                             <TableRow>
                                                 <TableCell colSpan={3} className="text-right">SGST</TableCell>
                                                 <TableCell className="text-right font-mono">{formatIndianCurrency(calculations.totalOriginalAmount * 0.09)}</TableCell>
-                                                <TableCell></TableCell>
+                                                 <TableCell></TableCell>
                                                 <TableCell className="text-right font-mono">{formatIndianCurrency(calculations.totalRevisedAmount * 0.09)}</TableCell>
                                                 <TableCell className="text-right font-mono font-bold text-green-600">{formatIndianCurrency(calculations.sgst)}</TableCell>
                                             </TableRow>
