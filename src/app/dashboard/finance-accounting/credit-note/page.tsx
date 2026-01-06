@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -40,8 +39,9 @@ export default function CreditNotePage() {
     const [originalInvoiceId, setOriginalInvoiceId] = React.useState('');
     const [selectedInvoice, setSelectedInvoice] = React.useState<SalesInvoice | null>(null);
     const [creditItems, setCreditItems] = React.useState<CreditItem[]>([]);
-    const [reason, setReason] = React.useState('');
+    const [reason, setReason] = React.useState<'Goods Return' | 'Revised Rate' | 'Revised discount' | ''>('');
     const [date, setDate] = React.useState(format(new Date(), 'yyyy-MM-dd'));
+    const [revisedDiscount, setRevisedDiscount] = React.useState(0);
 
     const customers = parties?.filter(p => p.type === 'Customer') || [];
     
@@ -66,7 +66,7 @@ export default function CreditNotePage() {
                 setCreditItems(invoice.items.map(item => ({
                     ...item,
                     rate: item.rate || 0,
-                    price: item.rate || 0, // Ensure `price` is aliased to `rate`
+                    price: item.rate || 0,
                     discount: item.discount || 0,
                     returnQty: 0,
                     revisedRate: item.rate || 0,
@@ -91,27 +91,32 @@ export default function CreditNotePage() {
     };
 
     const calculations = React.useMemo(() => {
-      const taxableAmount = creditItems.reduce((acc, item) => {
-          const originalDiscountAmount = (item.rate || 0) * (item.discount / 100);
-          const originalNetRate = (item.rate || 0) - originalDiscountAmount;
-          
-          const priceDifference = originalNetRate - item.revisedRate;
-          const priceDifferenceCredit = priceDifference > 0 ? priceDifference * (item.quantity - item.returnQty) : 0;
-          
-          const returnCredit = item.returnQty * originalNetRate;
-          return acc + priceDifferenceCredit + returnCredit;
-      }, 0);
-      
-      const totalGst = creditItems.reduce((acc, item) => {
-          const originalDiscountAmount = (item.rate || 0) * (item.discount / 100);
-          const originalNetRate = (item.rate || 0) - originalDiscountAmount;
+      let taxableAmount = 0;
+      let totalGst = 0;
 
-          const priceDifference = originalNetRate - item.revisedRate;
-          const priceDifferenceCredit = priceDifference > 0 ? priceDifference * (item.quantity - item.returnQty) : 0;
-          const returnCredit = item.returnQty * originalNetRate;
-          const itemTaxableValue = priceDifferenceCredit + returnCredit;
-          return acc + (itemTaxableValue * ((item.gstRate || 18) / 100));
-      }, 0);
+      if (reason === 'Goods Return') {
+          taxableAmount = creditItems.reduce((acc, item) => {
+              const originalNetRate = (item.rate || 0) * (1 - (item.discount / 100));
+              return acc + (item.returnQty * originalNetRate);
+          }, 0);
+      } else if (reason === 'Revised Rate') {
+          taxableAmount = creditItems.reduce((acc, item) => {
+              const originalNetRate = (item.rate || 0) * (1 - (item.discount / 100));
+              const priceDifference = originalNetRate - item.revisedRate;
+              if (priceDifference > 0) {
+                  return acc + (priceDifference * (item.quantity - item.returnQty));
+              }
+              return acc;
+          }, 0);
+      } else if (reason === 'Revised discount') {
+          const subtotal = creditItems.reduce((acc, item) => acc + (item.quantity * item.rate), 0);
+          const originalDiscountAmount = subtotal * (creditItems[0]?.discount / 100 || 0);
+          const revisedDiscountAmount = subtotal * (revisedDiscount / 100);
+          taxableAmount = revisedDiscountAmount - originalDiscountAmount;
+      }
+      
+      // Simplified GST calculation for demonstration
+      totalGst = taxableAmount * 0.18; 
 
       const grandTotal = taxableAmount + totalGst;
       const cgst = isInterstate ? 0 : totalGst / 2;
@@ -119,7 +124,7 @@ export default function CreditNotePage() {
       const igst = isInterstate ? totalGst : 0;
       
       return { taxableAmount, totalGst, grandTotal, cgst, sgst, igst };
-    }, [creditItems, isInterstate]);
+    }, [creditItems, isInterstate, reason, revisedDiscount]);
 
 
     const handleSave = async () => {
@@ -128,9 +133,8 @@ export default function CreditNotePage() {
             return;
         }
 
-        const isAdjustmentMade = creditItems.some(item => item.returnQty > 0 || item.revisedRate !== item.rate);
-        if (selectedInvoice && !isAdjustmentMade) {
-             toast({ variant: 'destructive', title: 'No Adjustments Made', description: 'Please enter a return quantity or revise a rate for at least one item.' });
+        if (calculations.grandTotal <= 0) {
+             toast({ variant: 'destructive', title: 'No Adjustments Made', description: 'The total credit amount is zero. Please make an adjustment.' });
             return;
         }
         
@@ -161,6 +165,7 @@ export default function CreditNotePage() {
         setSelectedInvoice(null);
         setCreditItems([]);
         setReason('');
+        setRevisedDiscount(0);
     };
 
     return (
@@ -208,11 +213,18 @@ export default function CreditNotePage() {
                         </div>
                          <div className="space-y-2">
                             <Label htmlFor="reason">Reason for Credit Note</Label>
-                            <Input id="reason" placeholder="e.g., Goods returned, Price correction" value={reason} onChange={e => setReason(e.target.value)} />
+                             <Select value={reason} onValueChange={(value) => setReason(value as any)}>
+                                <SelectTrigger id="reason"><SelectValue placeholder="Select a reason" /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="Goods Return">Goods Return</SelectItem>
+                                    <SelectItem value="Revised Rate">Revised Rate</SelectItem>
+                                    <SelectItem value="Revised discount">Revised discount</SelectItem>
+                                </SelectContent>
+                            </Select>
                         </div>
                     </div>
 
-                    {selectedInvoice && (
+                    {selectedInvoice && reason && (
                         <div className="pt-4 border-t">
                             <h3 className="text-lg font-medium mb-2">Adjust Invoice Items</h3>
                             <Table>
@@ -221,34 +233,30 @@ export default function CreditNotePage() {
                                         <TableHead>Item</TableHead>
                                         <TableHead className="text-center">Orig. Qty</TableHead>
                                         <TableHead className="text-right">Orig. Rate</TableHead>
-                                        <TableHead className="text-right">Orig. Disc. %</TableHead>
-                                        <TableHead className="w-24 text-center">Return Qty</TableHead>
-                                        <TableHead className="w-32 text-right">Revised Rate</TableHead>
-                                        <TableHead className="text-right">Taxable Value</TableHead>
+                                        {reason === 'Goods Return' && <TableHead className="w-24 text-center">Return Qty</TableHead>}
+                                        {reason === 'Revised Rate' && <TableHead className="w-32 text-right">Revised Rate</TableHead>}
                                         <TableHead className="text-right">Total</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
                                     {creditItems.map((item, index) => {
-                                        const originalDiscountAmount = (item.rate || 0) * (item.discount / 100);
-                                        const originalNetRate = (item.rate || 0) - originalDiscountAmount;
-
-                                        const priceDifference = originalNetRate - item.revisedRate;
-                                        const priceDifferenceCredit = priceDifference > 0 ? priceDifference * (item.quantity - item.returnQty) : 0;
-                                        
-                                        const returnCredit = item.returnQty * originalNetRate;
-
-                                        const taxableValue = priceDifferenceCredit + returnCredit;
-                                        const itemGst = taxableValue * ((item.gstRate || 18) / 100);
-                                        const total = taxableValue + itemGst;
-
+                                        let total = 0;
+                                        if (reason === 'Goods Return') {
+                                            const originalNetRate = (item.rate || 0) * (1 - (item.discount / 100));
+                                            total = item.returnQty * originalNetRate;
+                                        } else if (reason === 'Revised Rate') {
+                                            const originalNetRate = (item.rate || 0) * (1 - (item.discount / 100));
+                                            const priceDifference = originalNetRate - item.revisedRate;
+                                            if (priceDifference > 0) {
+                                                total = priceDifference * (item.quantity - item.returnQty);
+                                            }
+                                        }
                                         return (
                                         <TableRow key={item.productId}>
                                             <TableCell>{item.name}</TableCell>
                                             <TableCell className="text-center">{item.quantity}</TableCell>
-                                            <TableCell className="text-right">{(item.rate || 0).toFixed(2)}</TableCell>
-                                            <TableCell className="text-right">{(item.discount || 0).toFixed(2)}%</TableCell>
-                                            <TableCell>
+                                            <TableCell className="text-right">{formatIndianCurrency(item.rate || 0)}</TableCell>
+                                            {reason === 'Goods Return' && <TableCell>
                                                 <Input 
                                                     type="number" 
                                                     value={item.returnQty} 
@@ -256,41 +264,46 @@ export default function CreditNotePage() {
                                                     max={item.quantity}
                                                     className="text-center"
                                                 />
-                                            </TableCell>
-                                             <TableCell>
+                                            </TableCell>}
+                                            {reason === 'Revised Rate' && <TableCell>
                                                 <Input 
                                                     type="number" 
                                                     value={item.revisedRate} 
                                                     onChange={(e) => handleItemChange(index, 'revisedRate', e.target.value)}
                                                     className="text-right"
                                                 />
-                                            </TableCell>
-                                            <TableCell className="text-right font-mono">{taxableValue.toFixed(2)}</TableCell>
-                                            <TableCell className="text-right font-mono font-semibold">{total.toFixed(2)}</TableCell>
+                                            </TableCell>}
+                                            <TableCell className="text-right font-mono font-semibold">{formatIndianCurrency(total)}</TableCell>
                                         </TableRow>
                                     )})}
                                 </TableBody>
                             </Table>
+                             {reason === 'Revised discount' && (
+                                <div className="max-w-xs mt-4">
+                                <Label htmlFor="revised-discount">Revised Discount %</Label>
+                                <Input id="revised-discount" type="number" value={revisedDiscount} onChange={(e) => setRevisedDiscount(Number(e.target.value))} />
+                                </div>
+                            )}
                         </div>
                     )}
                     <div className="pt-4 border-t flex justify-end">
                         <div className="space-y-2 w-full max-w-sm">
                             <div className="flex justify-between">
                                 <span>Subtotal (Credit Value)</span>
-                                <span className="font-mono">{calculations.taxableAmount.toFixed(2)}</span>
+                                <span className="font-mono">{formatIndianCurrency(calculations.taxableAmount)}</span>
                             </div>
                             {isInterstate ? (
-                                <div className="flex justify-between"><span>IGST</span><span className="font-mono">{calculations.igst.toFixed(2)}</span></div>
+                                <div className="flex justify-between"><span>IGST</span><span className="font-mono">{formatIndianCurrency(calculations.igst)}</span></div>
                             ) : (
                                 <>
-                                <div className="flex justify-between"><span>CGST</span><span className="font-mono">{calculations.cgst.toFixed(2)}</span></div>
-                                <div className="flex justify-between"><span>SGST</span><span className="font-mono">{calculations.sgst.toFixed(2)}</span></div>
+                                <div className="flex justify-between"><span>CGST</span><span className="font-mono">{formatIndianCurrency(calculations.cgst)}</span></div>
+                                <div className="flex justify-between"><span>SGST</span><span className="font-mono">{formatIndianCurrency(calculations.sgst)}</span></div>
                                 </>
                             )}
                             <Separator />
                             <div className="flex justify-between items-center text-xl font-bold">
                                 <Label className="text-lg">Total Credit Amount</Label>
-                                <span className="font-mono">{calculations.grandTotal.toFixed(2)}</span>
+                                <span className="font-mono">{formatIndianCurrency(calculations.grandTotal)}</span>
                             </div>
                         </div>
                     </div>
@@ -319,7 +332,7 @@ export default function CreditNotePage() {
                                     <TableCell className="font-mono">{note.creditNoteNumber}</TableCell>
                                     <TableCell>{note.partyName}</TableCell>
                                     <TableCell>{note.reason}</TableCell>
-                                    <TableCell className="text-right font-mono">{note.amount.toFixed(2)}</TableCell>
+                                    <TableCell className="text-right font-mono">{formatIndianCurrency(note.amount)}</TableCell>
                                 </TableRow>
                             ))}
                         </TableBody>
@@ -329,3 +342,4 @@ export default function CreditNotePage() {
         </>
     );
 }
+

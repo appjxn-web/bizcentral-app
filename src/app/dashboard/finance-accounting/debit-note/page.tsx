@@ -47,7 +47,7 @@ export default function DebitNotePage() {
 
     const [partyId, setPartyId] = React.useState('');
     const [amount, setAmount] = React.useState('');
-    const [reason, setReason] = React.useState('');
+    const [reason, setReason] = React.useState<'Price Escalation' | 'Other' | ''>('');
     const [originalInvoiceId, setOriginalInvoiceId] = React.useState('');
     const [date, setDate] = React.useState(format(new Date(), 'yyyy-MM-dd'));
     const [selectedInvoice, setSelectedInvoice] = React.useState<SalesInvoice | null>(null);
@@ -78,7 +78,7 @@ export default function DebitNotePage() {
                 setDebitItems(invoice.items.map(item => ({
                     ...item,
                     rate: item.rate || 0,
-                    price: item.rate || 0, // Ensure `price` is aliased to `rate`
+                    price: item.rate || 0,
                     discount: item.discount || 0,
                     adjustQty: 0,
                     revisedRate: item.rate || 0,
@@ -102,31 +102,28 @@ export default function DebitNotePage() {
     };
 
     const calculations = React.useMemo(() => {
-        const taxableAmount = debitItems.reduce((acc, item) => {
-            const originalDiscountAmount = (item.rate || 0) * (item.discount / 100);
-            const originalNetRate = (item.rate || 0) - originalDiscountAmount;
-            
-            const priceDifference = item.revisedRate - originalNetRate;
-            const priceDifferenceDebit = priceDifference > 0 ? priceDifference * item.quantity : 0;
-            return acc + priceDifferenceDebit;
-        }, 0);
-        
-        const totalGst = debitItems.reduce((acc, item) => {
-            const originalDiscountAmount = (item.rate || 0) * (item.discount / 100);
-            const originalNetRate = (item.rate || 0) - originalDiscountAmount;
-            
-            const priceDifference = item.revisedRate - originalNetRate;
-            const itemTaxableValue = priceDifference > 0 ? priceDifference * item.quantity : 0;
-            return acc + (itemTaxableValue * ((item.gstRate || 18) / 100));
-        }, 0);
+        let taxableAmount = 0;
+        let totalGst = 0;
 
+        if (reason === 'Price Escalation') {
+            taxableAmount = debitItems.reduce((acc, item) => {
+                const originalNetRate = (item.rate || 0) * (1 - (item.discount / 100));
+                const priceDifference = item.revisedRate - originalNetRate;
+                if (priceDifference > 0) {
+                    return acc + (priceDifference * item.quantity);
+                }
+                return acc;
+            }, 0);
+        }
+
+        totalGst = taxableAmount * 0.18; // Simplified GST
         const grandTotal = taxableAmount + totalGst;
         const cgst = isInterstate ? 0 : totalGst / 2;
         const sgst = isInterstate ? 0 : totalGst / 2;
         const igst = isInterstate ? totalGst : 0;
         
         return { taxableAmount, totalGst, grandTotal, cgst, sgst, igst };
-    }, [debitItems, isInterstate]);
+    }, [debitItems, isInterstate, reason]);
 
 
     const handleSave = async () => {
@@ -216,7 +213,13 @@ export default function DebitNotePage() {
                         </div>
                          <div className="space-y-2">
                             <Label htmlFor="reason">Reason for Debit Note</Label>
-                            <Input id="reason" placeholder="e.g., Goods returned due to damage, price increase" value={reason} onChange={e => setReason(e.target.value)} />
+                            <Select value={reason} onValueChange={(value) => setReason(value as any)}>
+                                <SelectTrigger id="reason"><SelectValue placeholder="Select a reason" /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="Price Escalation">Price Escalation</SelectItem>
+                                    <SelectItem value="Other">Other</SelectItem>
+                                </SelectContent>
+                            </Select>
                         </div>
                          {!selectedInvoice && (
                             <div className="space-y-2">
@@ -225,7 +228,7 @@ export default function DebitNotePage() {
                             </div>
                         )}
                     </div>
-                     {selectedInvoice && (
+                     {selectedInvoice && reason === 'Price Escalation' && (
                         <div className="pt-4 border-t">
                             <h3 className="text-lg font-medium mb-2">Adjust Invoice Items</h3>
                             <Table>
@@ -234,28 +237,22 @@ export default function DebitNotePage() {
                                         <TableHead>Item</TableHead>
                                         <TableHead className="text-center">Orig. Qty</TableHead>
                                         <TableHead className="text-right">Orig. Rate</TableHead>
-                                        <TableHead className="text-right">Orig. Disc. %</TableHead>
                                         <TableHead className="w-32 text-right">Revised Rate</TableHead>
-                                        <TableHead className="text-right">Taxable Value</TableHead>
-                                        <TableHead className="text-right">Total</TableHead>
+                                        <TableHead className="text-right">Total Debit</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
                                     {debitItems.map((item, index) => {
-                                        const originalDiscountAmount = (item.rate || 0) * ((item.discount || 0) / 100);
-                                        const originalNetRate = (item.rate || 0) - originalDiscountAmount;
-
+                                        const originalNetRate = (item.rate || 0) * (1 - (item.discount || 0) / 100);
                                         const priceDifference = item.revisedRate - originalNetRate;
-                                        const taxableValue = priceDifference > 0 ? priceDifference * item.quantity : 0;
-                                        const itemGst = taxableValue * ((item.gstRate || 18) / 100);
-                                        const total = taxableValue + itemGst;
+                                        const total = priceDifference > 0 ? priceDifference * item.quantity : 0;
+                                        const totalWithGst = total * (1 + (item.gstRate || 18) / 100);
 
                                         return (
                                         <TableRow key={item.productId}>
                                             <TableCell>{item.name}</TableCell>
                                             <TableCell className="text-center">{item.quantity}</TableCell>
-                                            <TableCell className="text-right">{(item.rate || 0).toFixed(2)}</TableCell>
-                                            <TableCell className="text-right">{(item.discount || 0).toFixed(2)}%</TableCell>
+                                            <TableCell className="text-right">{formatIndianCurrency(item.rate || 0)}</TableCell>
                                              <TableCell>
                                                 <Input 
                                                     type="number" 
@@ -264,8 +261,7 @@ export default function DebitNotePage() {
                                                     className="text-right"
                                                 />
                                             </TableCell>
-                                            <TableCell className="text-right font-mono">{taxableValue.toFixed(2)}</TableCell>
-                                            <TableCell className="text-right font-mono font-semibold">{total.toFixed(2)}</TableCell>
+                                            <TableCell className="text-right font-mono font-semibold">{formatIndianCurrency(totalWithGst)}</TableCell>
                                         </TableRow>
                                     )})}
                                 </TableBody>
@@ -277,20 +273,20 @@ export default function DebitNotePage() {
                             <div className="space-y-2 w-full max-w-sm">
                                 <div className="flex justify-between">
                                     <span>Subtotal (Debit Value)</span>
-                                    <span className="font-mono">{calculations.taxableAmount.toFixed(2)}</span>
+                                    <span className="font-mono">{formatIndianCurrency(calculations.taxableAmount)}</span>
                                 </div>
                                 {isInterstate ? (
-                                    <div className="flex justify-between"><span>IGST</span><span className="font-mono">{calculations.igst.toFixed(2)}</span></div>
+                                    <div className="flex justify-between"><span>IGST</span><span className="font-mono">{formatIndianCurrency(calculations.igst)}</span></div>
                                 ) : (
                                     <>
-                                    <div className="flex justify-between"><span>CGST</span><span className="font-mono">{calculations.cgst.toFixed(2)}</span></div>
-                                    <div className="flex justify-between"><span>SGST</span><span className="font-mono">{calculations.sgst.toFixed(2)}</span></div>
+                                    <div className="flex justify-between"><span>CGST</span><span className="font-mono">{formatIndianCurrency(calculations.cgst)}</span></div>
+                                    <div className="flex justify-between"><span>SGST</span><span className="font-mono">{formatIndianCurrency(calculations.sgst)}</span></div>
                                     </>
                                 )}
                                 <Separator />
                                 <div className="flex justify-between items-center text-xl font-bold">
                                     <Label className="text-lg">Total Debit Amount</Label>
-                                    <span className="font-mono">{calculations.grandTotal.toFixed(2)}</span>
+                                    <span className="font-mono">{formatIndianCurrency(calculations.grandTotal)}</span>
                                 </div>
                             </div>
                         </div>
@@ -330,3 +326,4 @@ export default function DebitNotePage() {
         </>
     );
 }
+
