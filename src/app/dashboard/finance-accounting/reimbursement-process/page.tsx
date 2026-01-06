@@ -1,3 +1,4 @@
+
 'use client';
 
 import * as React from 'react';
@@ -261,7 +262,7 @@ export default function ReimbursementProcessPage() {
   };
 
   const grnPayments = React.useMemo(() => {
-    if (!grnsData) return [];
+    if (!grnsData || !parties) return [];
     return grnsData.map(grn => {
         const invoiceAmount = grn.grandTotal;
         const advanceRequest = advanceRequestsData?.find(adv => adv.poId === grn.poId && (adv.status === 'Paid'));
@@ -594,4 +595,5 @@ export default function ReimbursementProcessPage() {
       </Dialog>
     </>
   );
-}
+
+    
