@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -123,6 +122,7 @@ export default function CreateInvoicePage() {
   const [openCustomerCombobox, setOpenCustomerCombobox] = React.useState(false);
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = React.useState(false);
   const [salesOrderNumber, setSalesOrderNumber] = React.useState('');
+  const [orderDocumentId, setOrderDocumentId] = React.useState<string | null>(null);
   
   const { data: allProducts, loading: productsLoading } = useCollection<Product>(query(collection(firestore, 'products'), where('saleable', '==', true)));
   const { data: allSalesInvoices } = useCollection<SalesInvoice>(collection(firestore, 'salesInvoices'));
@@ -162,6 +162,7 @@ export default function CreateInvoicePage() {
         setInvoiceIdToEdit(editId);
         setSelectedPartyId(invoiceToEdit.customerId);
         setInvoiceDate(invoiceToEdit.date);
+        setOrderDocumentId(invoiceToEdit.orderId);
         setItems(invoiceToEdit.items.map((item, i) => ({
           ...item,
           id: `item-${Date.now()}-${i}`,
@@ -176,6 +177,7 @@ export default function CreateInvoicePage() {
       if (rawData && allProducts && allProducts.length > 0) {
           const data = JSON.parse(rawData);
           setSelectedPartyId(data.customerId);
+          setOrderDocumentId(data.id); // Set the document ID
 
           const mappedItems = data.items.map((item: any, i: number) => {
               const product = allProducts.find(p => p.id === item.productId);
@@ -355,7 +357,7 @@ export default function CreateInvoicePage() {
 
     try {
       const invoiceData: Omit<SalesInvoice, 'id' | 'invoiceNumber'> = {
-          orderId: salesOrderNumber,
+          orderId: orderDocumentId || '',
           orderNumber: salesOrderNumber,
           customerId: selectedPartyId,
           customerName: selectedParty?.name || '',

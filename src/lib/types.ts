@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import type { Timestamp } from 'firebase/firestore';
@@ -983,8 +982,8 @@ export interface SalesInvoiceItem extends OrderItem {
 export interface SalesInvoice {
     id: string;
     invoiceNumber: string;
-    orderId: string;
-    orderNumber: string;
+    orderId: string; // Firestore document ID of the order
+    orderNumber?: string; // Human-readable order number
     customerId: string;
     customerName: string;
     date: string;
@@ -1069,5 +1068,3 @@ export interface Goal {
     health: GoalHealth;
     weight: number;
 }
-
-```
