@@ -42,6 +42,7 @@ export function AddLedgerDialog({ open, onOpenChange, coaGroups, onSave, editing
   const [groupId, setGroupId] = React.useState('');
   const [nature, setNature] = React.useState<CoaNature | ''>('');
   const [openingBalance, setOpeningBalance] = React.useState('');
+  const [drCr, setDrCr] = React.useState<'DR' | 'CR'>('DR');
 
   React.useEffect(() => {
     if (editingLedger) {
@@ -49,14 +50,22 @@ export function AddLedgerDialog({ open, onOpenChange, coaGroups, onSave, editing
         setGroupId(editingLedger.groupId);
         setNature(editingLedger.nature);
         setOpeningBalance(editingLedger.openingBalance?.amount.toString() || '');
+        setDrCr(editingLedger.openingBalance?.drCr || 'DR');
     } else {
         setName('');
         setGroupId('');
         setNature('');
         setOpeningBalance('');
+        setDrCr('DR');
     }
   }, [editingLedger, open]);
   
+  React.useEffect(() => {
+    if (nature) {
+      setDrCr(['ASSET', 'EXPENSE'].includes(nature) ? 'DR' : 'CR');
+    }
+  }, [nature]);
+
   const handleSubmit = () => {
     if(!name || !groupId || !nature) {
         toast({ variant: 'destructive', title: 'Missing Information' });
@@ -68,7 +77,7 @@ export function AddLedgerDialog({ open, onOpenChange, coaGroups, onSave, editing
         nature,
         openingBalance: {
             amount: Number(openingBalance) || 0,
-            drCr: ['ASSET', 'EXPENSE'].includes(nature) ? 'DR' : 'CR',
+            drCr: drCr,
             asOf: new Date().toISOString(),
         }
     });
@@ -119,9 +128,23 @@ export function AddLedgerDialog({ open, onOpenChange, coaGroups, onSave, editing
                     </SelectContent>
                 </Select>
             </div>
-             <div className="space-y-2">
-                <Label htmlFor="opening-balance">Opening Balance</Label>
-                <Input id="opening-balance" type="number" value={openingBalance} onChange={(e) => setOpeningBalance(e.target.value)} />
+            <div className="grid grid-cols-4 gap-4">
+                <div className="col-span-3 space-y-2">
+                    <Label htmlFor="opening-balance">Opening Balance</Label>
+                    <Input id="opening-balance" type="number" value={openingBalance} onChange={(e) => setOpeningBalance(e.target.value)} disabled={!!editingLedger} />
+                </div>
+                <div className="col-span-1 space-y-2">
+                    <Label>Dr/Cr</Label>
+                    <Select value={drCr} onValueChange={(value: 'DR' | 'CR') => setDrCr(value)} disabled={!!editingLedger}>
+                        <SelectTrigger>
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="DR">Dr</SelectItem>
+                            <SelectItem value="CR">Cr</SelectItem>
+                        </SelectContent>
+                    </Select>
+                </div>
             </div>
         </div>
         <DialogFooter>
