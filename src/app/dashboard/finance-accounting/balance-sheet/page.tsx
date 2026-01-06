@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -100,34 +99,42 @@ function BalanceSheetContent() {
     }
 
     const liveBalances = new Map<string, number>();
-    const sDate = startDate ? new Date(startDate) : null;
-    if (sDate) sDate.setHours(0, 0, 0, 0);
-    const eDate = endDate ? new Date(endDate) : null;
-    if (eDate) eDate.setHours(23, 59, 59, 999);
+    const eDate = endDate ? new Date(endDate) : new Date();
+    eDate.setHours(23, 59, 59, 999);
 
-    // Initialize with opening balances
+    // 1. Initialize with Opening Balances
     coaLedgers.forEach(acc => {
       const openingBal = acc.openingBalance?.amount || 0;
       const signedOpeningBal = acc.openingBalance?.drCr === 'CR' ? -openingBal : openingBal;
       liveBalances.set(acc.id, signedOpeningBal);
     });
 
-    // Process all transactions up to the end date to establish balances
-    const relevantJVs = (journalVouchers || []).filter(jv => !eDate || new Date(jv.date) <= eDate);
-    const relevantInvoices = (salesInvoices || []).filter(inv => !eDate || new Date(inv.date) <= eDate);
-    
-    // Process Invoices first
-    relevantInvoices.forEach(inv => {
-      const customerLedgerId = inv.coaLedgerId;
+    // 2. Process ALL Invoices (Full Double Entry)
+    salesInvoices.forEach(inv => {
+      if (new Date(inv.date) > eDate) return;
+
+      // DEBIT: Customer (Asset)
+      const customerLedgerId = coaLedgers.find(l => l.id === inv.customerId)?.id || parties.find(p => p.id === inv.customerId)?.coaLedgerId;
       if (customerLedgerId && liveBalances.has(customerLedgerId)) {
         liveBalances.set(customerLedgerId, (liveBalances.get(customerLedgerId) || 0) + inv.grandTotal);
       }
-      // Note: We are calculating P&L separately, so no need to credit sales/gst here for BS purposes,
-      // as that would double-count the equity portion. The liability for GST is handled via JVs.
+
+      // CREDIT: Sales Ledger (Income - used for P&L)
+      const salesLedger = coaLedgers.find(l => l.name === 'Sales – Domestic');
+      if (salesLedger) {
+        liveBalances.set(salesLedger.id, (liveBalances.get(salesLedger.id) || 0) - inv.taxableAmount);
+      }
+
+      // CREDIT: GST Ledgers (Liability)
+      const cgstLedger = coaLedgers.find(l => l.name === 'Output GST – CGST');
+      const sgstLedger = coaLedgers.find(l => l.name === 'Output GST – SGST');
+      if (cgstLedger) liveBalances.set(cgstLedger.id, (liveBalances.get(cgstLedger.id) || 0) - (inv.cgst || 0));
+      if (sgstLedger) liveBalances.set(sgstLedger.id, (liveBalances.get(sgstLedger.id) || 0) - (inv.sgst || 0));
     });
 
-    // Process JVs (payments, expenses etc.)
-    relevantJVs.forEach(jv => {
+    // 3. Process JVs (Payments, Expenses, etc.)
+    journalVouchers.forEach(jv => {
+      if (new Date(jv.date) > eDate) return;
       jv.entries.forEach(entry => {
         if (liveBalances.has(entry.accountId)) {
           liveBalances.set(entry.accountId, (liveBalances.get(entry.accountId) || 0) + (entry.debit || 0) - (entry.credit || 0));
@@ -135,71 +142,51 @@ function BalanceSheetContent() {
       });
     });
 
-    // --- P&L Calculation for Equity ---
-    const periodInvoices = (salesInvoices || []).filter(inv => {
-        const invDate = new Date(inv.date);
-        return (!sDate || invDate >= sDate) && (!eDate || invDate <= eDate);
-    });
-    const periodJVs = (journalVouchers || []).filter(jv => {
-        const jvDate = new Date(jv.date);
-        return (!sDate || jvDate >= sDate) && (!eDate || jvDate <= eDate);
-    });
-
-    const incomeFromInvoices = periodInvoices.reduce((sum, inv) => sum + inv.taxableAmount, 0);
-    const incomeFromJVs = periodJVs
-      .flatMap(jv => jv.entries)
-      .filter(e => coaLedgers.find(l => l.id === e.accountId)?.nature === 'INCOME')
-      .reduce((sum, e) => sum + (e.credit || 0) - (e.debit || 0), 0);
-    const totalIncome = incomeFromInvoices + incomeFromJVs;
-      
-    const cogs = (allOrders || [])
-        .filter(order => order.status === 'Delivered' && (!eDate || new Date(order.date) <= eDate))
-        .reduce((total, order) => total + order.items.reduce((itemCost, item) => {
-            const product = products.find(p => p.id === item.productId);
-            return itemCost + ((product?.cost || 0) * item.quantity);
-        }, 0), 0);
-
-    const expenseFromJVs = periodJVs
-        .flatMap(jv => jv.entries)
-        .filter(e => coaLedgers.find(l => l.id === e.accountId)?.nature === 'EXPENSE')
-        .reduce((sum, e) => sum + (e.debit || 0) - (e.credit || 0), 0);
-    const totalExpenses = expenseFromJVs + cogs;
+    // 4. Calculate P&L (Net of all Income and Expense nature ledgers)
+    let totalIncome = 0;
+    let totalExpenses = 0;
     
-    const currentPnl = totalIncome - totalExpenses;
-    // --- End P&L Calculation ---
+    coaLedgers.forEach(l => {
+        const bal = liveBalances.get(l.id) || 0;
+        if (l.nature === 'INCOME') totalIncome += Math.abs(bal); // Credits are negative in map, so we abs them
+        if (l.nature === 'EXPENSE') totalExpenses += bal;
+    });
 
+    // Add COGS (Cost of Goods Sold) manually if not in JVs
+    const cogs = (allOrders || [])
+        .filter(o => o.status === 'Delivered' && new Date(o.date) <= eDate)
+        .reduce((sum, o) => sum + o.items.reduce((iSum, i) => iSum + ((products.find(p => p.id === i.productId)?.cost || 0) * i.quantity), 0), 0);
+
+    const currentPnl = totalIncome - (totalExpenses + cogs);
+
+    // 5. Build Hierarchy
     const getGroupData = (group: CoaGroup): any => {
         const subGroups = coaGroups.filter(g => g.parentId === group.id).map(g => getGroupData(g));
         const ledgers = coaLedgers.filter(l => l.groupId === group.id).map(l => ({
             ...l, balance: liveBalances.get(l.id) || 0
         }));
-
-        const totalBalance = ledgers.reduce((sum, l) => sum + l.balance, 0) + 
-                           subGroups.reduce((sum, sg) => sum + sg.balance, 0);
-
+        const totalBalance = ledgers.reduce((sum, l) => sum + l.balance, 0) + subGroups.reduce((sum, sg) => sum + sg.balance, 0);
         return { ...group, balance: totalBalance, accounts: ledgers, subGroups };
     };
 
-    const buildHierarchy = (natureStr: string) => {
-      return coaGroups.filter(g => 
-        g.nature?.toUpperCase() === natureStr.toUpperCase() && (!g.parentId || g.parentId === "" || g.level === 0)
-      ).map(group => getGroupData(group));
-    };
-
-    const assetsData = buildHierarchy("ASSET");
-    const liabilitiesData = buildHierarchy("LIABILITY");
-    const equityData = buildHierarchy("EQUITY");
+    const assetsData = coaGroups.filter(g => g.nature === 'ASSET' && !g.parentId).map(getGroupData);
+    const liabData = coaGroups.filter(g => g.nature === 'LIABILITY' && !g.parentId).map(getGroupData);
+    const equityData = coaGroups.filter(g => g.nature === 'EQUITY' && !g.parentId).map(getGroupData);
 
     const totalAssets = assetsData.reduce((acc, g) => acc + g.balance, 0);
-    const totalLiabilities = Math.abs(liabilitiesData.reduce((acc, g) => acc + g.balance, 0));
-    const baseEquity = Math.abs(equityData.reduce((acc, g) => acc + g.balance, 0));
-    const totalEquity = baseEquity + currentPnl;
+    const totalLiabilities = liabData.reduce((acc, g) => acc + g.balance, 0); // Should be negative
+    const totalEquityBase = equityData.reduce((acc, g) => acc + g.balance, 0); // Should be negative
 
     return { 
-        assets: assetsData, liabilities: liabilitiesData, equity: equityData, pnl: currentPnl, loading: false,
-        kpis: { assets: totalAssets, liabilities: totalLiabilities, equity: totalEquity, totalLiabilitiesAndEquity: totalLiabilities + totalEquity }
+        assets: assetsData, liabilities: liabData, equity: equityData, pnl: currentPnl, loading: false,
+        kpis: { 
+            assets: totalAssets, 
+            liabilities: Math.abs(totalLiabilities), 
+            equity: Math.abs(totalEquityBase) + currentPnl,
+            totalLiabilitiesAndEquity: Math.abs(totalLiabilities + totalEquityBase) + currentPnl
+        }
     };
-  }, [coaGroups, coaLedgers, journalVouchers, products, workOrders, allOrders, salesInvoices, groupsLoading, ledgersLoading, vouchersLoading, productsLoading, workOrdersLoading, ordersLoading, invoicesLoading, startDate, endDate]);
+  }, [coaGroups, coaLedgers, journalVouchers, products, allOrders, salesInvoices, groupsLoading, ledgersLoading, vouchersLoading, productsLoading, ordersLoading, invoicesLoading, endDate]);
 
   const toggleGroup = (groupId: string) => {
     setOpenGroups(prev => ({ ...prev, [groupId]: !(prev[groupId] ?? true) }));
@@ -409,3 +396,5 @@ export default function BalanceSheetPage() {
     React.useEffect(() => { setIsClient(true); }, []);
     return isClient ? <BalanceSheetContent /> : null;
 }
+
+    
