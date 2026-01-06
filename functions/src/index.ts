@@ -205,14 +205,21 @@ export const onCreditNoteCreated = onDocumentCreated("creditNotes/{noteId}", asy
       console.error(`Could not find ledger for party ${note.partyId}`);
       return;
     }
+    
+    const taxableAmount = note.amount / 1.18; // Reverse calculation assuming 18% GST
+    const gstAmount = note.amount - taxableAmount;
+    
+    const entries = [
+        { accountId: "L-4.1-1", debit: taxableAmount, credit: 0 }, // Debit Sales/Sales Return
+        { accountId: "L-2.1.2-1", debit: gstAmount / 2, credit: 0 }, // Debit Output CGST
+        { accountId: "L-2.1.2-2", debit: gstAmount / 2, credit: 0 }, // Debit Output SGST
+        { accountId: customerLedgerId, debit: 0, credit: note.amount }, // Credit Customer
+    ];
 
     const jvData = {
       date: note.date,
       narration: narration,
-      entries: [
-        { accountId: "L-4.1-1", debit: note.amount, credit: 0 }, // Sales Domestic (or a specific Sales Return account)
-        { accountId: customerLedgerId, debit: 0, credit: note.amount },
-      ],
+      entries,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       voucherType: 'Credit Note'
     };
@@ -237,14 +244,21 @@ export const onDebitNoteCreated = onDocumentCreated("debitNotes/{noteId}", async
       console.error(`Could not find ledger for party ${note.partyId}`);
       return;
     }
+    
+    const taxableAmount = note.amount / 1.18; // Reverse calculation assuming 18% GST
+    const gstAmount = note.amount - taxableAmount;
+
+    const entries = [
+        { accountId: supplierLedgerId, debit: note.amount, credit: 0 }, // Debit Supplier
+        { accountId: "L-5-3", debit: 0, credit: taxableAmount }, // Credit Purchase/Purchase Return
+        { accountId: "L-1.1.4-1", debit: 0, credit: gstAmount / 2 }, // Credit Input CGST
+        { accountId: "L-1.1.4-2", debit: 0, credit: gstAmount / 2 }, // Credit Input SGST
+    ];
 
     const jvData = {
       date: note.date,
       narration: narration,
-      entries: [
-        { accountId: supplierLedgerId, debit: note.amount, credit: 0 },
-        { accountId: "L-5-3", debit: 0, credit: note.amount }, // Purchase - Raw Material (or a specific Purchase Return account)
-      ],
+      entries,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       voucherType: 'Debit Note'
     };
@@ -366,3 +380,4 @@ export const onMilestoneUpdate = onDocumentWritten("goals/{goalId}/milestones/{m
 export const onGoalUpdate = onDocumentCreated("goalUpdates/{updateId}", async () => {});
 
     
+
