@@ -1015,6 +1015,20 @@ export interface SalesInvoice {
     };
 }
 
+export interface CreditItem extends Omit<SalesInvoiceItem, 'discount' | 'amount'> {
+  returnQty: number;
+  revisedRate: number;
+  discount: number; // This can be the per-item discount if applicable
+  amount: number; // This will be the line item total for this credit note
+}
+
+export interface DebitItem extends Omit<SalesInvoiceItem, 'discount' | 'amount'> {
+  adjustQty: number;
+  revisedRate: number;
+  discount: number;
+  amount: number;
+}
+
 export interface DebitNote {
     id: string;
     debitNoteNumber: string;
@@ -1042,8 +1056,6 @@ export interface CreditNote {
     createdAt: any;
     items?: CreditItem[];
 }
-export interface CreditItem extends SalesInvoiceItem {}
-export interface DebitItem extends SalesInvoiceItem {}
 
 export interface ServiceInvoice {
   id: string;
@@ -1086,4 +1098,15 @@ export interface Goal {
     progressPct: number;
     health: GoalHealth;
     weight: number;
+}
+
+export type MilestoneStatus = "Todo" | "In Progress" | "Done" | "Blocked";
+
+export interface Milestone {
+    id: string;
+    title: string;
+    ownerId: string;
+    dueDate: string;
+    status: MilestoneStatus;
+    points: number;
 }

@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -324,7 +325,7 @@ export default function CreditNotePage() {
                                             <TableCell className="text-right font-mono">{formatIndianCurrency(calculations.totalRevisedAmount)}</TableCell>
                                             <TableCell></TableCell>
                                         </TableRow>
-                                         <TableRow>
+                                        <TableRow>
                                             <TableCell colSpan={3} className="text-right font-semibold">Discount</TableCell>
                                             <TableCell className="text-right font-mono text-red-600">- {formatIndianCurrency(calculations.totalOriginalDiscount)}</TableCell>
                                             <TableCell></TableCell>
