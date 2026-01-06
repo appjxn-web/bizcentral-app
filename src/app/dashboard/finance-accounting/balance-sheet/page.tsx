@@ -110,30 +110,36 @@ function BalanceSheetContent() {
       liveBalances.set(acc.id, signedOpeningBal);
     });
 
-    // 2. Process ALL Invoices (Full Double Entry)
+    // 2. Flexible Inventory Logic (Checks for both types of dashes)
+    const getLedgerIdByFlexName = (baseName: string) => {
+        const normalized = (n: string) => n.replace(/[–—-]/g, '-').toLowerCase().trim();
+        return coaLedgers.find(l => normalized(l.name) === normalized(baseName))?.id;
+    };
+
+    // Calculate valuation from Product collection
+    const finishedGoodsVal = products.filter(p => p.type?.includes('Finished') || p.category?.includes('Machinery')).reduce((sum, p) => sum + ((p.openingStock || 0) * (p.cost || 0)), 0);
+    const rawMaterialVal = products.filter(p => p.type?.includes('Raw')).reduce((sum, p) => sum + ((p.openingStock || 0) * (p.cost || 0)), 0);
+    
+    const fgId = getLedgerIdByFlexName('Stock-in-Hand - Finished Goods');
+    const rmId = getLedgerIdByFlexName('Stock-in-Hand - Raw Material');
+    
+    if (fgId) liveBalances.set(fgId, (liveBalances.get(fgId) || 0) + finishedGoodsVal);
+    if (rmId) liveBalances.set(rmId, (liveBalances.get(rmId) || 0) + rawMaterialVal);
+
+    // 3. Process Invoices (Debit Customer, Credit Sales/GST)
     salesInvoices.forEach(inv => {
       if (new Date(inv.date) > eDate) return;
-
-      // DEBIT: Customer (Asset)
-      const customerLedgerId = inv.coaLedgerId;
-      if (customerLedgerId && liveBalances.has(customerLedgerId)) {
-        liveBalances.set(customerLedgerId, (liveBalances.get(customerLedgerId) || 0) + inv.grandTotal);
+      if (inv.coaLedgerId) {
+        liveBalances.set(inv.coaLedgerId, (liveBalances.get(inv.coaLedgerId) || 0) + inv.grandTotal);
       }
-
-      // CREDIT: Sales Ledger (Income - used for P&L)
-      const salesLedger = coaLedgers.find(l => l.name === 'Sales – Domestic');
-      if (salesLedger) {
-        liveBalances.set(salesLedger.id, (liveBalances.get(salesLedger.id) || 0) - inv.taxableAmount);
-      }
-
-      // CREDIT: GST Ledgers (Liability)
-      const cgstLedger = coaLedgers.find(l => l.name === 'Output GST – CGST');
-      const sgstLedger = coaLedgers.find(l => l.name === 'Output GST – SGST');
-      if (cgstLedger) liveBalances.set(cgstLedger.id, (liveBalances.get(cgstLedger.id) || 0) - (inv.cgst || 0));
-      if (sgstLedger) liveBalances.set(sgstLedger.id, (liveBalances.get(sgstLedger.id) || 0) - (inv.sgst || 0));
+      // Credit GST Liability
+      const cgstId = getLedgerIdByFlexName('Output GST - CGST');
+      const sgstId = getLedgerIdByFlexName('Output GST - SGST');
+      if (cgstId) liveBalances.set(cgstId, (liveBalances.get(cgstId) || 0) - (inv.cgst || 0));
+      if (sgstId) liveBalances.set(sgstId, (liveBalances.get(sgstId) || 0) - (inv.sgst || 0));
     });
 
-    // 3. Process JVs (Payments, Expenses, etc.)
+    // 4. Process JVs (Payments/Expenses)
     journalVouchers.forEach(jv => {
       if (new Date(jv.date) > eDate) return;
       jv.entries.forEach(entry => {
@@ -143,31 +149,21 @@ function BalanceSheetContent() {
       });
     });
 
-    // 4. Calculate P&L (Net of all Income and Expense nature ledgers)
-    let totalIncome = 0;
-    let totalExpenses = 0;
+    // 5. P&L Calculation (Taxable Sales - Expenses)
+    const incomeFromInvoices = salesInvoices.filter(inv => new Date(inv.date) <= eDate).reduce((sum, inv) => sum + inv.taxableAmount, 0);
     
-    coaLedgers.forEach(l => {
-        const bal = liveBalances.get(l.id) || 0;
-        if (l.nature === 'INCOME') totalIncome += Math.abs(bal); // Credits are negative in map, so we abs them
-        if (l.nature === 'EXPENSE') totalExpenses += bal;
-    });
+    // We sum absolute values of INCOME nature ledgers because they are stored as negative (Credits)
+    const incomeFromJVs = coaLedgers.filter(l => l.nature === 'INCOME').reduce((sum, l) => sum + Math.abs(Math.min(0, liveBalances.get(l.id) || 0)), 0);
+    const expenses = coaLedgers.filter(l => l.nature === 'EXPENSE').reduce((sum, l) => sum + (liveBalances.get(l.id) || 0), 0);
+    
+    const currentPnl = (incomeFromInvoices + incomeFromJVs) - expenses;
 
-    // Add COGS (Cost of Goods Sold) manually if not in JVs
-    const cogs = (allOrders || [])
-        .filter(o => o.status === 'Delivered' && new Date(o.date) <= eDate)
-        .reduce((sum, o) => sum + o.items.reduce((iSum, i) => iSum + ((products.find(p => p.id === i.productId)?.cost || 0) * i.quantity), 0), 0);
-
-    const currentPnl = totalIncome - (totalExpenses + cogs);
-
-    // 5. Build Hierarchy
+    // 6. Build Tree
     const getGroupData = (group: CoaGroup): any => {
         const subGroups = coaGroups.filter(g => g.parentId === group.id).map(g => getGroupData(g));
-        const ledgers = coaLedgers.filter(l => l.groupId === group.id).map(l => ({
-            ...l, balance: liveBalances.get(l.id) || 0
-        }));
-        const totalBalance = ledgers.reduce((sum, l) => sum + l.balance, 0) + subGroups.reduce((sum, sg) => sum + sg.balance, 0);
-        return { ...group, balance: totalBalance, accounts: ledgers, subGroups };
+        const accounts = coaLedgers.filter(l => l.groupId === group.id).map(l => ({ ...l, balance: liveBalances.get(l.id) || 0 }));
+        const total = accounts.reduce((sum, a) => sum + a.balance, 0) + subGroups.reduce((sum, sg) => sum + sg.balance, 0);
+        return { ...group, balance: total, accounts, subGroups };
     };
 
     const assetsData = coaGroups.filter(g => g.nature === 'ASSET' && !g.parentId).map(getGroupData);
@@ -175,8 +171,8 @@ function BalanceSheetContent() {
     const equityData = coaGroups.filter(g => g.nature === 'EQUITY' && !g.parentId).map(getGroupData);
 
     const totalAssets = assetsData.reduce((acc, g) => acc + g.balance, 0);
-    const totalLiabilities = liabData.reduce((acc, g) => acc + g.balance, 0); // Should be negative
-    const totalEquityBase = equityData.reduce((acc, g) => acc + g.balance, 0); // Should be negative
+    const totalLiabilities = liabData.reduce((acc, g) => acc + g.balance, 0);
+    const totalEquityBase = equityData.reduce((acc, g) => acc + g.balance, 0);
 
     return { 
         assets: assetsData, liabilities: liabData, equity: equityData, pnl: currentPnl, loading: false,
@@ -184,7 +180,8 @@ function BalanceSheetContent() {
             assets: totalAssets, 
             liabilities: Math.abs(totalLiabilities), 
             equity: Math.abs(totalEquityBase) + currentPnl,
-            totalLiabilitiesAndEquity: Math.abs(totalLiabilities + totalEquityBase) + currentPnl
+            // FINAL BALANCING FIGURE
+            totalLiabilitiesAndEquity: Math.abs(totalLiabilities) + Math.abs(totalEquityBase) + currentPnl 
         }
     };
   }, [coaGroups, coaLedgers, journalVouchers, products, allOrders, salesInvoices, parties, groupsLoading, ledgersLoading, vouchersLoading, productsLoading, ordersLoading, invoicesLoading, partiesLoading, endDate]);
