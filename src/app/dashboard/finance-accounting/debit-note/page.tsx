@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -19,10 +18,6 @@ import { getNextDocNumber } from '@/lib/number-series';
 import { format } from 'date-fns';
 import { Separator } from '@/components/ui/separator';
 
-const companyDetails = {
-  gstin: '08AAFCJ5369P1ZR', // Mock company GSTIN
-};
-
 const formatIndianCurrency = (num: number) => {
   return new Intl.NumberFormat('en-IN', {
     style: 'currency',
@@ -35,6 +30,10 @@ interface DebitItem extends SalesInvoiceItem {
   adjustQty: number;
   revisedRate: number;
 }
+
+const companyDetails = {
+  gstin: '08AAFCJ5369P1ZR', // Mock company GSTIN
+};
 
 export default function DebitNotePage() {
     const { toast } = useToast();
@@ -107,7 +106,7 @@ export default function DebitNotePage() {
 
         if (reason === 'Price Escalation') {
             taxableAmount = debitItems.reduce((acc, item) => {
-                const originalNetRate = (item.rate || 0) * (1 - (item.discount / 100));
+                const originalNetRate = (item.rate || 0) * (1 - (item.discount || 0) / 100);
                 const priceDifference = item.revisedRate - originalNetRate;
                 if (priceDifference > 0) {
                     return acc + (priceDifference * item.quantity);
@@ -326,4 +325,3 @@ export default function DebitNotePage() {
         </>
     );
 }
-

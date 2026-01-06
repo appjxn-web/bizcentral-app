@@ -18,14 +18,22 @@ import { getNextDocNumber } from '@/lib/number-series';
 import { format } from 'date-fns';
 import { Separator } from '@/components/ui/separator';
 
-const companyDetails = {
-  gstin: '08AAFCJ5369P1ZR', // Mock company GSTIN
+const formatIndianCurrency = (num: number) => {
+  return new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    minimumFractionDigits: 2,
+  }).format(num || 0);
 };
 
 interface CreditItem extends SalesInvoiceItem {
   returnQty: number;
   revisedRate: number;
 }
+
+const companyDetails = {
+  gstin: '08AAFCJ5369P1ZR', // Mock company GSTIN
+};
 
 export default function CreditNotePage() {
     const { toast } = useToast();
@@ -109,7 +117,7 @@ export default function CreditNotePage() {
               return acc;
           }, 0);
       } else if (reason === 'Revised discount') {
-          const subtotal = creditItems.reduce((acc, item) => acc + (item.quantity * item.rate), 0);
+          const subtotal = creditItems.reduce((acc, item) => acc + (item.quantity * (item.rate || 0)), 0);
           const originalDiscountAmount = subtotal * (creditItems[0]?.discount / 100 || 0);
           const revisedDiscountAmount = subtotal * (revisedDiscount / 100);
           taxableAmount = revisedDiscountAmount - originalDiscountAmount;
@@ -342,4 +350,3 @@ export default function CreditNotePage() {
         </>
     );
 }
-
