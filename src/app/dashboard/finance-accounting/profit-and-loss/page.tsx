@@ -117,11 +117,18 @@ export default function ProfitAndLossPage() {
 
 
       // 1. Calculate Total Income
-      const incomeFromInvoices = periodInvoices.reduce((sum, inv) => sum + inv.taxableAmount, 0);
-      const incomeFromJVs = periodJVs
+      const incomeFromInvoices = periodInvoices.reduce((sum, inv) => sum + inv.subtotal, 0);
+      
+      const incomeLedgerBalances = new Map<string, number>();
+       periodJVs
         .flatMap(jv => jv.entries)
         .filter(e => coaLedgers.find(l => l.id === e.accountId)?.nature === 'INCOME')
-        .reduce((sum, e) => sum + (e.credit || 0) - (e.debit || 0), 0);
+        .forEach(entry => {
+            const current = incomeLedgerBalances.get(entry.accountId) || 0;
+            incomeLedgerBalances.set(entry.accountId, current + (entry.credit || 0) - (entry.debit || 0));
+        });
+
+      const incomeFromJVs = Array.from(incomeLedgerBalances.values()).reduce((sum, bal) => sum + bal, 0);
       const totalIncome = incomeFromInvoices + incomeFromJVs;
       
       // 2. Calculate COGS
@@ -133,30 +140,29 @@ export default function ProfitAndLossPage() {
       }, 0);
       
       // 3. Calculate Indirect Expenses
-      const expenseFromJVs = periodJVs
+      const expenseLedgerBalances = new Map<string, number>();
+      periodJVs
         .flatMap(jv => jv.entries)
         .filter(e => coaLedgers.find(l => l.id === e.accountId)?.nature === 'EXPENSE')
-        .reduce((sum, e) => sum + (e.debit || 0) - (e.credit || 0), 0);
+        .forEach(entry => {
+            const current = expenseLedgerBalances.get(entry.accountId) || 0;
+            expenseLedgerBalances.set(entry.accountId, current + (entry.debit || 0) - (entry.credit || 0));
+        });
+
+      const expenseFromJVs = Array.from(expenseLedgerBalances.values()).reduce((sum, bal) => sum + bal, 0);
       const totalExpenses = expenseFromJVs + cogs;
       
       // 4. Calculate Net Profit
       const netProfit = totalIncome - totalExpenses;
 
       // --- For detailed breakdown ---
-      const getGroupData = (groups: CoaGroup[], parentId: string | null = null): any[] => {
+      const getGroupData = (groups: CoaGroup[], parentId: string | null = null, balancesMap: Map<string, number>): any[] => {
           return groups
             .filter(g => g.parentId === parentId)
             .map(group => {
               const ledgers = coaLedgers.filter(l => l.groupId === group.id);
-              const ledgerBalances = ledgers.map(l => {
-                const balance = periodJVs
-                  .flatMap(jv => jv.entries)
-                  .filter(e => e.accountId === l.id)
-                  .reduce((acc, e) => acc + ((l.nature === 'INCOME' ? e.credit : e.debit) || 0) - ((l.nature === 'INCOME' ? e.debit : e.credit) || 0), 0);
-                return { ...l, balance };
-              });
-
-              const subGroups = getGroupData(groups, group.id);
+              const ledgerBalances = ledgers.map(l => ({...l, balance: balancesMap.get(l.id) || 0}));
+              const subGroups = getGroupData(groups, group.id, balancesMap);
               const groupBalance = ledgerBalances.reduce((sum, l) => sum + l.balance, 0) + subGroups.reduce((sum, sg) => sum + sg.balance, 0);
               
               return { ...group, balance: groupBalance, accounts: ledgerBalances.filter(l => l.balance !== 0), subGroups };
@@ -164,14 +170,14 @@ export default function ProfitAndLossPage() {
             .filter(g => g.balance !== 0 || g.accounts.length > 0 || g.subGroups.length > 0);
       };
       
-      const incomeGroupsFromJv = getGroupData(coaGroups.filter(g => g.nature === 'INCOME'), '4');
+      const incomeGroupsFromJv = getGroupData(coaGroups.filter(g => g.nature === 'INCOME'), '4', incomeLedgerBalances);
       const incomeGroups = [{
           id: 'sales-revenue', name: 'Operating Income', balance: incomeFromInvoices, 
           accounts: [{ id: 'sales-summary', name: 'Sales Revenue (from Invoices)', balance: incomeFromInvoices }], 
           subGroups: []
       }, ...incomeGroupsFromJv];
       
-      const expenseGroups = getGroupData(coaGroups.filter(g => g.nature === 'EXPENSE'), '6');
+      const expenseGroups = getGroupData(coaGroups.filter(g => g.nature === 'EXPENSE'), '6', expenseLedgerBalances);
       
       return { incomeGroups, expenseGroups, cogs, totalIncome, totalExpenses, netProfit, loading: false };
     }, [coaGroups, coaLedgers, journalVouchers, allProducts, allOrders, salesInvoices, groupsLoading, ledgersLoading, vouchersLoading, productsLoading, ordersLoading, invoicesLoading, startDate, endDate]);
