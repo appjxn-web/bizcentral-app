@@ -170,6 +170,19 @@ export interface CreditNote {
     createdAt: any;
 }
 
+export interface RefundRequest {
+    id: string;
+    orderId: string;
+    orderNumber?: string;
+    customerId: string;
+    customerName: string;
+    refundAmount: number;
+    requestDate: string;
+    status: 'Pending' | 'Paid' | 'Rejected';
+    transactionRef?: string;
+    transactionDate?: string;
+}
+
 
 export interface Party {
     id: string;

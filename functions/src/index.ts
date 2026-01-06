@@ -11,7 +11,7 @@ import {
 } from "firebase-functions/v2/firestore";
 import * as admin from "firebase-admin";
 import {getFirestore, FieldValue} from "firebase-admin/firestore";
-import type {Order, SalesInvoice, Party, Goal, UserProfile, CreditNote, DebitNote} from "./types";
+import type {Order, SalesInvoice, Party, Goal, UserProfile, CreditNote, DebitNote, RefundRequest} from "./types";
 
 if (admin.apps.length === 0) { admin.initializeApp(); }
 const db = getFirestore();
@@ -192,12 +192,13 @@ export const onCreditNoteCreated = onDocumentCreated("creditNotes/{noteId}", asy
     const snap = event.data;
     if (!snap) return;
     const note = snap.data() as CreditNote;
+    
+    const batch = db.batch();
 
+    // --- 1. Create Journal Voucher ---
     const jvRef = db.collection("journalVouchers").doc();
     const narration = `Credit Note ${note.creditNoteNumber} issued to ${note.partyName} for: ${note.reason}`;
     
-    // Assuming credit notes are mostly for sales returns.
-    // This credits the customer and debits a sales returns account.
     const partySnap = await db.collection('parties').doc(note.partyId).get();
     const partyData = partySnap.data() as Party | undefined;
     const customerLedgerId = partyData?.coaLedgerId;
@@ -223,8 +224,21 @@ export const onCreditNoteCreated = onDocumentCreated("creditNotes/{noteId}", asy
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       voucherType: 'Credit Note'
     };
+    batch.set(jvRef, jvData);
 
-    await jvRef.set(jvData);
+    // --- 2. Create Refund Request for Accounts Team ---
+    const refundRequestRef = db.collection("refundRequests").doc();
+    const refundRequestData: Omit<RefundRequest, 'id'> = {
+        orderId: note.originalInvoiceId || 'N/A',
+        customerId: note.partyId,
+        customerName: note.partyName,
+        refundAmount: note.amount,
+        requestDate: note.date,
+        status: 'Pending',
+    };
+    batch.set(refundRequestRef, refundRequestData);
+
+    await batch.commit();
 });
 
 export const onDebitNoteCreated = onDocumentCreated("debitNotes/{noteId}", async (event) => {
@@ -380,4 +394,3 @@ export const onMilestoneUpdate = onDocumentWritten("goals/{goalId}/milestones/{m
 export const onGoalUpdate = onDocumentCreated("goalUpdates/{updateId}", async () => {});
 
     
-

@@ -4,7 +4,7 @@
 
 import type { Timestamp } from 'firebase/firestore';
 
-export type UserRole = 'Admin' | 'Manager' | 'Employee' | 'Customer' | 'CEO' | 'Sales Manager' | 'Production Manager' | 'Purchase Manager' | 'Service Manager' | 'Accounts Manager' | 'HR Manager' | 'Gate Keeper' | 'Inventory Manager' | 'Partner';
+export type UserRole = 'Admin' | 'Manager' | 'Employee' | 'Customer' | 'CEO' | 'Sales Manager' | 'Production Manager' | 'Purchase Manager' | 'Service Manager' | 'Accounts Manager' | 'HR Manager' | 'Gate Keeper' | 'Inventory Manager' | 'Partner' | 'Dealer' | 'Franchisee' | 'Sales Agent' | 'Accountant' | 'Staff';
 
 export interface CommissionRule {
     category: string;
@@ -1109,4 +1109,42 @@ export interface Milestone {
     dueDate: string;
     status: MilestoneStatus;
     points: number;
+}
+
+// Support & Help Types
+export interface SupportSettings {
+  phone: string;
+  whatsapp: string;
+  email: string;
+  hours: string;
+  address: string;
+}
+
+export interface HelpGuide {
+  id: string;
+  title: string;
+  contentMd: string;
+  category: string;
+  sortOrder: number;
+  isActive: boolean;
+}
+
+export interface HelpDownload {
+  id: string;
+  title: string;
+  fileUrl: string;
+  category: string;
+  sortOrder: number;
+  isActive: boolean;
+}
+
+export interface SupportCallbackRequest {
+  id: string;
+  name: string;
+  mobile: string;
+  topic: string;
+  message?: string;
+  status: 'NEW' | 'CALLED' | 'CLOSED';
+  createdAt: Timestamp;
+  createdByUid: string;
 }

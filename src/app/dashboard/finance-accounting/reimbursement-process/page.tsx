@@ -156,7 +156,8 @@ export default function ReimbursementProcessPage() {
     
     let partyCoaId;
     if (request.type === 'refund') {
-        partyCoaId = 'L-2.1.3-4'; 
+        const party = parties?.find(p => p.id === request.customerId);
+        partyCoaId = party?.coaLedgerId;
     } else if (request.type === 'salary-advance') {
         const employee = users?.find(u => u.id === request.employeeId);
         partyCoaId = employee?.coaLedgerId;
@@ -204,7 +205,9 @@ export default function ReimbursementProcessPage() {
             requestRef = doc(firestore, collectionName, request.id);
             const orderDisplayId = request.orderNumber || request.orderId;
             narration = `Refund for Canceled Order #${orderDisplayId} (Ref: ${paymentRef})`;
-            partyLedgerId = 'L-2.1.3-4'; 
+            const customer = parties?.find(p => p.id === request.customerId);
+            if (!customer?.coaLedgerId) throw new Error('Customer ledger not found.');
+            partyLedgerId = customer.coaLedgerId;
             batch.update(requestRef, { status: 'Paid', transactionRef: paymentRef, transactionDate: paymentDate });
 
         } else if (request.type === 'salary-advance') {
