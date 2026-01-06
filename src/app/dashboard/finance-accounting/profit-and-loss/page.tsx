@@ -55,7 +55,7 @@ export default function ProfitAndLossPage() {
     const { data: coaLedgers, loading: ledgersLoading } = useCollection<CoaLedger>(collection(firestore, 'coa_ledgers'));
     const { data: allProducts, loading: productsLoading } = useCollection<Product>(collection(firestore, 'products'));
     const { data: allOrders, loading: ordersLoading } = useCollection<Order>(collection(firestore, 'orders'));
-    const { data: allSalesInvoices, loading: invoicesLoading } = useCollection<SalesInvoice>(collection(firestore, 'salesInvoices'));
+    const { data: salesInvoices, loading: invoicesLoading } = useCollection<SalesInvoice>(collection(firestore, 'salesInvoices'));
     
     const jvQuery = React.useMemo(() => {
         if (!user) return null;
@@ -97,12 +97,12 @@ export default function ProfitAndLossPage() {
       const eDate = endDate ? new Date(endDate) : null;
       if (eDate) eDate.setHours(23, 59, 59, 999);
 
-      if (groupsLoading || ledgersLoading || vouchersLoading || productsLoading || ordersLoading || invoicesLoading || !coaGroups || !coaLedgers || !allSalesInvoices || !allProducts || !allOrders || !journalVouchers) {
+      if (groupsLoading || ledgersLoading || vouchersLoading || productsLoading || ordersLoading || invoicesLoading || !coaGroups || !coaLedgers || !allProducts || !allOrders || !journalVouchers || !salesInvoices) {
         return { incomeGroups: [], expenseGroups: [], cogs: 0, totalIncome: 0, totalExpenses: 0, netProfit: 0, loading: true };
       }
 
       // Filter transactions for the selected period
-      const periodInvoices = (allSalesInvoices || []).filter(inv => {
+      const periodInvoices = (salesInvoices || []).filter(inv => {
           const invDate = new Date(inv.date);
           return (!sDate || invDate >= sDate) && (!eDate || invDate <= eDate);
       });
@@ -175,7 +175,7 @@ export default function ProfitAndLossPage() {
       const expenseGroups = getGroupData(coaGroups.filter(g => g.nature === 'EXPENSE'), '6');
       
       return { incomeGroups, expenseGroups, cogs, totalIncome, totalExpenses, netProfit, loading: false };
-    }, [coaGroups, coaLedgers, journalVouchers, allProducts, allOrders, allSalesInvoices, groupsLoading, ledgersLoading, vouchersLoading, productsLoading, ordersLoading, invoicesLoading, startDate, endDate]);
+    }, [coaGroups, coaLedgers, journalVouchers, allProducts, allOrders, salesInvoices, groupsLoading, ledgersLoading, vouchersLoading, productsLoading, ordersLoading, invoicesLoading, startDate, endDate]);
 
     const flattenForExport = (groups: any[], level = 0, data: any[] = []) => {
         groups.forEach(group => {
@@ -251,7 +251,7 @@ export default function ProfitAndLossPage() {
 
   return (
     <>
-      <PageHeader title="Profit &amp; Loss Statement">
+      <PageHeader title="Profit & Loss Statement">
           <Button variant="outline" onClick={handleExport}>
             <Download className="mr-2 h-4 w-4" /> Export to Excel
           </Button>
@@ -340,5 +340,3 @@ export default function ProfitAndLossPage() {
     </>
   );
 }
-
-```
