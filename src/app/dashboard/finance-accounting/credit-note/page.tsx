@@ -54,7 +54,7 @@ export default function CreditNotePage() {
                 setSelectedInvoice(invoice);
                 setCreditItems(invoice.items.map(item => ({
                     ...item,
-                    price: item.price || 0, // Ensure price is a number
+                    price: item.price || 0,
                     returnQty: 0,
                     revisedRate: item.price || 0,
                 })));
@@ -79,23 +79,24 @@ export default function CreditNotePage() {
 
     const totalCreditAmount = React.useMemo(() => {
         return creditItems.reduce((acc, item) => {
-            // Price difference credit: (original rate - revised rate) * (original qty - returned qty)
-            const priceDifferenceCredit = (item.price - item.revisedRate) * (item.quantity - item.returnQty);
-            // Return credit: returned qty * revised rate
+            const priceDifference = item.price - item.revisedRate;
+            const priceDifferenceCredit = priceDifference > 0 ? priceDifference * (item.quantity - item.returnQty) : 0;
             const returnCredit = item.returnQty * item.revisedRate;
-            
-            const totalItemCredit = priceDifferenceCredit + returnCredit;
-            
-            // Add GST on top of the credit amount
-            const itemGst = totalItemCredit * ((item.gstRate || 18) / 100);
-
-            return acc + totalItemCredit + itemGst;
+            const taxableValue = priceDifferenceCredit + returnCredit;
+            const itemGst = taxableValue * ((item.gstRate || 18) / 100);
+            return acc + taxableValue + itemGst;
         }, 0);
     }, [creditItems]);
 
     const handleSave = async () => {
-        if (!partyId || !reason || (creditItems.length > 0 && totalCreditAmount <= 0)) {
-            toast({ variant: 'destructive', title: 'Missing information', description: 'Please fill all fields and ensure there is a credit amount.' });
+        if (!partyId || !reason) {
+            toast({ variant: 'destructive', title: 'Missing information', description: 'Please select a customer and provide a reason.' });
+            return;
+        }
+
+        const isAdjustmentMade = creditItems.some(item => item.returnQty > 0 || item.revisedRate !== item.price);
+        if (selectedInvoice && !isAdjustmentMade) {
+             toast({ variant: 'destructive', title: 'No Adjustments Made', description: 'Please enter a return quantity or revise a rate for at least one item.' });
             return;
         }
         
@@ -115,12 +116,12 @@ export default function CreditNotePage() {
             reason,
             status: 'Issued',
             createdAt: serverTimestamp(),
+            items: creditItems.filter(item => item.returnQty > 0 || item.revisedRate !== item.price)
         };
 
         await setDoc(doc(firestore, 'creditNotes', newNoteId), { ...newCreditNote, id: newNoteId });
         toast({ title: 'Credit Note Created', description: `Credit Note ${newNoteId} has been issued.` });
         
-        // Reset form
         setPartyId('');
         setOriginalInvoiceId('');
         setSelectedInvoice(null);
@@ -184,18 +185,29 @@ export default function CreditNotePage() {
                                 <TableHeader>
                                     <TableRow>
                                         <TableHead>Item</TableHead>
-                                        <TableHead className="text-center">Original Qty</TableHead>
-                                        <TableHead className="text-right">Original Rate</TableHead>
-                                        <TableHead className="w-32 text-center">Return Qty</TableHead>
+                                        <TableHead className="text-center">Orig. Qty</TableHead>
+                                        <TableHead className="text-right">Orig. Rate</TableHead>
+                                        <TableHead className="w-24 text-center">Return Qty</TableHead>
                                         <TableHead className="w-32 text-right">Revised Rate</TableHead>
+                                        <TableHead className="text-right">Taxable Value</TableHead>
+                                        <TableHead className="text-right">GST</TableHead>
+                                        <TableHead className="text-right">Total</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {creditItems.map((item, index) => (
+                                    {creditItems.map((item, index) => {
+                                        const priceDifference = item.price - item.revisedRate;
+                                        const priceDifferenceCredit = priceDifference > 0 ? priceDifference * (item.quantity - item.returnQty) : 0;
+                                        const returnCredit = item.returnQty * item.revisedRate;
+                                        const taxableValue = priceDifferenceCredit + returnCredit;
+                                        const itemGst = taxableValue * ((item.gstRate || 18) / 100);
+                                        const total = taxableValue + itemGst;
+
+                                        return (
                                         <TableRow key={item.productId}>
                                             <TableCell>{item.name}</TableCell>
                                             <TableCell className="text-center">{item.quantity}</TableCell>
-                                            <TableCell className="text-right">{(item.price || 0).toFixed(2)}</TableCell>
+                                            <TableCell className="text-right">{item.price.toFixed(2)}</TableCell>
                                             <TableCell>
                                                 <Input 
                                                     type="number" 
@@ -213,8 +225,11 @@ export default function CreditNotePage() {
                                                     className="text-right"
                                                 />
                                             </TableCell>
+                                            <TableCell className="text-right font-mono">{taxableValue.toFixed(2)}</TableCell>
+                                            <TableCell className="text-right font-mono">{itemGst.toFixed(2)}</TableCell>
+                                            <TableCell className="text-right font-mono font-semibold">{total.toFixed(2)}</TableCell>
                                         </TableRow>
-                                    ))}
+                                    )})}
                                 </TableBody>
                             </Table>
                         </div>
@@ -262,3 +277,4 @@ export default function CreditNotePage() {
         </>
     );
 }
+
