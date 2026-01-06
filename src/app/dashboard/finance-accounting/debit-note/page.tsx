@@ -76,11 +76,11 @@ export default function DebitNotePage() {
                 setSelectedInvoice(invoice);
                 setDebitItems(invoice.items.map(item => ({
                     ...item,
-                    rate: item.price || 0,
-                    price: item.price || 0,
+                    rate: item.rate || 0,
+                    price: item.rate || 0,
                     discount: item.discount || 0,
                     adjustQty: 0,
-                    revisedRate: item.price || 0,
+                    revisedRate: item.rate || 0,
                 })));
             }
         } else {
@@ -110,7 +110,7 @@ export default function DebitNotePage() {
 
 
         if (reason === 'Price Escalation') {
-            totalOriginalAmount = debitItems.reduce((acc, item) => acc + (item.quantity * item.price), 0);
+            totalOriginalAmount = debitItems.reduce((acc, item) => acc + (item.quantity * item.rate), 0);
             totalRevisedAmount = debitItems.reduce((acc, item) => acc + (item.quantity * item.revisedRate), 0);
             taxableAmount = totalRevisedAmount - totalOriginalAmount;
             subtotal = taxableAmount;
@@ -154,7 +154,7 @@ export default function DebitNotePage() {
             reason,
             status: 'Issued',
             createdAt: serverTimestamp(),
-            ...(selectedInvoice && { items: debitItems.filter(item => item.revisedRate > (item.price || 0)) }),
+            ...(selectedInvoice && { items: debitItems.filter(item => item.revisedRate > (item.rate || 0)) }),
         };
 
         await setDoc(doc(firestore, 'debitNotes', newNoteId), { ...newDebitNote, id: newNoteId });
@@ -245,14 +245,14 @@ export default function DebitNotePage() {
                                 </TableHeader>
                                 <TableBody>
                                     {debitItems.map((item, index) => {
-                                        const originalTotal = item.quantity * item.price;
+                                        const originalTotal = item.quantity * item.rate;
                                         const revisedTotal = item.quantity * item.revisedRate;
                                         const debitAmount = revisedTotal - originalTotal;
                                         return (
                                         <TableRow key={item.productId}>
                                             <TableCell>{item.name}</TableCell>
                                             <TableCell className="text-center">{item.quantity}</TableCell>
-                                            <TableCell className="text-right">{formatIndianCurrency(item.price)}</TableCell>
+                                            <TableCell className="text-right">{formatIndianCurrency(item.rate)}</TableCell>
                                             <TableCell className="text-right font-mono">{formatIndianCurrency(originalTotal)}</TableCell>
                                             <TableCell>
                                                 <Input 
@@ -278,10 +278,6 @@ export default function DebitNotePage() {
                                         <div className="flex justify-between">
                                             <span>Total Original Amount</span>
                                             <span className="font-mono">{formatIndianCurrency(calculations.totalOriginalAmount)}</span>
-                                        </div>
-                                        <div className="flex justify-between">
-                                            <span>Total Revised Amount</span>
-                                            <span className="font-mono">{formatIndianCurrency(calculations.totalRevisedAmount)}</span>
                                         </div>
                                     </>
                                 )}

@@ -73,11 +73,11 @@ export default function CreditNotePage() {
                 setSelectedInvoice(invoice);
                 setCreditItems(invoice.items.map(item => ({
                     ...item,
-                    rate: item.price || 0,
-                    price: item.price || 0,
+                    rate: item.rate || 0,
+                    price: item.rate || 0,
                     discount: item.discount || 0,
                     returnQty: 0,
-                    revisedRate: item.price || 0,
+                    revisedRate: item.rate || 0,
                 })));
             }
         } else {
@@ -106,14 +106,11 @@ export default function CreditNotePage() {
       let totalRevisedAmount = 0;
 
       if (reason === 'Goods Return' && selectedInvoice) {
-          subtotal = creditItems.reduce((acc, item) => acc + (item.returnQty * (item.price || 0)), 0);
-          totalDiscount = creditItems.reduce((acc, item) => {
-              const itemTotal = item.returnQty * (item.price || 0);
-              return acc + (itemTotal * ((item.discount || 0) / 100));
-          }, 0);
+          subtotal = creditItems.reduce((acc, item) => acc + (item.returnQty * item.rate), 0);
+          totalDiscount = subtotal * (selectedInvoice.discount / 100);
           taxableAmount = subtotal - totalDiscount;
       } else if (reason === 'Revised Rate') {
-          totalOriginalAmount = creditItems.reduce((acc, item) => acc + (item.quantity * item.price), 0);
+          totalOriginalAmount = creditItems.reduce((acc, item) => acc + (item.quantity * item.rate), 0);
           totalRevisedAmount = creditItems.reduce((acc, item) => acc + (item.quantity * item.revisedRate), 0);
           taxableAmount = totalOriginalAmount - totalRevisedAmount;
           subtotal = taxableAmount; 
@@ -253,12 +250,12 @@ export default function CreditNotePage() {
                                 <TableBody>
                                     {creditItems.map((item, index) => {
                                         if (reason === 'Goods Return') {
-                                            const itemTotal = item.returnQty * item.price;
+                                            const itemTotal = item.returnQty * item.rate;
                                             return (
                                                 <TableRow key={item.productId}>
                                                     <TableCell>{item.name}</TableCell>
                                                     <TableCell className="text-center">{item.quantity}</TableCell>
-                                                    <TableCell className="text-right">{formatIndianCurrency(item.price)}</TableCell>
+                                                    <TableCell className="text-right">{formatIndianCurrency(item.rate)}</TableCell>
                                                     <TableCell className="text-right">{item.discount || 0}%</TableCell>
                                                     <TableCell>
                                                         <Input type="number" value={item.returnQty} onChange={(e) => handleItemChange(index, 'returnQty', e.target.value)} max={item.quantity} className="text-center" />
@@ -268,14 +265,14 @@ export default function CreditNotePage() {
                                             )
                                         }
                                         if (reason === 'Revised Rate') {
-                                            const originalTotal = item.quantity * item.price;
+                                            const originalTotal = item.quantity * item.rate;
                                             const revisedTotal = item.quantity * item.revisedRate;
                                             const creditAmount = originalTotal - revisedTotal;
                                             return (
                                                 <TableRow key={item.productId}>
                                                     <TableCell>{item.name}</TableCell>
                                                     <TableCell className="text-center">{item.quantity}</TableCell>
-                                                    <TableCell className="text-right">{formatIndianCurrency(item.price)}</TableCell>
+                                                    <TableCell className="text-right">{formatIndianCurrency(item.rate)}</TableCell>
                                                     <TableCell className="text-right font-mono">{formatIndianCurrency(originalTotal)}</TableCell>
                                                     <TableCell>
                                                         <Input type="number" value={item.revisedRate} onChange={(e) => handleItemChange(index, 'revisedRate', e.target.value)} className="text-right" />
@@ -286,12 +283,12 @@ export default function CreditNotePage() {
                                             )
                                         }
                                          if (reason === 'Revised discount') {
-                                            const itemTotal = item.quantity * item.price;
+                                            const itemTotal = item.quantity * item.rate;
                                             return (
                                                 <TableRow key={item.productId}>
                                                     <TableCell>{item.name}</TableCell>
                                                     <TableCell className="text-center">{item.quantity}</TableCell>
-                                                    <TableCell className="text-right">{formatIndianCurrency(item.price)}</TableCell>
+                                                    <TableCell className="text-right">{formatIndianCurrency(item.rate)}</TableCell>
                                                     <TableCell className="text-right font-mono">{formatIndianCurrency(itemTotal)}</TableCell>
                                                 </TableRow>
                                             )
@@ -317,22 +314,16 @@ export default function CreditNotePage() {
                                         <span>Subtotal</span>
                                         <span className="font-mono">{formatIndianCurrency(calculations.subtotal)}</span>
                                     </div>
-                                    {calculations.totalDiscount > 0 && (
-                                        <div className="flex justify-between">
-                                            <span>Less: Original Pro-rata Discount</span>
-                                            <span className="font-mono text-red-600">- {formatIndianCurrency(calculations.totalDiscount)}</span>
-                                        </div>
-                                    )}
+                                    <div className="flex justify-between text-red-600">
+                                        <span>Less: Original Pro-rata Discount</span>
+                                        <span className="font-mono">- {formatIndianCurrency(calculations.totalDiscount)}</span>
+                                    </div>
                                 </>
                             ) : reason === 'Revised Rate' ? (
                                 <>
                                     <div className="flex justify-between">
                                         <span>Total Original Amount</span>
                                         <span className="font-mono">{formatIndianCurrency(calculations.totalOriginalAmount)}</span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                        <span>Total Revised Amount</span>
-                                        <span className="font-mono">{formatIndianCurrency(calculations.totalRevisedAmount)}</span>
                                     </div>
                                 </>
                             ) : null}
