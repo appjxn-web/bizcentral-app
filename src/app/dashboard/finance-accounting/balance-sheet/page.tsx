@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -94,7 +95,7 @@ function BalanceSheetContent() {
   };
 
   const { assets, liabilities, equity, pnl, loading, kpis } = React.useMemo(() => {
-    if (groupsLoading || ledgersLoading || vouchersLoading || productsLoading || workOrdersLoading || ordersLoading || invoicesLoading || !coaGroups || !coaLedgers || !journalVouchers || !allProducts) {
+    if (groupsLoading || ledgersLoading || vouchersLoading || productsLoading || workOrdersLoading || ordersLoading || invoicesLoading || !coaGroups || !coaLedgers || !journalVouchers || !products) {
         return { assets: [], liabilities: [], equity: [], pnl: 0, loading: true, kpis: { assets: 0, liabilities: 0, equity: 0, totalLiabilitiesAndEquity: 0 }};
     }
 
@@ -220,7 +221,7 @@ function BalanceSheetContent() {
 
     const cogs = deliveredOrders.reduce((total, order) => {
         return total + order.items.reduce((itemCost, item) => {
-            const product = allProducts?.find(p => p.id === item.productId);
+            const product = products?.find(p => p.id === item.productId);
             return itemCost + ((product?.cost || 0) * item.quantity);
         }, 0);
     }, 0);
