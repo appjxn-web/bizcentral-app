@@ -17,6 +17,7 @@ import { useFirestore, useCollection, useDoc } from '@/firebase';
 import { collection, addDoc, serverTimestamp, doc, setDoc } from 'firebase/firestore';
 import { getNextDocNumber } from '@/lib/number-series';
 import { format } from 'date-fns';
+import { Separator } from '@/components/ui/separator';
 
 const formatIndianCurrency = (num: number) => {
   return new Intl.NumberFormat('en-IN', {
@@ -75,7 +76,6 @@ export default function DebitNotePage() {
         await setDoc(doc(firestore, 'debitNotes', newNoteId), { ...newDebitNote, id: newNoteId });
         toast({ title: 'Debit Note Created', description: `Debit Note ${newNoteId} has been issued.` });
         
-        // Reset form
         setPartyId('');
         setAmount('');
         setReason('');

@@ -974,7 +974,11 @@ export interface Quotation {
     createdAt?: any;
 }
 
-export interface SalesInvoiceItem extends OrderItem {
+export interface SalesInvoiceItem {
+    productId: string;
+    name: string;
+    quantity: number;
+    rate: number;
     gstRate: number;
     discount: number;
     amount: number;
@@ -1022,6 +1026,7 @@ export interface DebitNote {
     reason: string;
     status: 'Draft' | 'Issued' | 'Settled';
     createdAt: any;
+    items?: DebitItem[];
 }
 
 export interface CreditNote {
@@ -1035,8 +1040,10 @@ export interface CreditNote {
     reason: string;
     status: 'Draft' | 'Issued' | 'Settled';
     createdAt: any;
+    items?: CreditItem[];
 }
-
+export interface CreditItem extends SalesInvoiceItem {}
+export interface DebitItem extends SalesInvoiceItem {}
 
 export interface ServiceInvoice {
   id: string;

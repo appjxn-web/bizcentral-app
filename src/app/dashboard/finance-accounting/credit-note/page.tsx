@@ -54,9 +54,9 @@ export default function CreditNotePage() {
                 setSelectedInvoice(invoice);
                 setCreditItems(invoice.items.map(item => ({
                     ...item,
-                    price: item.price || 0,
+                    rate: item.rate || 0,
                     returnQty: 0,
-                    revisedRate: item.price || 0,
+                    revisedRate: item.rate || 0,
                 })));
             }
         } else {
@@ -79,7 +79,7 @@ export default function CreditNotePage() {
 
     const totalCreditAmount = React.useMemo(() => {
         return creditItems.reduce((acc, item) => {
-            const priceDifference = item.price - item.revisedRate;
+            const priceDifference = item.rate - item.revisedRate;
             const priceDifferenceCredit = priceDifference > 0 ? priceDifference * (item.quantity - item.returnQty) : 0;
             const returnCredit = item.returnQty * item.revisedRate;
             const taxableValue = priceDifferenceCredit + returnCredit;
@@ -94,7 +94,7 @@ export default function CreditNotePage() {
             return;
         }
 
-        const isAdjustmentMade = creditItems.some(item => item.returnQty > 0 || item.revisedRate !== item.price);
+        const isAdjustmentMade = creditItems.some(item => item.returnQty > 0 || item.revisedRate !== item.rate);
         if (selectedInvoice && !isAdjustmentMade) {
              toast({ variant: 'destructive', title: 'No Adjustments Made', description: 'Please enter a return quantity or revise a rate for at least one item.' });
             return;
@@ -116,7 +116,7 @@ export default function CreditNotePage() {
             reason,
             status: 'Issued',
             createdAt: serverTimestamp(),
-            items: creditItems.filter(item => item.returnQty > 0 || item.revisedRate !== item.price)
+            items: creditItems.filter(item => item.returnQty > 0 || item.revisedRate !== item.rate)
         };
 
         await setDoc(doc(firestore, 'creditNotes', newNoteId), { ...newCreditNote, id: newNoteId });
@@ -196,7 +196,7 @@ export default function CreditNotePage() {
                                 </TableHeader>
                                 <TableBody>
                                     {creditItems.map((item, index) => {
-                                        const priceDifference = item.price - item.revisedRate;
+                                        const priceDifference = item.rate - item.revisedRate;
                                         const priceDifferenceCredit = priceDifference > 0 ? priceDifference * (item.quantity - item.returnQty) : 0;
                                         const returnCredit = item.returnQty * item.revisedRate;
                                         const taxableValue = priceDifferenceCredit + returnCredit;
@@ -207,7 +207,7 @@ export default function CreditNotePage() {
                                         <TableRow key={item.productId}>
                                             <TableCell>{item.name}</TableCell>
                                             <TableCell className="text-center">{item.quantity}</TableCell>
-                                            <TableCell className="text-right">{item.price.toFixed(2)}</TableCell>
+                                            <TableCell className="text-right">{(item.rate || 0).toFixed(2)}</TableCell>
                                             <TableCell>
                                                 <Input 
                                                     type="number" 
