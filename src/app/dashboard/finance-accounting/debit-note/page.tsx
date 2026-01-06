@@ -5,7 +5,7 @@ import * as React from 'react';
 import { PageHeader } from '@/components/page-header';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -267,38 +267,41 @@ export default function DebitNotePage() {
                                         </TableRow>
                                     )})}
                                 </TableBody>
+                                 <TableFooter>
+                                    <TableRow>
+                                        <TableCell colSpan={3} className="text-right font-semibold">Subtotal</TableCell>
+                                        <TableCell className="text-right font-mono">{formatIndianCurrency(calculations.totalOriginalAmount)}</TableCell>
+                                        <TableCell></TableCell>
+                                        <TableCell className="text-right font-mono">{formatIndianCurrency(calculations.totalRevisedAmount)}</TableCell>
+                                        <TableCell className="text-right font-mono font-bold text-green-600">{formatIndianCurrency(calculations.taxableAmount)}</TableCell>
+                                    </TableRow>
+                                    <TableRow>
+                                        <TableCell colSpan={6} className="text-right font-semibold">Taxable Value (Debit)</TableCell>
+                                        <TableCell className="text-right font-mono font-bold">{formatIndianCurrency(calculations.taxableAmount)}</TableCell>
+                                    </TableRow>
+                                    {isInterstate ? (
+                                        <TableRow>
+                                            <TableCell colSpan={6} className="text-right">IGST</TableCell>
+                                            <TableCell className="text-right font-mono">{formatIndianCurrency(calculations.igst)}</TableCell>
+                                        </TableRow>
+                                    ) : (
+                                        <>
+                                        <TableRow>
+                                            <TableCell colSpan={6} className="text-right">CGST</TableCell>
+                                            <TableCell className="text-right font-mono">{formatIndianCurrency(calculations.cgst)}</TableCell>
+                                        </TableRow>
+                                        <TableRow>
+                                            <TableCell colSpan={6} className="text-right">SGST</TableCell>
+                                            <TableCell className="text-right font-mono">{formatIndianCurrency(calculations.sgst)}</TableCell>
+                                        </TableRow>
+                                        </>
+                                    )}
+                                    <TableRow className="bg-muted font-bold text-lg">
+                                        <TableCell colSpan={6} className="text-right">Total Debit Amount</TableCell>
+                                        <TableCell className="text-right font-mono">{formatIndianCurrency(calculations.grandTotal)}</TableCell>
+                                    </TableRow>
+                                </TableFooter>
                             </Table>
-                        </div>
-                    )}
-                    {selectedInvoice && (
-                        <div className="pt-4 border-t flex justify-end">
-                            <div className="space-y-2 w-full max-w-sm">
-                                {reason === 'Price Escalation' && (
-                                    <>
-                                        <div className="flex justify-between">
-                                            <span>Total Original Amount</span>
-                                            <span className="font-mono">{formatIndianCurrency(calculations.totalOriginalAmount)}</span>
-                                        </div>
-                                    </>
-                                )}
-                                <div className="flex justify-between font-semibold">
-                                    <span>Taxable Value</span>
-                                    <span className="font-mono">{formatIndianCurrency(calculations.taxableAmount)}</span>
-                                </div>
-                                {isInterstate ? (
-                                    <div className="flex justify-between"><span>IGST</span><span className="font-mono">{formatIndianCurrency(calculations.igst)}</span></div>
-                                ) : (
-                                    <>
-                                    <div className="flex justify-between"><span>CGST</span><span className="font-mono">{formatIndianCurrency(calculations.cgst)}</span></div>
-                                    <div className="flex justify-between"><span>SGST</span><span className="font-mono">{formatIndianCurrency(calculations.sgst)}</span></div>
-                                    </>
-                                )}
-                                <Separator />
-                                <div className="flex justify-between items-center text-xl font-bold">
-                                    <Label className="text-lg">Total Debit Amount</Label>
-                                    <span className="font-mono">{formatIndianCurrency(calculations.grandTotal)}</span>
-                                </div>
-                            </div>
                         </div>
                     )}
                 </CardContent>

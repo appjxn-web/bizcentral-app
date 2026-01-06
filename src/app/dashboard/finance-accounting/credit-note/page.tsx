@@ -5,7 +5,7 @@ import * as React from 'react';
 import { PageHeader } from '@/components/page-header';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -107,8 +107,19 @@ export default function CreditNotePage() {
 
       if (reason === 'Goods Return' && selectedInvoice) {
           subtotal = creditItems.reduce((acc, item) => acc + (item.returnQty * item.rate), 0);
-          totalDiscount = subtotal * (selectedInvoice.discount / 100);
+          const originalSubtotalOfReturnedItems = creditItems.reduce((acc, item) => {
+              if (item.returnQty > 0) {
+                  return acc + (item.returnQty * item.rate)
+              }
+              return acc;
+          }, 0);
+          
+          if(selectedInvoice.subtotal > 0){
+             totalDiscount = (originalSubtotalOfReturnedItems / selectedInvoice.subtotal) * selectedInvoice.discount;
+          }
+          
           taxableAmount = subtotal - totalDiscount;
+
       } else if (reason === 'Revised Rate') {
           totalOriginalAmount = creditItems.reduce((acc, item) => acc + (item.quantity * item.rate), 0);
           totalRevisedAmount = creditItems.reduce((acc, item) => acc + (item.quantity * item.revisedRate), 0);
@@ -238,13 +249,13 @@ export default function CreditNotePage() {
                                         <TableHead className="text-center">Orig. Qty</TableHead>
                                         <TableHead className="text-right">Orig. Rate</TableHead>
                                         {reason === 'Goods Return' && <TableHead className="text-right">Orig. Disc. %</TableHead>}
-                                        {reason === 'Goods Return' && <TableHead className="w-24 text-center">Return Qty</TableHead>}
-                                        {reason === 'Goods Return' && <TableHead className="text-right">Total Credit</TableHead>}
                                         {reason === 'Revised Rate' && <TableHead className="text-right">Orig. Total</TableHead>}
+                                        
+                                        {reason === 'Goods Return' && <TableHead className="w-24 text-center">Return Qty</TableHead>}
                                         {reason === 'Revised Rate' && <TableHead className="w-32 text-right">Revised Rate</TableHead>}
                                         {reason === 'Revised Rate' && <TableHead className="text-right">Revised Total</TableHead>}
-                                        {reason === 'Revised Rate' && <TableHead className="text-right">Credit Amount</TableHead>}
-                                        {reason === 'Revised discount' && <TableHead className="text-right">Total</TableHead>}
+
+                                        <TableHead className="text-right">Credit Amount</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
@@ -296,6 +307,42 @@ export default function CreditNotePage() {
                                         return null;
                                     })}
                                 </TableBody>
+                                {reason === 'Revised Rate' && (
+                                    <TableFooter>
+                                        <TableRow>
+                                            <TableCell colSpan={3} className="text-right font-semibold">Subtotal</TableCell>
+                                            <TableCell className="text-right font-mono">{formatIndianCurrency(calculations.totalOriginalAmount)}</TableCell>
+                                            <TableCell></TableCell>
+                                            <TableCell className="text-right font-mono">{formatIndianCurrency(calculations.totalRevisedAmount)}</TableCell>
+                                            <TableCell className="text-right font-mono font-bold text-green-600">{formatIndianCurrency(calculations.taxableAmount)}</TableCell>
+                                        </TableRow>
+                                         <TableRow>
+                                            <TableCell colSpan={6} className="text-right font-semibold">Taxable Value (Credit)</TableCell>
+                                            <TableCell className="text-right font-mono font-bold">{formatIndianCurrency(calculations.taxableAmount)}</TableCell>
+                                        </TableRow>
+                                        {isInterstate ? (
+                                            <TableRow>
+                                                <TableCell colSpan={6} className="text-right">IGST</TableCell>
+                                                <TableCell className="text-right font-mono">{formatIndianCurrency(calculations.igst)}</TableCell>
+                                            </TableRow>
+                                        ) : (
+                                            <>
+                                            <TableRow>
+                                                <TableCell colSpan={6} className="text-right">CGST</TableCell>
+                                                <TableCell className="text-right font-mono">{formatIndianCurrency(calculations.cgst)}</TableCell>
+                                            </TableRow>
+                                            <TableRow>
+                                                <TableCell colSpan={6} className="text-right">SGST</TableCell>
+                                                <TableCell className="text-right font-mono">{formatIndianCurrency(calculations.sgst)}</TableCell>
+                                            </TableRow>
+                                            </>
+                                        )}
+                                        <TableRow className="bg-muted font-bold text-lg">
+                                            <TableCell colSpan={6} className="text-right">Total Credit Amount</TableCell>
+                                            <TableCell className="text-right font-mono">{formatIndianCurrency(calculations.grandTotal)}</TableCell>
+                                        </TableRow>
+                                    </TableFooter>
+                                )}
                             </Table>
                              {reason === 'Revised discount' && (
                                 <div className="max-w-xs mt-4">
@@ -306,47 +353,39 @@ export default function CreditNotePage() {
                             )}
                         </div>
                     )}
-                    <div className="pt-4 border-t flex justify-end">
-                        <div className="space-y-2 w-full max-w-sm">
-                            {reason === 'Goods Return' ? (
-                                <>
-                                    <div className="flex justify-between">
-                                        <span>Subtotal</span>
-                                        <span className="font-mono">{formatIndianCurrency(calculations.subtotal)}</span>
-                                    </div>
+                    {(reason === 'Goods Return' || reason === 'Revised discount') && (
+                        <div className="pt-4 border-t flex justify-end">
+                            <div className="space-y-2 w-full max-w-sm">
+                                <div className="flex justify-between">
+                                    <span>Subtotal</span>
+                                    <span className="font-mono">{formatIndianCurrency(calculations.subtotal)}</span>
+                                </div>
+                                {calculations.totalDiscount > 0 && (
                                     <div className="flex justify-between text-red-600">
-                                        <span>Less: Original Pro-rata Discount</span>
+                                        <span>Less: Pro-rata Discount</span>
                                         <span className="font-mono">- {formatIndianCurrency(calculations.totalDiscount)}</span>
                                     </div>
-                                </>
-                            ) : reason === 'Revised Rate' ? (
-                                <>
-                                    <div className="flex justify-between">
-                                        <span>Total Original Amount</span>
-                                        <span className="font-mono">{formatIndianCurrency(calculations.totalOriginalAmount)}</span>
-                                    </div>
-                                </>
-                            ) : null}
-
-                            <div className="flex justify-between font-semibold">
-                                <span>Taxable Value</span>
-                                <span className="font-mono">{formatIndianCurrency(calculations.taxableAmount)}</span>
-                            </div>
-                            {isInterstate ? (
-                                <div className="flex justify-between"><span>IGST</span><span className="font-mono">{formatIndianCurrency(calculations.igst)}</span></div>
-                            ) : (
-                                <>
-                                <div className="flex justify-between"><span>CGST</span><span className="font-mono">{formatIndianCurrency(calculations.cgst)}</span></div>
-                                <div className="flex justify-between"><span>SGST</span><span className="font-mono">{formatIndianCurrency(calculations.sgst)}</span></div>
-                                </>
-                            )}
-                            <Separator />
-                            <div className="flex justify-between items-center text-xl font-bold">
-                                <Label className="text-lg">Total Credit Amount</Label>
-                                <span className="font-mono">{formatIndianCurrency(calculations.grandTotal)}</span>
+                                )}
+                                <div className="flex justify-between font-semibold">
+                                    <span>Taxable Value</span>
+                                    <span className="font-mono">{formatIndianCurrency(calculations.taxableAmount)}</span>
+                                </div>
+                                {isInterstate ? (
+                                    <div className="flex justify-between"><span>IGST</span><span className="font-mono">{formatIndianCurrency(calculations.igst)}</span></div>
+                                ) : (
+                                    <>
+                                    <div className="flex justify-between"><span>CGST</span><span className="font-mono">{formatIndianCurrency(calculations.cgst)}</span></div>
+                                    <div className="flex justify-between"><span>SGST</span><span className="font-mono">{formatIndianCurrency(calculations.sgst)}</span></div>
+                                    </>
+                                )}
+                                <Separator />
+                                <div className="flex justify-between items-center text-xl font-bold">
+                                    <Label className="text-lg">Total Credit Amount</Label>
+                                    <span className="font-mono">{formatIndianCurrency(calculations.grandTotal)}</span>
+                                </div>
                             </div>
                         </div>
-                    </div>
+                    )}
                 </CardContent>
             </Card>
 
