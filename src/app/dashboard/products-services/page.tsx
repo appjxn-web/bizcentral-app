@@ -182,18 +182,46 @@ function ProductsPageContent() {
     router.push(`/dashboard/products-services/catalogue/${encodeURIComponent(sku)}`);
   };
 
-  const handleExport = () => {
+  const handleExport = async () => {
     if (!products) {
         toast({variant: "destructive", title: "No data to export"});
         return;
     }
-    // Placeholder for export functionality
-    toast({ title: "Export Clicked", description: "This functionality is temporarily disabled."});
+    const XLSX = await import('xlsx');
+    const worksheet = XLSX.utils.json_to_sheet(products);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Products");
+    XLSX.writeFile(workbook, "products.xlsx");
   };
 
-  const handleImport = (event: React.ChangeEvent<HTMLInputElement>) => {
-    // Placeholder for import functionality
-    toast({ title: "Import Clicked", description: "This functionality is temporarily disabled."});
+  const handleImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    toast({ title: 'Importing Products...', description: 'Please wait while we process your file.' });
+    const XLSX = await import('xlsx');
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+        const data = e.target?.result;
+        const workbook = XLSX.read(data, { type: 'binary' });
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        const json: any[] = XLSX.utils.sheet_to_json(worksheet);
+
+        try {
+            const batch = writeBatch(firestore);
+            json.forEach(productData => {
+                const productRef = doc(firestore, 'products', productData.id || doc(collection(firestore, 'products')).id);
+                batch.set(productRef, productData, { merge: true });
+            });
+            await batch.commit();
+            toast({ title: 'Import Successful', description: `${json.length} products have been imported.` });
+        } catch (error) {
+            console.error("Import failed:", error);
+            toast({ variant: 'destructive', title: 'Import Failed' });
+        }
+    };
+    reader.readAsBinaryString(file);
   };
 
 
