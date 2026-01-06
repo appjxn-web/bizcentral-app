@@ -103,6 +103,8 @@ export default function DebitNotePage() {
     const calculations = React.useMemo(() => {
         let taxableAmount = 0;
         let totalGst = 0;
+        let subtotal = 0;
+        let totalDiscount = 0;
 
         if (reason === 'Price Escalation') {
             taxableAmount = debitItems.reduce((acc, item) => {
@@ -113,6 +115,7 @@ export default function DebitNotePage() {
                 }
                 return acc;
             }, 0);
+            subtotal = taxableAmount;
         }
 
         totalGst = taxableAmount * 0.18; // Simplified GST
@@ -121,7 +124,7 @@ export default function DebitNotePage() {
         const sgst = isInterstate ? 0 : totalGst / 2;
         const igst = isInterstate ? totalGst : 0;
         
-        return { taxableAmount, totalGst, grandTotal, cgst, sgst, igst };
+        return { subtotal, totalDiscount, taxableAmount, totalGst, grandTotal, cgst, sgst, igst };
     }, [debitItems, isInterstate, reason]);
 
 
@@ -245,8 +248,6 @@ export default function DebitNotePage() {
                                         const originalNetRate = (item.rate || 0) * (1 - (item.discount || 0) / 100);
                                         const priceDifference = item.revisedRate - originalNetRate;
                                         const total = priceDifference > 0 ? priceDifference * item.quantity : 0;
-                                        const totalWithGst = total * (1 + (item.gstRate || 18) / 100);
-
                                         return (
                                         <TableRow key={item.productId}>
                                             <TableCell>{item.name}</TableCell>
@@ -260,7 +261,7 @@ export default function DebitNotePage() {
                                                     className="text-right"
                                                 />
                                             </TableCell>
-                                            <TableCell className="text-right font-mono font-semibold">{formatIndianCurrency(totalWithGst)}</TableCell>
+                                            <TableCell className="text-right font-mono font-semibold">{formatIndianCurrency(total)}</TableCell>
                                         </TableRow>
                                     )})}
                                 </TableBody>

@@ -99,13 +99,16 @@ export default function CreditNotePage() {
     };
 
     const calculations = React.useMemo(() => {
+      let subtotal = 0;
+      let totalDiscount = 0;
       let taxableAmount = 0;
       let totalGst = 0;
 
       if (reason === 'Goods Return') {
-          taxableAmount = creditItems.reduce((acc, item) => {
-              const originalNetRate = (item.rate || 0) * (1 - (item.discount / 100));
-              return acc + (item.returnQty * originalNetRate);
+          subtotal = creditItems.reduce((acc, item) => acc + (item.returnQty * (item.rate || 0)), 0);
+          totalDiscount = creditItems.reduce((acc, item) => {
+              const itemTotal = item.returnQty * (item.rate || 0);
+              return acc + (itemTotal * (item.discount / 100));
           }, 0);
       } else if (reason === 'Revised Rate') {
           taxableAmount = creditItems.reduce((acc, item) => {
@@ -116,23 +119,28 @@ export default function CreditNotePage() {
               }
               return acc;
           }, 0);
-      } else if (reason === 'Revised discount') {
-          const subtotal = creditItems.reduce((acc, item) => acc + (item.quantity * (item.rate || 0)), 0);
-          const originalDiscountAmount = subtotal * (creditItems[0]?.discount / 100 || 0);
-          const revisedDiscountAmount = subtotal * (revisedDiscount / 100);
-          taxableAmount = revisedDiscountAmount - originalDiscountAmount;
+          subtotal = taxableAmount; // For revised rate, subtotal is the adjustment value
+      } else if (reason === 'Revised discount' && selectedInvoice) {
+          const originalSubtotal = selectedInvoice.items.reduce((acc, item) => acc + (item.quantity * item.rate), 0);
+          const originalDiscountAmount = originalSubtotal * (selectedInvoice.discount / originalSubtotal);
+          const newDiscountAmount = originalSubtotal * (revisedDiscount / 100);
+          taxableAmount = newDiscountAmount - originalDiscountAmount;
+          subtotal = taxableAmount;
       }
       
-      // Simplified GST calculation for demonstration
-      totalGst = taxableAmount * 0.18; 
+      if (reason !== 'Revised Rate' && reason !== 'Revised discount') {
+        taxableAmount = subtotal - totalDiscount;
+      }
+      
+      totalGst = taxableAmount * 0.18; // Simplified GST calculation for demonstration
 
       const grandTotal = taxableAmount + totalGst;
       const cgst = isInterstate ? 0 : totalGst / 2;
       const sgst = isInterstate ? 0 : totalGst / 2;
       const igst = isInterstate ? totalGst : 0;
       
-      return { taxableAmount, totalGst, grandTotal, cgst, sgst, igst };
-    }, [creditItems, isInterstate, reason, revisedDiscount]);
+      return { subtotal, totalDiscount, taxableAmount, totalGst, grandTotal, cgst, sgst, igst };
+    }, [creditItems, isInterstate, reason, revisedDiscount, selectedInvoice]);
 
 
     const handleSave = async () => {
@@ -250,8 +258,7 @@ export default function CreditNotePage() {
                                     {creditItems.map((item, index) => {
                                         let total = 0;
                                         if (reason === 'Goods Return') {
-                                            const originalNetRate = (item.rate || 0) * (1 - (item.discount / 100));
-                                            total = item.returnQty * originalNetRate;
+                                            total = item.returnQty * (item.rate || 0);
                                         } else if (reason === 'Revised Rate') {
                                             const originalNetRate = (item.rate || 0) * (1 - (item.discount / 100));
                                             const priceDifference = originalNetRate - item.revisedRate;
@@ -297,7 +304,17 @@ export default function CreditNotePage() {
                     <div className="pt-4 border-t flex justify-end">
                         <div className="space-y-2 w-full max-w-sm">
                             <div className="flex justify-between">
-                                <span>Subtotal (Credit Value)</span>
+                                <span>Subtotal</span>
+                                <span className="font-mono">{formatIndianCurrency(calculations.subtotal)}</span>
+                            </div>
+                            {calculations.totalDiscount > 0 && (
+                                <div className="flex justify-between">
+                                    <span>Discount</span>
+                                    <span className="font-mono text-green-600">- {formatIndianCurrency(calculations.totalDiscount)}</span>
+                                </div>
+                            )}
+                            <div className="flex justify-between font-semibold">
+                                <span>Taxable Value</span>
                                 <span className="font-mono">{formatIndianCurrency(calculations.taxableAmount)}</span>
                             </div>
                             {isInterstate ? (
