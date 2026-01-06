@@ -66,6 +66,8 @@ export default function CreditNotePage() {
                 setCreditItems(invoice.items.map(item => ({
                     ...item,
                     rate: item.rate || 0,
+                    price: item.rate || 0, // Ensure `price` is aliased to `rate`
+                    discount: item.discount || 0,
                     returnQty: 0,
                     revisedRate: item.rate || 0,
                 })));
@@ -89,27 +91,34 @@ export default function CreditNotePage() {
     };
 
     const calculations = React.useMemo(() => {
-        const taxableAmount = creditItems.reduce((acc, item) => {
-            const priceDifference = (item.rate || 0) - item.revisedRate;
-            const priceDifferenceCredit = priceDifference > 0 ? priceDifference * (item.quantity - item.returnQty) : 0;
-            const returnCredit = item.returnQty * item.revisedRate;
-            return acc + priceDifferenceCredit + returnCredit;
-        }, 0);
-        
-        const totalGst = creditItems.reduce((acc, item) => {
-            const priceDifference = (item.rate || 0) - item.revisedRate;
-            const priceDifferenceCredit = priceDifference > 0 ? priceDifference * (item.quantity - item.returnQty) : 0;
-            const returnCredit = item.returnQty * item.revisedRate;
-            const itemTaxableValue = priceDifferenceCredit + returnCredit;
-            return acc + (itemTaxableValue * ((item.gstRate || 18) / 100));
-        }, 0);
+      const taxableAmount = creditItems.reduce((acc, item) => {
+          const originalDiscountAmount = (item.rate || 0) * (item.discount / 100);
+          const originalNetRate = (item.rate || 0) - originalDiscountAmount;
+          
+          const priceDifference = originalNetRate - item.revisedRate;
+          const priceDifferenceCredit = priceDifference > 0 ? priceDifference * (item.quantity - item.returnQty) : 0;
+          
+          const returnCredit = item.returnQty * originalNetRate;
+          return acc + priceDifferenceCredit + returnCredit;
+      }, 0);
+      
+      const totalGst = creditItems.reduce((acc, item) => {
+          const originalDiscountAmount = (item.rate || 0) * (item.discount / 100);
+          const originalNetRate = (item.rate || 0) - originalDiscountAmount;
 
-        const grandTotal = taxableAmount + totalGst;
-        const cgst = isInterstate ? 0 : totalGst / 2;
-        const sgst = isInterstate ? 0 : totalGst / 2;
-        const igst = isInterstate ? totalGst : 0;
-        
-        return { taxableAmount, totalGst, grandTotal, cgst, sgst, igst };
+          const priceDifference = originalNetRate - item.revisedRate;
+          const priceDifferenceCredit = priceDifference > 0 ? priceDifference * (item.quantity - item.returnQty) : 0;
+          const returnCredit = item.returnQty * originalNetRate;
+          const itemTaxableValue = priceDifferenceCredit + returnCredit;
+          return acc + (itemTaxableValue * ((item.gstRate || 18) / 100));
+      }, 0);
+
+      const grandTotal = taxableAmount + totalGst;
+      const cgst = isInterstate ? 0 : totalGst / 2;
+      const sgst = isInterstate ? 0 : totalGst / 2;
+      const igst = isInterstate ? totalGst : 0;
+      
+      return { taxableAmount, totalGst, grandTotal, cgst, sgst, igst };
     }, [creditItems, isInterstate]);
 
 
@@ -212,6 +221,7 @@ export default function CreditNotePage() {
                                         <TableHead>Item</TableHead>
                                         <TableHead className="text-center">Orig. Qty</TableHead>
                                         <TableHead className="text-right">Orig. Rate</TableHead>
+                                        <TableHead className="text-right">Orig. Disc. %</TableHead>
                                         <TableHead className="w-24 text-center">Return Qty</TableHead>
                                         <TableHead className="w-32 text-right">Revised Rate</TableHead>
                                         <TableHead className="text-right">Taxable Value</TableHead>
@@ -220,9 +230,14 @@ export default function CreditNotePage() {
                                 </TableHeader>
                                 <TableBody>
                                     {creditItems.map((item, index) => {
-                                        const priceDifference = (item.rate || 0) - item.revisedRate;
+                                        const originalDiscountAmount = (item.rate || 0) * (item.discount / 100);
+                                        const originalNetRate = (item.rate || 0) - originalDiscountAmount;
+
+                                        const priceDifference = originalNetRate - item.revisedRate;
                                         const priceDifferenceCredit = priceDifference > 0 ? priceDifference * (item.quantity - item.returnQty) : 0;
-                                        const returnCredit = item.returnQty * item.revisedRate;
+                                        
+                                        const returnCredit = item.returnQty * originalNetRate;
+
                                         const taxableValue = priceDifferenceCredit + returnCredit;
                                         const itemGst = taxableValue * ((item.gstRate || 18) / 100);
                                         const total = taxableValue + itemGst;
@@ -232,6 +247,7 @@ export default function CreditNotePage() {
                                             <TableCell>{item.name}</TableCell>
                                             <TableCell className="text-center">{item.quantity}</TableCell>
                                             <TableCell className="text-right">{(item.rate || 0).toFixed(2)}</TableCell>
+                                            <TableCell className="text-right">{(item.discount || 0).toFixed(2)}%</TableCell>
                                             <TableCell>
                                                 <Input 
                                                     type="number" 
@@ -260,7 +276,7 @@ export default function CreditNotePage() {
                     <div className="pt-4 border-t flex justify-end">
                         <div className="space-y-2 w-full max-w-sm">
                             <div className="flex justify-between">
-                                <span>Subtotal</span>
+                                <span>Subtotal (Credit Value)</span>
                                 <span className="font-mono">{calculations.taxableAmount.toFixed(2)}</span>
                             </div>
                             {isInterstate ? (

@@ -78,6 +78,8 @@ export default function DebitNotePage() {
                 setDebitItems(invoice.items.map(item => ({
                     ...item,
                     rate: item.rate || 0,
+                    price: item.rate || 0, // Ensure `price` is aliased to `rate`
+                    discount: item.discount || 0,
                     adjustQty: 0,
                     revisedRate: item.rate || 0,
                 })));
@@ -101,13 +103,19 @@ export default function DebitNotePage() {
 
     const calculations = React.useMemo(() => {
         const taxableAmount = debitItems.reduce((acc, item) => {
-            const priceDifference = item.revisedRate - (item.rate || 0);
+            const originalDiscountAmount = (item.rate || 0) * (item.discount / 100);
+            const originalNetRate = (item.rate || 0) - originalDiscountAmount;
+            
+            const priceDifference = item.revisedRate - originalNetRate;
             const priceDifferenceDebit = priceDifference > 0 ? priceDifference * item.quantity : 0;
             return acc + priceDifferenceDebit;
         }, 0);
         
         const totalGst = debitItems.reduce((acc, item) => {
-            const priceDifference = item.revisedRate - (item.rate || 0);
+            const originalDiscountAmount = (item.rate || 0) * (item.discount / 100);
+            const originalNetRate = (item.rate || 0) - originalDiscountAmount;
+            
+            const priceDifference = item.revisedRate - originalNetRate;
             const itemTaxableValue = priceDifference > 0 ? priceDifference * item.quantity : 0;
             return acc + (itemTaxableValue * ((item.gstRate || 18) / 100));
         }, 0);
@@ -226,6 +234,7 @@ export default function DebitNotePage() {
                                         <TableHead>Item</TableHead>
                                         <TableHead className="text-center">Orig. Qty</TableHead>
                                         <TableHead className="text-right">Orig. Rate</TableHead>
+                                        <TableHead className="text-right">Orig. Disc. %</TableHead>
                                         <TableHead className="w-32 text-right">Revised Rate</TableHead>
                                         <TableHead className="text-right">Taxable Value</TableHead>
                                         <TableHead className="text-right">Total</TableHead>
@@ -233,7 +242,10 @@ export default function DebitNotePage() {
                                 </TableHeader>
                                 <TableBody>
                                     {debitItems.map((item, index) => {
-                                        const priceDifference = item.revisedRate - (item.rate || 0);
+                                        const originalDiscountAmount = (item.rate || 0) * ((item.discount || 0) / 100);
+                                        const originalNetRate = (item.rate || 0) - originalDiscountAmount;
+
+                                        const priceDifference = item.revisedRate - originalNetRate;
                                         const taxableValue = priceDifference > 0 ? priceDifference * item.quantity : 0;
                                         const itemGst = taxableValue * ((item.gstRate || 18) / 100);
                                         const total = taxableValue + itemGst;
@@ -243,6 +255,7 @@ export default function DebitNotePage() {
                                             <TableCell>{item.name}</TableCell>
                                             <TableCell className="text-center">{item.quantity}</TableCell>
                                             <TableCell className="text-right">{(item.rate || 0).toFixed(2)}</TableCell>
+                                            <TableCell className="text-right">{(item.discount || 0).toFixed(2)}%</TableCell>
                                              <TableCell>
                                                 <Input 
                                                     type="number" 
@@ -263,7 +276,7 @@ export default function DebitNotePage() {
                         <div className="pt-4 border-t flex justify-end">
                             <div className="space-y-2 w-full max-w-sm">
                                 <div className="flex justify-between">
-                                    <span>Subtotal</span>
+                                    <span>Subtotal (Debit Value)</span>
                                     <span className="font-mono">{calculations.taxableAmount.toFixed(2)}</span>
                                 </div>
                                 {isInterstate ? (
