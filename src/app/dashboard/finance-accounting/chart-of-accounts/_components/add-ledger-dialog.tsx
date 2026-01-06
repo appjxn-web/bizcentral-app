@@ -61,10 +61,10 @@ export function AddLedgerDialog({ open, onOpenChange, coaGroups, onSave, editing
   }, [editingLedger, open]);
   
   React.useEffect(() => {
-    if (nature) {
+    if (nature && !editingLedger) { // Only default for new ledgers
       setDrCr(['ASSET', 'EXPENSE'].includes(nature) ? 'DR' : 'CR');
     }
-  }, [nature]);
+  }, [nature, editingLedger]);
 
   const handleSubmit = () => {
     if(!name || !groupId || !nature) {
@@ -78,7 +78,7 @@ export function AddLedgerDialog({ open, onOpenChange, coaGroups, onSave, editing
         openingBalance: {
             amount: Number(openingBalance) || 0,
             drCr: drCr,
-            asOf: new Date().toISOString(),
+            asOf: editingLedger?.openingBalance?.asOf || new Date().toISOString(),
         }
     });
   };
@@ -131,11 +131,11 @@ export function AddLedgerDialog({ open, onOpenChange, coaGroups, onSave, editing
             <div className="grid grid-cols-4 gap-4">
                 <div className="col-span-3 space-y-2">
                     <Label htmlFor="opening-balance">Opening Balance</Label>
-                    <Input id="opening-balance" type="number" value={openingBalance} onChange={(e) => setOpeningBalance(e.target.value)} disabled={!!editingLedger} />
+                    <Input id="opening-balance" type="number" value={openingBalance} onChange={(e) => setOpeningBalance(e.target.value)} />
                 </div>
                 <div className="col-span-1 space-y-2">
                     <Label>Dr/Cr</Label>
-                    <Select value={drCr} onValueChange={(value: 'DR' | 'CR') => setDrCr(value)} disabled={!!editingLedger}>
+                    <Select value={drCr} onValueChange={(value: 'DR' | 'CR') => setDrCr(value)}>
                         <SelectTrigger>
                             <SelectValue />
                         </SelectTrigger>
