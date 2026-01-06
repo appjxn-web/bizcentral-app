@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -28,7 +27,7 @@ import html2canvas from 'html2canvas';
 
 import { useFirestore, useCollection, useUser } from '@/firebase';
 import { collection, query, orderBy, Timestamp } from 'firebase/firestore';
-import type { CoaLedger, JournalVoucher } from '@/lib/types';
+import type { CoaLedger, JournalVoucher, SalesInvoice } from '@/lib/types';
 import { useRole } from '../../_components/role-provider';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -73,10 +72,16 @@ export default function TrialBalancePage() {
     return query(collection(firestore, 'journalVouchers'));
   }, [user, currentRole, firestore]);
 
+  const invoicesQuery = React.useMemo(() => {
+    if (!user || !['Admin', 'CEO', 'Accounts Manager'].includes(currentRole)) return null;
+    return query(collection(firestore, 'salesInvoices'));
+  }, [user, currentRole, firestore]);
+
   const { data: allAccounts, loading: accountsLoading } = useCollection<CoaLedger>(ledgersQuery);
   const { data: journalVouchers, loading: vouchersLoading } = useCollection<JournalVoucher>(vouchersQuery);
+  const { data: salesInvoices, loading: invoicesLoading } = useCollection<SalesInvoice>(invoicesQuery);
 
-  const loading = !firestore || accountsLoading || (vouchersLoading && ['Admin', 'CEO', 'Accounts Manager'].includes(currentRole));
+  const loading = !firestore || accountsLoading || (vouchersLoading && invoicesLoading && ['Admin', 'CEO', 'Accounts Manager'].includes(currentRole));
   
   const financialYears = React.useMemo(() => {
     const currentYear = new Date().getFullYear();
@@ -108,69 +113,74 @@ export default function TrialBalancePage() {
 
     const accountBalances = new Map<string, number>();
 
-    const sDate = startDate ? new Date(startDate) : null;
-    if (sDate) sDate.setHours(0, 0, 0, 0);
-
-    for (const acc of allAccounts) {
+    // 1. Initialize with Opening Balances
+    allAccounts.forEach(acc => {
       const opening = acc.openingBalance?.amount ?? 0;
       const signedOpening = acc.openingBalance?.drCr === 'CR' ? -opening : opening;
       accountBalances.set(acc.id, signedOpening);
-    }
+    });
     
-    if (journalVouchers?.length) {
-      const sortedVouchers = [...journalVouchers].sort((a,b) => (a.date instanceof Timestamp ? a.date.toDate() : new Date(a.date)).getTime() - (b.date instanceof Timestamp ? b.date.toDate() : new Date(b.date)).getTime());
-      
-      for (const jv of sortedVouchers) {
-        const jvDate = jv.date instanceof Timestamp ? jv.date.toDate() : new Date(jv.date);
-        
-        // Accumulate opening balance from transactions before the start date
-        if (sDate && jvDate < sDate) {
-          for (const entry of jv.entries) {
-            if (accountBalances.has(entry.accountId)) {
-              const current = accountBalances.get(entry.accountId) ?? 0;
-              const debit = Number(entry.debit ?? 0);
-              const credit = Number(entry.credit ?? 0);
-              accountBalances.set(entry.accountId, current + debit - credit);
-            }
-          }
-        }
-      }
-    }
-    
-    // Now calculate transactions within the date range
-    const periodTransactions = journalVouchers?.filter(jv => {
-      const jvDate = jv.date instanceof Timestamp ? jv.date.toDate() : new Date(jv.date);
-      const eDate = endDate ? new Date(endDate) : null;
-      if (eDate) eDate.setHours(23, 59, 59, 999);
-      return (!sDate || jvDate >= sDate) && (!eDate || jvDate <= eDate);
-    }) || [];
+    const sDate = startDate ? new Date(startDate) : null;
+    if (sDate) sDate.setHours(0, 0, 0, 0);
 
-    const periodChanges = new Map<string, { debit: number; credit: number }>();
+    const periodTransactions: {accountId: string; debit: number; credit: number}[] = [];
 
-    for (const jv of periodTransactions) {
-      for (const entry of jv.entries) {
-        const current = periodChanges.get(entry.accountId) || { debit: 0, credit: 0 };
-        periodChanges.set(entry.accountId, {
-          debit: current.debit + Number(entry.debit ?? 0),
-          credit: current.credit + Number(entry.credit ?? 0),
+    // 2. Process Journal Vouchers
+    (journalVouchers || []).forEach(jv => {
+      const jvDate = jv.createdAt instanceof Timestamp ? jv.createdAt.toDate() : new Date(jv.date);
+      if ((!sDate || jvDate >= sDate) && (!endDate || jvDate <= new Date(endDate))) {
+        jv.entries.forEach(entry => {
+          periodTransactions.push({
+            accountId: entry.accountId,
+            debit: entry.debit || 0,
+            credit: entry.credit || 0,
+          });
         });
       }
+    });
+
+    // 3. Process Sales Invoices (as Journal Entries)
+    (salesInvoices || []).forEach(inv => {
+      const invDate = new Date(inv.date);
+      if ((!sDate || invDate >= sDate) && (!endDate || invDate <= new Date(endDate))) {
+        // Debit Customer
+        if (inv.coaLedgerId) {
+            periodTransactions.push({ accountId: inv.coaLedgerId, debit: inv.grandTotal, credit: 0 });
+        }
+        
+        // Credit Sales
+        const salesLedger = allAccounts.find(l => l.name === 'Sales – Domestic');
+        if (salesLedger) {
+          const taxableAmount = inv.taxableAmount || (inv.subtotal - (inv.discount || 0));
+          periodTransactions.push({ accountId: salesLedger.id, debit: 0, credit: taxableAmount });
+        }
+
+        // Credit GST
+        const cgstLedger = allAccounts.find(l => l.name === 'Output GST – CGST');
+        if (cgstLedger && inv.cgst) {
+            periodTransactions.push({ accountId: cgstLedger.id, debit: 0, credit: inv.cgst });
+        }
+        const sgstLedger = allAccounts.find(l => l.name === 'Output GST – SGST');
+         if (sgstLedger && inv.sgst) {
+            periodTransactions.push({ accountId: sgstLedger.id, debit: 0, credit: inv.sgst });
+        }
+      }
+    });
+
+    // 4. Aggregate all transactions to final balances
+    for (const tx of periodTransactions) {
+      if (accountBalances.has(tx.accountId)) {
+        const current = accountBalances.get(tx.accountId) ?? 0;
+        accountBalances.set(tx.accountId, current + tx.debit - tx.credit);
+      }
     }
 
-    return allAccounts.map((acc) => {
-      const openingBalance = accountBalances.get(acc.id) ?? 0;
-      const changes = periodChanges.get(acc.id) || { debit: 0, credit: 0 };
-      const finalBalance = openingBalance + changes.debit - changes.credit;
+    return allAccounts.map((acc) => ({
+      ...acc,
+      finalBalance: accountBalances.get(acc.id) ?? 0,
+    }));
+  }, [allAccounts, journalVouchers, salesInvoices, startDate, endDate]);
 
-      return {
-        ...acc,
-        openingBalance,
-        debit: changes.debit,
-        credit: changes.credit,
-        finalBalance,
-      };
-    });
-  }, [allAccounts, journalVouchers, startDate, endDate]);
 
   const { totalDebit, totalCredit } = React.useMemo(() => {
     let debit = 0;
@@ -395,4 +405,3 @@ export default function TrialBalancePage() {
     </>
   );
 }
-
