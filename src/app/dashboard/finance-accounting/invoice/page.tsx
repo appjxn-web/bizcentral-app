@@ -685,14 +685,13 @@ function InvoicePage() {
     };
 
     const handleConfirmDeliveryNote = async (deliveryDetails: any) => {
-        if (!selectedInvoiceForDelivery || !selectedInvoiceForDelivery.orderId) return;
+        if (!selectedInvoiceForDelivery) return;
 
+        const invoiceRef = doc(firestore, 'salesInvoices', selectedInvoiceForDelivery.invoiceNumber);
         const orderRef = doc(firestore, 'orders', selectedInvoiceForDelivery.orderId);
         
-        await updateDoc(orderRef, { 
-            status: 'Shipped',
-            deliveryDetails
-        });
+        await updateDoc(invoiceRef, { deliveryDetails });
+        await updateDoc(orderRef, { status: 'Shipped' });
         
         toast({
             title: "Order Shipped!",
@@ -700,9 +699,9 @@ function InvoicePage() {
         });
 
         localStorage.setItem('gatePassData', JSON.stringify({
+            ...deliveryDetails,
             orderId: selectedInvoiceForDelivery.orderNumber,
             invoiceId: selectedInvoiceForDelivery.invoiceNumber,
-            ...deliveryDetails
         }));
 
         window.open(`/dashboard/sales/orders/gate-pass?id=${selectedInvoiceForDelivery.orderNumber}`, '_blank');

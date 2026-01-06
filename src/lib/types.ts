@@ -982,7 +982,7 @@ export interface SalesInvoiceItem extends OrderItem {
 export interface SalesInvoice {
     id: string;
     invoiceNumber: string;
-    orderId: string; // Firestore document ID of the order
+    orderId: string; // This is the FIRESTORE DOCUMENT ID of the order
     orderNumber?: string; // Human-readable order number
     customerId: string;
     customerName: string;
@@ -1000,6 +1000,14 @@ export interface SalesInvoice {
     status: 'Paid' | 'Unpaid' | 'Overdue';
     dueDate?: string;
     appliedCoupons?: Offer[];
+    deliveryDetails?: {
+      shippingMethod: string;
+      shippingCost: number;
+      vehicleNumber: string;
+      driverName: string;
+      driverPhone: string;
+      remarks: string;
+    };
 }
 
 export interface DebitNote {

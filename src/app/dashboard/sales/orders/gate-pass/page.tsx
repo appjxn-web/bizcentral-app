@@ -1,3 +1,4 @@
+
 'use client';
 
 import * as React from 'react';
@@ -6,14 +7,22 @@ import { PageHeader } from '@/components/page-header';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { Download, Loader2, Printer } from 'lucide-react';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { QRCodeSVG } from 'qrcode.react';
 import Image from 'next/image';
-import { useFirestore, useDoc, useCollection } from '@/firebase';
-import { doc, collection } from 'firebase/firestore';
-import type { CompanyInfo, Party, Order } from '@/lib/types';
+import { useFirestore, useDoc } from '@/firebase';
+import { doc } from 'firebase/firestore';
+import type { CompanyInfo, SalesInvoice, Party } from '@/lib/types';
 import { format } from 'date-fns';
 
 const formatIndianCurrency = (num: number) => {
@@ -26,29 +35,45 @@ const formatIndianCurrency = (num: number) => {
 
 export default function GatePassPage() {
     const searchParams = useSearchParams();
-    const orderId = searchParams.get('id');
+    const orderNumber = searchParams.get('id'); // This is the Sales Order number
     const pdfRef = React.useRef<HTMLDivElement>(null);
     const [isDownloading, setIsDownloading] = React.useState(false);
-    const [gatePassData, setGatePassData] = React.useState<any>(null);
-
+    
     const firestore = useFirestore();
     const { data: companyInfo, loading: companyInfoLoading } = useDoc<CompanyInfo>(doc(firestore, 'company', 'info'));
     
-    // Fetch Order and Party data based on the retrieved gatePassData
-    const { data: orderData, loading: orderLoading } = useDoc<Order>(
-      gatePassData?.orderId ? doc(firestore, 'orders', gatePassData.orderId) : null
-    );
-    const { data: partyData, loading: partyLoading } = useDoc<Party>(
-      orderData?.userId ? doc(firestore, 'parties', orderData.userId) : null
-    );
-
+    // We need to find the invoice that corresponds to this order number
+    const [invoiceData, setInvoiceData] = React.useState<SalesInvoice | null>(null);
+    const [partyData, setPartyData] = React.useState<Party | null>(null);
+    const [isLoading, setIsLoading] = React.useState(true);
 
     React.useEffect(() => {
-        const data = localStorage.getItem('gatePassData');
-        if (data) {
-            setGatePassData(JSON.parse(data));
+        if (orderNumber && firestore) {
+            const findInvoice = async () => {
+                setIsLoading(true);
+                const invoicesRef = collection(firestore, 'salesInvoices');
+                const q = query(invoicesRef, where('orderNumber', '==', orderNumber), limit(1));
+                const querySnapshot = await getDocs(q);
+
+                if (!querySnapshot.empty) {
+                    const invoiceDoc = querySnapshot.docs[0];
+                    const invoice = { id: invoiceDoc.id, ...invoiceDoc.data() } as SalesInvoice;
+                    setInvoiceData(invoice);
+
+                    // Now fetch the party using the customerId from the invoice
+                    const partyRef = doc(firestore, 'parties', invoice.customerId);
+                    const partySnap = await getDoc(partyRef);
+                    if (partySnap.exists()) {
+                        setPartyData(partySnap.data() as Party);
+                    }
+                }
+                setIsLoading(false);
+            };
+            findInvoice();
+        } else {
+            setIsLoading(false);
         }
-    }, []);
+    }, [orderNumber, firestore]);
 
     const handleDownloadPdf = async () => {
         const element = pdfRef.current;
@@ -60,13 +85,13 @@ export default function GatePassPage() {
         const pdfWidth = pdf.internal.pageSize.getWidth();
         const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
         pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-        pdf.save(`GatePass-${gatePassData.orderId}.pdf`);
+        pdf.save(`GatePass-${orderNumber}.pdf`);
         setIsDownloading(false);
     };
 
-    const isLoading = companyInfoLoading || !gatePassData || orderLoading || partyLoading;
+    const loading = companyInfoLoading || isLoading;
     
-    if (isLoading) {
+    if (loading) {
         return (
             <div className="flex h-screen items-center justify-center">
                 <Loader2 className="animate-spin h-8 w-8" />
@@ -74,24 +99,22 @@ export default function GatePassPage() {
         )
     }
 
-    if (!orderData) {
+    if (!invoiceData) {
         return (
              <div className="p-8 text-center space-y-4">
-                <h1 className="text-2xl font-bold text-destructive">Order Data Not Found</h1>
-                <p className="text-muted-foreground">Could not load the order details for this gate pass.</p>
+                <h1 className="text-2xl font-bold text-destructive">Gate Pass Data Not Found</h1>
+                <p className="text-muted-foreground">Could not load the delivery details for order {orderNumber}.</p>
             </div>
         )
     }
 
-    const { customerName, shippingMethod, vehicleNumber, driverName, driverPhone } = gatePassData;
-    const { items } = orderData;
-    const customerAddress = partyData?.address;
+    const { deliveryDetails, items } = invoiceData;
 
     return (
         <>
             <PageHeader title={`Gate Pass for Order: ${orderData.orderNumber}`}>
                 <div className="flex gap-2">
-                    <Button variant="outline" onClick={()={() => window.print()}}>
+                    <Button variant="outline" onClick={() => window.print()}>
                         <Printer className="mr-2 h-4 w-4" /> Print
                     </Button>
                     <Button onClick={handleDownloadPdf} disabled={isDownloading}>
@@ -117,19 +140,14 @@ export default function GatePassPage() {
                         <section className="my-6 grid grid-cols-2 gap-4">
                              <div>
                                 <h3 className="font-semibold text-sm">Deliver To:</h3>
-                                <p className="font-bold">{customerName}</p>
-                                {customerAddress && (
-                                    <>
-                                        <p className="text-sm">{[customerAddress.line1, customerAddress.line2].filter(Boolean).join(', ')}</p>
-                                        <p className="text-sm">{customerAddress.city} - {customerAddress.pin}, {customerAddress.state}</p>
-                                    </>
-                                )}
+                                <p className="font-bold">{deliveryDetails?.customerName || partyData?.name}</p>
+                                <p className="text-sm">{deliveryDetails?.shippingAddress || [partyData?.address?.line1, partyData?.address?.line2, partyData?.address?.city].filter(Boolean).join(', ')}</p>
                             </div>
                             <div className="text-right">
                                 <h3 className="font-semibold text-sm">Shipping Details:</h3>
-                                <p className="text-sm"><strong>Method:</strong> {shippingMethod}</p>
-                                <p className="text-sm"><strong>Vehicle:</strong> {vehicleNumber}</p>
-                                <p className="text-sm"><strong>Driver:</strong> {driverName} ({driverPhone})</p>
+                                <p className="text-sm"><strong>Method:</strong> {deliveryDetails?.shippingMethod}</p>
+                                <p className="text-sm"><strong>Vehicle:</strong> {deliveryDetails?.vehicleNumber}</p>
+                                <p className="text-sm"><strong>Driver:</strong> {deliveryDetails?.driverName} ({deliveryDetails?.driverPhone})</p>
                             </div>
                         </section>
 
