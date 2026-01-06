@@ -181,14 +181,35 @@ function StocksPageContent() {
     return 0;
   }, [workOrders]);
 
-  const getDeliveredQty = React.useCallback((productId: string) => {
-    if (!orders) return 0;
-    return orders
-      .filter(order => order.status === 'Delivered')
-      .flatMap(order => order.items)
-      .filter(item => item.productId === productId)
-      .reduce((sum, item) => sum + item.quantity, 0);
-  }, [orders]);
+  const kpis = React.useMemo(() => {
+    if (!products || !orders || !workOrders) return { totalProducts: 0, itemsBelowMin: 0, totalStockValue: 0, totalToProcure: 0 };
+
+    const itemsBelowMin = products.filter(p => {
+      const stockAvailable = p.openingStock;
+      return stockAvailable < (p.minStockLevel || 0);
+    }).length;
+
+    const totalStockValue = products.reduce((acc, p) => {
+      const stockAvailable = p.openingStock;
+      return acc + (stockAvailable * (p.cost || 0));
+    }, 0);
+
+    const totalToProcure = products.filter(p => p.source === 'Bought').reduce((acc, p) => {
+      const stockAvailable = p.openingStock;
+      const wip = getAllottedForWIP(p);
+      const orderInHand = getOrderInHand(p.id);
+      const minStock = p.minStockLevel || 0;
+      const plannedQty = Math.max(0, (orderInHand - (stockAvailable + wip)) + minStock);
+      return acc + plannedQty;
+    }, 0);
+    
+    return {
+      totalProducts: products.length,
+      itemsBelowMin,
+      totalStockValue,
+      totalToProcure
+    };
+  }, [products, orders, workOrders, getAllottedForWIP, getOrderInHand]);
 
 
   const handleCreatePurchaseRequest = async (product: Product, quantity: number) => {
@@ -242,38 +263,7 @@ function StocksPageContent() {
     }
   };
   
-    const kpis = React.useMemo(() => {
-    if (!products || !orders || !workOrders) return { totalProducts: 0, itemsBelowMin: 0, totalStockValue: 0, totalToProcure: 0 };
-
-    const itemsBelowMin = products.filter(p => {
-      const stockAvailable = p.openingStock - getDeliveredQty(p.id);
-      return stockAvailable < (p.minStockLevel || 0);
-    }).length;
-
-    const totalStockValue = products.reduce((acc, p) => {
-      const stockAvailable = p.openingStock - getDeliveredQty(p.id);
-      return acc + (stockAvailable * (p.cost || 0));
-    }, 0);
-
-    const totalToProcure = products.filter(p => p.source === 'Bought').reduce((acc, p) => {
-      const stockAvailable = p.openingStock - getDeliveredQty(p.id);
-      const wip = getAllottedForWIP(p);
-      const orderInHand = getOrderInHand(p.id);
-      const minStock = p.minStockLevel || 0;
-      const plannedQty = Math.max(0, (orderInHand - (stockAvailable + wip)) + minStock);
-      return acc + plannedQty;
-    }, 0);
-    
-    return {
-      totalProducts: products.length,
-      itemsBelowMin,
-      totalStockValue,
-      totalToProcure
-    };
-  }, [products, orders, workOrders, getDeliveredQty, getAllottedForWIP, getOrderInHand]);
-
-
-  return (
+    return (
     <>
       <PageHeader title="Stocks" />
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -349,7 +339,7 @@ function StocksPageContent() {
                   </TableCell>
                 </TableRow>
               ) : filteredProducts.map((product) => {
-                const stockAvailable = product.openingStock - getDeliveredQty(product.id);
+                const stockAvailable = product.openingStock;
                 const orderInHand = getOrderInHand(product.id);
                 const wip = getAllottedForWIP(product);
                 const minStock = product.minStockLevel || 0;
@@ -459,5 +449,6 @@ export default function StocksPageWrapper() {
 
     return <StocksPageContent />;
 }
+
 
 
