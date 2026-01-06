@@ -29,7 +29,7 @@ import { Loader2, Save, Percent } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import type { PurchaseOrder, Party, Grn, Product, CompanyInfo, CoaLedger } from '@/lib/types';
 import { useFirestore, useDoc, useCollection } from '@/firebase';
-import { doc, updateDoc, collection, addDoc, serverTimestamp, getDoc, writeBatch, increment, setDoc } from 'firebase/firestore';
+import { collection, doc, updateDoc, addDoc, serverTimestamp, getDoc, writeBatch, increment, setDoc } from 'firebase/firestore';
 import { getNextDocNumber } from '@/lib/number-series';
 
 interface GrnItem {
@@ -179,7 +179,9 @@ export default function CreateGrnPage() {
             if (!product) continue;
 
             const productRef = doc(firestore, 'products', item.productId);
-            batch.update(productRef, { openingStock: increment(item.receivedQty) });
+            const currentStock = product.openingStock || 0;
+            const newStock = currentStock + item.receivedQty;
+            batch.update(productRef, { openingStock: newStock });
 
             const inventoryLedger = coaLedgers.find(l => l.id === product.coaAccountId);
             if (inventoryLedger) {
@@ -369,4 +371,3 @@ export default function CreateGrnPage() {
     </>
   );
 }
-
