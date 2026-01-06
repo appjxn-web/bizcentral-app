@@ -101,11 +101,15 @@ export default function ProfitAndLossPage() {
       }
 
       // 1. Calculate Total Income directly from Sales Invoices
-      const periodInvoices = allSalesInvoices.filter(inv => {
-          const invDate = new Date(inv.date);
-          return (!sDate || invDate >= sDate) && (!eDate || invDate <= eDate);
-      });
-      const totalIncome = periodInvoices.reduce((acc, inv) => acc + inv.taxableAmount, 0);
+      let totalInvoiceIncome = 0;
+      if (allSalesInvoices) {
+        allSalesInvoices.forEach(inv => {
+            const invDate = new Date(inv.date);
+            if ((!sDate || invDate >= sDate) && (!eDate || invDate <= eDate)) {
+                totalInvoiceIncome += inv.taxableAmount;
+            }
+        });
+      }
       
       const getGroupData = (groups: CoaGroup[], parentId: string | null = null): any[] => {
           return groups
@@ -132,11 +136,15 @@ export default function ProfitAndLossPage() {
             .filter(g => g.balance !== 0 || g.accounts.length > 0 || g.subGroups.length > 0);
       };
       
+      const incomeGroupsFromJv = getGroupData(coaGroups.filter(g => g.nature === 'INCOME'), '4');
+      const incomeFromJv = incomeGroupsFromJv.reduce((acc, g) => acc + g.balance, 0);
+      const totalIncome = totalInvoiceIncome + incomeFromJv;
+      
       const incomeGroups = [{
-          id: '4.1', name: 'Operating Income', balance: totalIncome, 
-          accounts: [{ id: 'sales-summary', name: 'Sales Revenue (from Invoices)', balance: totalIncome }], 
+          id: '4.1', name: 'Operating Income', balance: totalInvoiceIncome, 
+          accounts: [{ id: 'sales-summary', name: 'Sales Revenue (from Invoices)', balance: totalInvoiceIncome }], 
           subGroups: []
-      }, ...getGroupData(coaGroups.filter(g => g.nature === 'INCOME'), '4')];
+      }, ...incomeGroupsFromJv];
       
       const expenseGroups = getGroupData(coaGroups.filter(g => g.nature === 'EXPENSE'), '6');
       

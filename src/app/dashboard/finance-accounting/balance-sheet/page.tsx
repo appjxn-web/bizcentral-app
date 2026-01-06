@@ -1,3 +1,4 @@
+
 'use client';
 
 import * as React from 'react';
@@ -20,7 +21,7 @@ import {
   TableFooter,
 } from '@/components/ui/table';
 import { Landmark, Loader2, PlusCircle, ChevronDown, ChevronRight, Download } from 'lucide-react';
-import type { CoaGroup, CoaLedger, JournalVoucher, Product, WorkOrder, Order } from '@/lib/types';
+import type { CoaGroup, CoaLedger, JournalVoucher, Product, WorkOrder, Order, SalesInvoice } from '@/lib/types';
 import { AddLedgerAccountDialog } from './_components/add-ledger-account-dialog';
 import { useFirestore, useCollection, useUser } from '@/firebase';
 import { collection, query, orderBy, doc, Timestamp } from 'firebase/firestore';
@@ -56,6 +57,7 @@ function BalanceSheetContent() {
   const { data: products, loading: productsLoading } = useCollection<Product>(collection(firestore, 'products'));
   const { data: workOrders, loading: workOrdersLoading } = useCollection<WorkOrder>(collection(firestore, 'workOrders'));
   const { data: allOrders, loading: ordersLoading } = useCollection<Order>(collection(firestore, 'orders'));
+  const { data: salesInvoices, loading: invoicesLoading } = useCollection<SalesInvoice>(collection(firestore, 'salesInvoices'));
   
   const jvQuery = React.useMemo(() => {
     if (!user || !currentRole) return null;
@@ -92,7 +94,7 @@ function BalanceSheetContent() {
   };
 
   const { assets, liabilities, equity, pnl, loading, kpis } = React.useMemo(() => {
-    if (groupsLoading || ledgersLoading || vouchersLoading || productsLoading || workOrdersLoading || ordersLoading || !coaGroups || !coaLedgers || !journalVouchers) {
+    if (groupsLoading || ledgersLoading || vouchersLoading || productsLoading || workOrdersLoading || ordersLoading || invoicesLoading || !coaGroups || !coaLedgers || !journalVouchers || !allProducts) {
         return { assets: [], liabilities: [], equity: [], pnl: 0, loading: true, kpis: { assets: 0, liabilities: 0, equity: 0, totalLiabilitiesAndEquity: 0 }};
     }
 
@@ -108,6 +110,27 @@ function BalanceSheetContent() {
       const signedOpeningBal = acc.openingBalance?.drCr === 'CR' ? -openingBal : openingBal;
       liveBalances.set(acc.id, signedOpeningBal);
     });
+
+    if (salesInvoices) {
+      salesInvoices.forEach(inv => {
+          const invDate = new Date(inv.date);
+          if (eDate && invDate > eDate) return;
+
+          const customerLedgerId = inv.coaLedgerId;
+          const cgstLedger = coaLedgers.find(l => l.name === 'Output GST – CGST');
+          const sgstLedger = coaLedgers.find(l => l.name === 'Output GST – SGST');
+          const igstLedger = coaLedgers.find(l => l.name === 'Output GST – IGST');
+          const salesLedger = coaLedgers.find(l => l.name === 'Sales – Domestic');
+
+          if (customerLedgerId && liveBalances.has(customerLedgerId)) {
+              liveBalances.set(customerLedgerId, liveBalances.get(customerLedgerId)! + inv.grandTotal);
+          }
+          if(cgstLedger) liveBalances.set(cgstLedger.id, liveBalances.get(cgstLedger.id)! - (inv.cgst || 0));
+          if(sgstLedger) liveBalances.set(sgstLedger.id, liveBalances.get(sgstLedger.id)! - (inv.sgst || 0));
+          if(igstLedger) liveBalances.set(igstLedger.id, liveBalances.get(igstLedger.id)! - (inv.igst || 0));
+          if(salesLedger) liveBalances.set(salesLedger.id, liveBalances.get(salesLedger.id)! - inv.taxableAmount);
+      });
+    }
     
     // WIP Calculation
     const activeWorkOrders = workOrders?.filter(wo => wo.status === 'In Progress' || wo.status === 'Under QC') || [];
@@ -156,7 +179,7 @@ function BalanceSheetContent() {
     });
 
 
-    // Process Vouchers
+    // Process Vouchers for payments etc.
     relevantVouchers.forEach(jv => {
         jv.entries.forEach(entry => {
             if (liveBalances.has(entry.accountId)) {
@@ -171,23 +194,24 @@ function BalanceSheetContent() {
       const jvDate = jv.date instanceof Timestamp ? jv.date.toDate() : new Date(jv.date);
       return (!sDate || jvDate >= sDate) && (!eDate || jvDate <= eDate);
     });
-
-    const incomeLedgers = coaLedgers.filter(l => l.nature === 'INCOME').map(l => l.id);
-    const expenseLedgers = coaLedgers.filter(l => l.nature === 'EXPENSE').map(l => l.id);
     
-    let totalIncome = 0;
-    let totalExpenses = 0;
-
-    periodVouchers.forEach(jv => {
-      jv.entries.forEach(entry => {
-        if (incomeLedgers.includes(entry.accountId)) {
-          totalIncome += (entry.credit || 0) - (entry.debit || 0);
-        }
-        if (expenseLedgers.includes(entry.accountId)) {
-          totalExpenses += (entry.debit || 0) - (entry.credit || 0);
-        }
-      });
+    const periodInvoices = (salesInvoices || []).filter(inv => {
+        const invDate = new Date(inv.date);
+        return (!sDate || invDate >= sDate) && (!eDate || invDate <= eDate);
     });
+
+    const incomeFromJv = periodVouchers
+      .flatMap(jv => jv.entries)
+      .filter(e => coaLedgers.find(l => l.id === e.accountId)?.nature === 'INCOME')
+      .reduce((sum, e) => sum + (e.credit || 0) - (e.debit || 0), 0);
+      
+    const incomeFromInvoices = periodInvoices.reduce((sum, inv) => sum + inv.taxableAmount, 0);
+    const totalIncome = incomeFromJv + incomeFromInvoices;
+      
+    const expenseFromJv = periodVouchers
+        .flatMap(jv => jv.entries)
+        .filter(e => coaLedgers.find(l => l.id === e.accountId)?.nature === 'EXPENSE')
+        .reduce((sum, e) => sum + (e.debit || 0) - (e.credit || 0), 0);
 
     const deliveredOrders = (allOrders || []).filter(order => {
         const orderDate = new Date(order.date);
@@ -200,7 +224,9 @@ function BalanceSheetContent() {
             return itemCost + ((product?.cost || 0) * item.quantity);
         }, 0);
     }, 0);
-    const currentPnl = totalIncome - (totalExpenses + cogs);
+    
+    const totalExpenses = expenseFromJv + cogs;
+    const currentPnl = totalIncome - totalExpenses;
 
     // --- End P&L Calculation ---
 
@@ -235,7 +261,7 @@ function BalanceSheetContent() {
         assets: assetsData, liabilities: liabilitiesData, equity: equityData, pnl: currentPnl, loading: false,
         kpis: { assets: totalAssets, liabilities: totalLiabilities, equity: totalEquity, totalLiabilitiesAndEquity: totalLiabilities + totalEquity }
     };
-  }, [coaGroups, coaLedgers, journalVouchers, products, workOrders, allOrders, groupsLoading, ledgersLoading, vouchersLoading, productsLoading, workOrdersLoading, ordersLoading, startDate, endDate]);
+  }, [coaGroups, coaLedgers, journalVouchers, products, workOrders, allOrders, salesInvoices, groupsLoading, ledgersLoading, vouchersLoading, productsLoading, workOrdersLoading, ordersLoading, invoicesLoading, startDate, endDate]);
 
   const toggleGroup = (groupId: string) => {
     setOpenGroups(prev => ({ ...prev, [groupId]: !(prev[groupId] ?? true) }));
