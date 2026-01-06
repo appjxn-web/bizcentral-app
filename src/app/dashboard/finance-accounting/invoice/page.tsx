@@ -588,7 +588,7 @@ function InvoicePage() {
     
     const liveBalances = React.useMemo(() => {
         const balances = new Map<string, number>();
-        if (!allCoaLedgers || !journalVouchers) return balances;
+        if (!allCoaLedgers) return balances;
 
         allCoaLedgers.forEach(acc => {
             const openingBal = acc.openingBalance?.amount || 0;
@@ -596,9 +596,23 @@ function InvoicePage() {
             balances.set(acc.id, balance);
         });
 
-        const sortedVouchers = [...journalVouchers].sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-        sortedVouchers.forEach(jv => {
-            jv.entries.forEach(entry => {
+        const allTransactions = [
+            ...(journalVouchers || []).map(jv => ({ date: jv.date, entries: jv.entries })),
+            ...(allSalesInvoices || []).map(inv => ({ 
+                date: inv.date, 
+                entries: [
+                    { accountId: allParties?.find(p => p.id === inv.customerId)?.coaLedgerId, debit: inv.grandTotal, credit: 0 },
+                    // Assuming a generic sales account for this context
+                    { accountId: 'L-4.1-1', debit: 0, credit: inv.taxableAmount }, 
+                    { accountId: 'L-2.1.2-1', debit: 0, credit: inv.cgst },
+                    { accountId: 'L-2.1.2-2', debit: 0, credit: inv.sgst },
+                ].filter(e => e.accountId)
+            }))
+        ].sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+
+        allTransactions.forEach(transaction => {
+            transaction.entries.forEach((entry: any) => {
                 if (balances.has(entry.accountId)) {
                     const currentBal = balances.get(entry.accountId)!;
                     const newBal = currentBal + (entry.debit || 0) - (entry.credit || 0);
@@ -606,8 +620,9 @@ function InvoicePage() {
                 }
             });
         });
+        
         return balances;
-    }, [allCoaLedgers, journalVouchers]);
+    }, [allCoaLedgers, journalVouchers, allSalesInvoices, allParties]);
 
 
     const handleGenerateInvoice = (order: Order) => {
@@ -716,6 +731,7 @@ function InvoicePage() {
                 <TableHead>Customer</TableHead>
                 <TableHead>Date</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead>Exp. Delivery Date</TableHead>
                 <TableHead className="text-right">Total</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
