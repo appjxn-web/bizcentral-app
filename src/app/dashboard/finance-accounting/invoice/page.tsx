@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -26,7 +25,10 @@ import {
   Edit,
   CircleDollarSign,
   Send,
+  Printer,
 } from 'lucide-react';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 
 import { PageHeader } from '@/components/page-header';
 import { cn } from '@/lib/utils';
@@ -131,10 +133,10 @@ function DeliveryNoteDialog({
   const [customerName, setCustomerName] = React.useState('');
   const [shippingAddress, setShippingAddress] = React.useState('');
   const [shippingMethod, setShippingMethod] = React.useState('Pre-paid');
+  const [shippingCost, setShippingCost] = React.useState('');
   const [vehicleNumber, setVehicleNumber] = React.useState('');
   const [driverName, setDriverName] = React.useState('');
   const [driverPhone, setDriverPhone] = React.useState('');
-  const [shippingCost, setShippingCost] = React.useState('');
   const [remarks, setRemarks] = React.useState('');
 
   React.useEffect(() => {
@@ -226,6 +228,105 @@ function DeliveryNoteDialog({
   );
 }
 
+function GatePassDialog({ open, onOpenChange, invoice, companyInfo }: { open: boolean, onOpenChange: (open: boolean) => void, invoice: SalesInvoice | null, companyInfo: CompanyInfo | null }) {
+    const pdfRef = React.useRef<HTMLDivElement>(null);
+    const [isDownloading, setIsDownloading] = React.useState(false);
+
+    const handlePrint = () => {
+        const content = pdfRef.current;
+        if (!content) return;
+
+        const printWindow = window.open('', '', 'height=600,width=800');
+        printWindow?.document.write('<html><head><title>Print Gate Pass</title>');
+        printWindow?.document.write('<style>@media print { body { -webkit-print-color-adjust: exact; } @page { size: A5 landscape; margin: 10mm; } } </style>');
+        printWindow?.document.write('</head><body >');
+        printWindow?.document.write(content.innerHTML);
+        printWindow?.document.write('</body></html>');
+        printWindow?.document.close();
+        printWindow?.focus();
+        setTimeout(() => { printWindow?.print(); printWindow?.close(); }, 250);
+    };
+
+    if (!invoice) return null;
+
+    return (
+        <Dialog open={open} onOpenChange={onOpenChange}>
+            <DialogContent className="max-w-3xl">
+                <DialogHeader>
+                    <DialogTitle>Gate Pass for Order: {invoice.orderNumber}</DialogTitle>
+                </DialogHeader>
+                <div className="p-4" ref={pdfRef}>
+                     <header className="flex justify-between items-start border-b pb-4">
+                        <div>
+                            {companyInfo?.logo && <Image src={companyInfo.logo} alt="Logo" width={150} height={40} crossOrigin="anonymous" />}
+                        </div>
+                        <div className="text-right">
+                            <h1 className="text-xl font-bold text-primary">Delivery Note / Gate Pass</h1>
+                            <p className="text-sm"><strong>Order No:</strong> {invoice.orderNumber}</p>
+                            <p className="text-sm"><strong>Date:</strong> {format(new Date(), 'dd/MM/yyyy')}</p>
+                        </div>
+                    </header>
+                    <section className="my-4 grid grid-cols-2 gap-4 text-sm">
+                         <div>
+                            <h3 className="font-semibold">Deliver To:</h3>
+                            <p className="font-bold">{invoice.deliveryDetails?.customerName}</p>
+                            <p>{invoice.deliveryDetails?.shippingAddress}</p>
+                        </div>
+                        <div className="text-right">
+                            <h3 className="font-semibold">Shipping Details:</h3>
+                            <p><strong>Method:</strong> {invoice.deliveryDetails?.shippingMethod}</p>
+                            <p><strong>Vehicle:</strong> {invoice.deliveryDetails?.vehicleNumber}</p>
+                            <p><strong>Driver:</strong> {invoice.deliveryDetails?.driverName} ({invoice.deliveryDetails?.driverPhone})</p>
+                        </div>
+                    </section>
+                    <section>
+                         <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead>Sr.</TableHead>
+                                    <TableHead>Item Name</TableHead>
+                                    <TableHead className="text-right">Quantity</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {invoice.items.map((item, index) => (
+                                    <TableRow key={item.productId}>
+                                        <TableCell>{index + 1}</TableCell>
+                                        <TableCell>{item.name}</TableCell>
+                                        <TableCell className="text-right">{item.quantity}</TableCell>
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    </section>
+                     <footer className="mt-16 flex justify-between items-end">
+                        <div className="text-xs space-y-4">
+                           <p className="text-muted-foreground">Goods are received in good condition.</p>
+                            <div className="pt-12">
+                                <Separator className="w-48"/>
+                                <p className="pt-1 font-semibold">Receiver's Signature</p>
+                            </div>
+                        </div>
+                         <div className="flex flex-col items-center">
+                            <QRCodeSVG value={`GATEPASS:${invoice.orderNumber}`} size={80} />
+                            <p className="text-xs mt-2">Scan for Gate Out</p>
+                        </div>
+                        <div className="text-right">
+                            <p className="font-semibold mb-12">For, {companyInfo?.companyName}</p>
+                            <div className="h-16 w-32"></div>
+                            <Separator />
+                            <p className="text-xs pt-1">Authorized Signatory</p>
+                        </div>
+                    </footer>
+                </div>
+                <DialogFooter>
+                    <DialogClose asChild><Button variant="outline">Close</Button></DialogClose>
+                    <Button onClick={handlePrint}><Printer className="mr-2 h-4 w-4" /> Print</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+}
 
 function PartnerPickupDetails({ userId }: { userId: string }) {
     const firestore = useFirestore();
@@ -566,9 +667,12 @@ function InvoicePage() {
     const { data: journalVouchers } = useCollection<JournalVoucher>(collection(firestore, 'journalVouchers'));
     const { data: allCoaLedgers } = useCollection<CoaLedger>(collection(firestore, 'coa_ledgers'));
     const { data: allParties } = useCollection<Party>(collection(firestore, 'parties'));
+    const { data: companyInfo } = useDoc<CompanyInfo>(doc(firestore, 'company', 'info'));
     
     const [isDeliveryNoteOpen, setIsDeliveryNoteOpen] = React.useState(false);
     const [selectedInvoiceForDelivery, setSelectedInvoiceForDelivery] = React.useState<SalesInvoice | null>(null);
+    const [isGatePassDialogOpen, setIsGatePassDialogOpen] = React.useState(false);
+    const [gatePassData, setGatePassData] = React.useState<any>(null);
 
     const getDynamicOrderStatus = (order: Order): OrderStatus => {
         if (order.status !== 'Ordered') {
@@ -684,12 +788,11 @@ function InvoicePage() {
         setIsDeliveryNoteOpen(true);
     };
 
-    const handleConfirmDeliveryNote = async (deliveryDetails: any) => {
+   const handleConfirmDeliveryNote = async (deliveryDetails: any) => {
         if (!selectedInvoiceForDelivery) return;
 
         const invoiceRef = doc(firestore, 'salesInvoices', selectedInvoiceForDelivery.invoiceNumber);
         
-        // Find the original order document by its document ID
         const orderToUpdate = orders?.find(o => o.orderNumber === selectedInvoiceForDelivery.orderNumber);
         if (!orderToUpdate) {
             toast({ variant: "destructive", title: "Error", description: `Could not find original sales order ${selectedInvoiceForDelivery.orderNumber}` });
@@ -706,16 +809,10 @@ function InvoicePage() {
             title: "Order Shipped!",
             description: "Delivery details saved and order status updated."
         });
-
-        localStorage.setItem('gatePassData', JSON.stringify({
-            ...deliveryDetails,
-            orderId: selectedInvoiceForDelivery.orderNumber,
-            invoiceId: selectedInvoiceForDelivery.invoiceNumber,
-        }));
-
-        window.open(`/dashboard/sales/orders/gate-pass?id=${selectedInvoiceForDelivery.orderNumber}`, '_blank');
-
+        
+        setGatePassData({ ...selectedInvoiceForDelivery, deliveryDetails });
         setIsDeliveryNoteOpen(false);
+        setIsGatePassDialogOpen(true);
     };
 
     const onViewInvoice = (invoiceId: string) => {
@@ -873,6 +970,13 @@ function InvoicePage() {
         customer={allParties?.find(p => p.id === selectedInvoiceForDelivery?.customerId) || null}
         onConfirm={handleConfirmDeliveryNote}
       />
+
+       <GatePassDialog
+        open={isGatePassDialogOpen}
+        onOpenChange={setIsGatePassDialogOpen}
+        invoice={gatePassData}
+        companyInfo={companyInfo}
+       />
     </>
   );
 }

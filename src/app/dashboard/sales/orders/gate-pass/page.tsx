@@ -23,7 +23,7 @@ import { Download, Loader2, ArrowLeft } from 'lucide-react';
 import { format } from 'date-fns';
 import { QRCodeSVG } from 'qrcode.react';
 import { useFirestore, useDoc, useCollection } from '@/firebase';
-import { collection, query, where, doc, getDocs, limit } from 'firebase/firestore';
+import { collection, query, where, doc, getDocs, limit, getDoc } from 'firebase/firestore';
 import type { CompanyInfo, SalesInvoice, Party, Address, Order, CoaLedger } from '@/lib/types';
 
 
