@@ -1,5 +1,3 @@
-
-
 'use client';
 
 import * as React from 'react';
@@ -25,6 +23,7 @@ import {
   Eye,
   Edit,
   CircleDollarSign,
+  Send,
 } from 'lucide-react';
 
 import { PageHeader } from '@/components/page-header';
@@ -114,97 +113,61 @@ const formatIndianCurrency = (num: number) => {
   }).format(num);
 };
 
-function PayBalanceDialog({ order, companyInfo }: { order: Order, companyInfo: any }) {
-    if (!order.balance || order.balance <= 0) return null;
-
-    const upiString = `upi://pay?pa=${companyInfo?.primaryUpiId || 'your-upi-id@okhdfcbank'}&pn=${encodeURIComponent(companyInfo?.companyName || 'Your Company Name')}&am=${order.balance.toFixed(2)}&cu=INR&tn=Order%20Balance%20Payment`;
-
-    return (
-        <Dialog>
-            <DialogTrigger asChild>
-                <Button size="sm">
-                    <DollarSign className="mr-2 h-4 w-4" /> Pay Balance
-                </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-md">
-                <DialogHeader>
-                    <DialogTitle>Pay Remaining Balance</DialogTitle>
-                    <DialogDescription>
-                        Scan the QR code to pay the balance of {formatIndianCurrency(order.balance)} for Order ID: {order.orderNumber || order.id}.
-                    </DialogDescription>
-                </DialogHeader>
-                <div className="flex flex-col items-center gap-4 py-4">
-                    <div className="p-4 bg-white rounded-lg border">
-                        <QRCodeSVG value={upiString} size={180} />
-                    </div>
-                    <p className="text-sm text-muted-foreground text-center">
-                        After payment, please enter the transaction ID in the field below to confirm your payment.
-                    </p>
-                    <Input placeholder="Enter UPI Transaction ID" />
-                </div>
-                <DialogFooter>
-                    <DialogClose asChild>
-                        <Button type="button" variant="outline">Close</Button>
-                    </DialogClose>
-                     <Button type="button">Confirm Payment</Button>
-                </DialogFooter>
-            </DialogContent>
-        </Dialog>
-    )
-}
-
-function CancelOrderDialog({ order, onConfirm, open, onOpenChange }: { order: Order; onConfirm: (reason: string, details?: string) => void; open: boolean; onOpenChange: (open: boolean) => void }) {
-  const [reason, setReason] = React.useState('');
-  const [otherDetails, setOtherDetails] = React.useState('');
+function DeliveryNoteDialog({
+  isOpen,
+  onOpenChange,
+  invoice,
+  onConfirm,
+}: {
+  isOpen: boolean;
+  onOpenChange: (open: boolean) => void;
+  invoice: SalesInvoice | null;
+  onConfirm: (deliveryDetails: any) => void;
+}) {
+  const [shippingMethod, setShippingMethod] = React.useState('');
+  const [vehicleNumber, setVehicleNumber] = React.useState('');
+  const [driverName, setDriverName] = React.useState('');
+  const [driverPhone, setDriverPhone] = React.useState('');
 
   const handleSubmit = () => {
-    if (!reason) {
-      alert('Please select a reason.');
-      return;
-    }
-    onConfirm(reason, otherDetails);
+    onConfirm({
+      shippingMethod,
+      vehicleNumber,
+      driverName,
+      driverPhone,
+    });
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Request Cancellation for Order: {order.orderNumber || order.id}</DialogTitle>
+          <DialogTitle>Create Delivery Note / Gate Pass</DialogTitle>
           <DialogDescription>
-            Please let us know why you are canceling this order. An admin will review and approve your request.
+            Enter shipping details for Invoice #{invoice?.invoiceNumber}.
           </DialogDescription>
         </DialogHeader>
-        <div className="py-4 space-y-4">
+        <div className="space-y-4 py-4">
           <div className="space-y-2">
-            <Label htmlFor="cancellation-reason">Reason for Cancellation</Label>
-            <Select onValueChange={setReason} value={reason}>
-              <SelectTrigger id="cancellation-reason">
-                <SelectValue placeholder="Select a reason..." />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Ordered by mistake">Ordered by mistake</SelectItem>
-                <SelectItem value="Item no longer needed">Item no longer needed</SelectItem>
-                <SelectItem value="Found a better price elsewhere">Found a better price elsewhere</SelectItem>
-                <SelectItem value="Delivery time is too long">Delivery time is too long</SelectItem>
-                <SelectItem value="Other">Other</SelectItem>
-              </SelectContent>
-            </Select>
+            <Label htmlFor="shipping-method">Shipping Method</Label>
+            <Input id="shipping-method" value={shippingMethod} onChange={(e) => setShippingMethod(e.target.value)} placeholder="e.g., By Road, Courier" />
           </div>
-          {reason === 'Other' && (
-            <div className="space-y-2">
-              <Label htmlFor="other-details">Please specify</Label>
-              <Textarea
-                id="other-details"
-                value={otherDetails}
-                onChange={(e) => setOtherDetails(e.target.value)}
-                placeholder="Please provide more details..."
-              />
-            </div>
-          )}
+          <div className="space-y-2">
+            <Label htmlFor="vehicle-number">Vehicle Number</Label>
+            <Input id="vehicle-number" value={vehicleNumber} onChange={(e) => setVehicleNumber(e.target.value)} placeholder="e.g., RJ14 AB 1234" />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="driver-name">Driver Name</Label>
+            <Input id="driver-name" value={driverName} onChange={(e) => setDriverName(e.target.value)} placeholder="e.g., Ramesh Kumar" />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="driver-phone">Driver Phone</Label>
+            <Input id="driver-phone" type="tel" value={driverPhone} onChange={(e) => setDriverPhone(e.target.value)} placeholder="e.g., 9876543210" />
+          </div>
         </div>
         <DialogFooter>
-          <DialogClose asChild><Button variant="outline">Go Back</Button></DialogClose>
-          <Button variant="destructive" onClick={handleSubmit} disabled={!reason}>Request Cancellation</Button>
+          <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+          <Button onClick={handleSubmit}>Generate &amp; Mark as Shipped</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -408,7 +371,7 @@ function OrderRow({ order, onGenerateInvoice, onUpdateStatus, pickupPoints, dyna
   )
 }
 
-function GeneratedInvoiceRow({ invoice, onUpdateStatus, allProducts, getOrderInHand, allSalesInvoices, journalVouchers, allCoaLedgers, allParties, liveBalances, onEdit }: { invoice: SalesInvoice, onUpdateStatus: (id: string, status: 'Paid' | 'Unpaid') => void, allProducts: Product[] | null, getOrderInHand: (productId: string) => number, allSalesInvoices: SalesInvoice[] | null, journalVouchers: JournalVoucher[] | null, allCoaLedgers: CoaLedger[] | null, allParties: Party[] | null, liveBalances: Map<string, number>, onEdit: (invoiceId: string) => void }) {
+function GeneratedInvoiceRow({ invoice, onUpdateStatus, allProducts, getOrderInHand, allSalesInvoices, journalVouchers, allCoaLedgers, allParties, liveBalances, onEdit, onGenerateDeliveryNote }: { invoice: SalesInvoice, onUpdateStatus: (id: string, status: 'Paid' | 'Unpaid') => void, allProducts: Product[] | null, getOrderInHand: (productId: string) => number, allSalesInvoices: SalesInvoice[] | null, journalVouchers: JournalVoucher[] | null, allCoaLedgers: CoaLedger[] | null, allParties: Party[] | null, liveBalances: Map<string, number>, onEdit: (invoiceId: string) => void, onGenerateDeliveryNote: (invoice: SalesInvoice) => void }) {
     const [isOpen, setIsOpen] = React.useState(false);
     const router = useRouter();
 
@@ -458,6 +421,9 @@ function GeneratedInvoiceRow({ invoice, onUpdateStatus, allProducts, getOrderInH
                                 </DropdownMenuItem>
                                  <DropdownMenuItem onClick={() => onEdit(invoice.invoiceNumber)}>
                                     <Edit className="mr-2 h-4 w-4"/> Edit
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => onGenerateDeliveryNote(invoice)}>
+                                  <Truck className="mr-2 h-4 w-4" /> Delivery Note
                                 </DropdownMenuItem>
                                 {invoice.status !== 'Paid' && (
                                      <DropdownMenuItem onClick={() => onUpdateStatus(invoice.invoiceNumber, 'Paid')}>
@@ -548,6 +514,9 @@ function InvoicePage() {
     const { data: journalVouchers } = useCollection<JournalVoucher>(collection(firestore, 'journalVouchers'));
     const { data: allCoaLedgers } = useCollection<CoaLedger>(collection(firestore, 'coa_ledgers'));
     const { data: allParties } = useCollection<Party>(collection(firestore, 'parties'));
+    
+    const [isDeliveryNoteOpen, setIsDeliveryNoteOpen] = React.useState(false);
+    const [selectedInvoiceForDelivery, setSelectedInvoiceForDelivery] = React.useState<SalesInvoice | null>(null);
 
     const getDynamicOrderStatus = (order: Order): OrderStatus => {
         if (order.status !== 'Ordered') {
@@ -596,31 +565,30 @@ function InvoicePage() {
             balances.set(acc.id, balance);
         });
 
-        const allTransactions = [
-            ...(journalVouchers || []).map(jv => ({ date: jv.date, entries: jv.entries })),
-            ...(allSalesInvoices || []).map(inv => ({ 
-                date: inv.date, 
-                entries: [
-                    { accountId: allParties?.find(p => p.id === inv.customerId)?.coaLedgerId, debit: inv.grandTotal, credit: 0 },
-                    // Assuming a generic sales account for this context
-                    { accountId: 'L-4.1-1', debit: 0, credit: inv.taxableAmount }, 
-                    { accountId: 'L-2.1.2-1', debit: 0, credit: inv.cgst },
-                    { accountId: 'L-2.1.2-2', debit: 0, credit: inv.sgst },
-                ].filter(e => e.accountId)
-            }))
-        ].sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+        if (journalVouchers) {
+            journalVouchers.forEach(jv => {
+                jv.entries.forEach(entry => {
+                    if (balances.has(entry.accountId)) {
+                        const currentBal = balances.get(entry.accountId)!;
+                        const newBal = currentBal + (entry.debit || 0) - (entry.credit || 0);
+                        balances.set(entry.accountId, newBal);
+                    }
+                });
+            });
+        }
 
-
-        allTransactions.forEach(transaction => {
-            transaction.entries.forEach((entry: any) => {
-                if (balances.has(entry.accountId)) {
-                    const currentBal = balances.get(entry.accountId)!;
-                    const newBal = currentBal + (entry.debit || 0) - (entry.credit || 0);
-                    balances.set(entry.accountId, newBal);
+        if (allSalesInvoices && allParties) {
+            allSalesInvoices.forEach(inv => {
+                const party = allParties.find(p => p.id === inv.customerId);
+                const ledgerId = party?.coaLedgerId;
+                
+                if (ledgerId && balances.has(ledgerId)) {
+                    const currentBal = balances.get(ledgerId)!;
+                    balances.set(ledgerId, currentBal + inv.grandTotal);
                 }
             });
-        });
-        
+        }
+
         return balances;
     }, [allCoaLedgers, journalVouchers, allSalesInvoices, allParties]);
 
@@ -658,6 +626,38 @@ function InvoicePage() {
       await updateDoc(invoiceRef, { status: status });
       toast({ title: "Status Updated", description: `Invoice marked as ${status}.`});
     }
+    
+    const handleOpenDeliveryNoteDialog = (invoice: SalesInvoice) => {
+        setSelectedInvoiceForDelivery(invoice);
+        setIsDeliveryNoteOpen(true);
+    };
+
+    const handleConfirmDeliveryNote = async (deliveryDetails: any) => {
+        if (!selectedInvoiceForDelivery) return;
+
+        const orderRef = doc(firestore, 'orders', selectedInvoiceForDelivery.orderId);
+        
+        await updateDoc(orderRef, { 
+            status: 'Shipped',
+            deliveryDetails
+        });
+        
+        toast({
+            title: "Order Shipped!",
+            description: "Delivery details saved and order status updated."
+        });
+
+        localStorage.setItem('gatePassData', JSON.stringify({
+            orderId: selectedInvoiceForDelivery.orderNumber,
+            invoiceId: selectedInvoiceForDelivery.invoiceNumber,
+            customerName: selectedInvoiceForDelivery.customerName,
+            ...deliveryDetails
+        }));
+
+        window.open(`/dashboard/sales/orders/gate-pass?id=${selectedInvoiceForDelivery.orderNumber}`, '_blank');
+
+        setIsDeliveryNoteOpen(false);
+    };
 
     const onViewInvoice = (invoiceId: string) => {
         router.push(`/dashboard/sales/invoice/view?id=${invoiceId}`);
@@ -795,6 +795,7 @@ function InvoicePage() {
                       allParties={allParties || []}
                       liveBalances={liveBalances}
                       onEdit={handleEditInvoice}
+                      onGenerateDeliveryNote={handleOpenDeliveryNoteDialog}
                     />
                   ))
               ) : (
@@ -805,6 +806,13 @@ function InvoicePage() {
           </Table>
         </CardContent>
       </Card>
+
+      <DeliveryNoteDialog 
+        isOpen={isDeliveryNoteOpen}
+        onOpenChange={setIsDeliveryNoteOpen}
+        invoice={selectedInvoiceForDelivery}
+        onConfirm={handleConfirmDeliveryNote}
+      />
     </>
   );
 }
