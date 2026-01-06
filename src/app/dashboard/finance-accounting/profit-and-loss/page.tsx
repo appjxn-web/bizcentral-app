@@ -1,3 +1,4 @@
+
 'use client';
 
 import * as React from 'react';
@@ -19,7 +20,7 @@ import {
   TableRow,
   TableFooter,
 } from '@/components/ui/table';
-import type { CoaGroup, CoaLedger, JournalVoucher, Order, Product } from '@/lib/types';
+import type { CoaGroup, CoaLedger, JournalVoucher, Order, Product, SalesInvoice } from '@/lib/types';
 import { TrendingUp, TrendingDown, CircleDollarSign, Loader2, Download } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { useFirestore, useCollection, useUser } from '@/firebase';
@@ -53,7 +54,7 @@ export default function ProfitAndLossPage() {
     const { data: coaLedgers, loading: ledgersLoading } = useCollection<CoaLedger>(collection(firestore, 'coa_ledgers'));
     const { data: allProducts, loading: productsLoading } = useCollection<Product>(collection(firestore, 'products'));
     const { data: allOrders, loading: ordersLoading } = useCollection<Order>(collection(firestore, 'orders'));
-
+    const { data: allSalesInvoices, loading: invoicesLoading } = useCollection<SalesInvoice>(collection(firestore, 'salesInvoices'));
     
     const jvQuery = React.useMemo(() => {
         if (!user) return null;
@@ -90,78 +91,76 @@ export default function ProfitAndLossPage() {
     };
     
     const pnlData = React.useMemo(() => {
-      if (groupsLoading || ledgersLoading || vouchersLoading || !coaGroups || !coaLedgers || !journalVouchers || productsLoading || ordersLoading) {
-        return { incomeGroups: [], expenseGroups: [], cogs: 0, totalIncome: 0, totalExpenses: 0, netProfit: 0 };
-      }
-
-      const ledgerBalances = new Map<string, number>();
-      coaLedgers.forEach(l => ledgerBalances.set(l.id, 0));
-
       const sDate = startDate ? new Date(startDate) : null;
       if (sDate) sDate.setHours(0, 0, 0, 0);
       const eDate = endDate ? new Date(endDate) : null;
       if (eDate) eDate.setHours(23, 59, 59, 999);
 
-      const periodVouchers = journalVouchers.filter(jv => {
-          const jvDate = jv.date instanceof Timestamp ? jv.date.toDate() : new Date(jv.date);
-          return (!sDate || jvDate >= sDate) && (!eDate || jvDate <= eDate);
+      if (groupsLoading || ledgersLoading || vouchersLoading || productsLoading || ordersLoading || invoicesLoading || !coaGroups || !coaLedgers || !allSalesInvoices || !allProducts || !allOrders || !journalVouchers) {
+        return { incomeGroups: [], expenseGroups: [], cogs: 0, totalIncome: 0, totalExpenses: 0, netProfit: 0, loading: true };
+      }
+
+      // 1. Calculate Total Income directly from Sales Invoices
+      const periodInvoices = allSalesInvoices.filter(inv => {
+          const invDate = new Date(inv.date);
+          return (!sDate || invDate >= sDate) && (!eDate || invDate <= eDate);
       });
+      const totalIncome = periodInvoices.reduce((acc, inv) => acc + inv.taxableAmount, 0);
       
-      const periodOrders = (allOrders || []).filter(order => {
-          const orderDate = new Date(order.date);
-          return (!sDate || orderDate >= sDate) && (!eDate || orderDate <= eDate);
-      });
+      const getGroupData = (groups: CoaGroup[], parentId: string | null = null): any[] => {
+          return groups
+            .filter(g => g.parentId === parentId)
+            .map(group => {
+              const ledgers = coaLedgers.filter(l => l.groupId === group.id);
+              const ledgerBalances = ledgers.map(l => {
+                const balance = journalVouchers
+                  .filter(jv => {
+                      const jvDate = jv.date instanceof Timestamp ? jv.date.toDate() : new Date(jv.date);
+                      return (!sDate || jvDate >= sDate) && (!eDate || jvDate <= eDate);
+                  })
+                  .flatMap(jv => jv.entries)
+                  .filter(e => e.accountId === l.id)
+                  .reduce((acc, e) => acc + ((l.nature === 'INCOME' ? e.credit : e.debit) || 0) - ((l.nature === 'INCOME' ? e.debit : e.credit) || 0), 0);
+                return { ...l, balance };
+              });
 
-      periodVouchers.forEach(jv => {
-        jv.entries.forEach(entry => {
-          if (ledgerBalances.has(entry.accountId)) {
-            const current = ledgerBalances.get(entry.accountId)!;
-            ledgerBalances.set(entry.accountId, current + (entry.credit || 0) - (entry.debit || 0));
-          }
-        });
-      });
-
-      const getGroupData = (group: CoaGroup): any => {
-          const subGroups = coaGroups.filter(g => g.parentId === group.id).map(g => getGroupData(g));
-          const accounts = coaLedgers.filter(l => l.groupId === group.id).map(l => ({
-              ...l,
-              balance: ledgerBalances.get(l.id) || 0
-          }));
-          
-          const totalBalance = accounts.reduce((sum, a) => sum + a.balance, 0) + 
-                               subGroups.reduce((sum, sg) => sum + sg.balance, 0);
-
-          return { ...group, balance: totalBalance, accounts, subGroups };
-      };
-        
-      const buildHierarchy = (natureStr: string) => {
-        const rootGroups = coaGroups.filter(g => 
-            g.nature?.toUpperCase() === natureStr.toUpperCase() && 
-            (!g.parentId || g.parentId === "" || g.level === 0) &&
-            g.name.toUpperCase() !== 'COST OF GOODS SOLD (COGS)' // Exclude COGS from regular expenses
-        );
-        return rootGroups.map(group => getGroupData(group));
+              const subGroups = getGroupData(groups, group.id);
+              const groupBalance = ledgerBalances.reduce((sum, l) => sum + l.balance, 0) + subGroups.reduce((sum, sg) => sum + sg.balance, 0);
+              
+              return { ...group, balance: groupBalance, accounts: ledgerBalances.filter(l => l.balance !== 0), subGroups };
+            })
+            .filter(g => g.balance !== 0 || g.accounts.length > 0 || g.subGroups.length > 0);
       };
       
-      const deliveredOrders = periodOrders.filter(order => order.status === 'Delivered');
-
-      const cogs = deliveredOrders.reduce((totalCost, order) => {
-        return totalCost + order.items.reduce((itemCost, item) => {
-            const product = allProducts?.find(p => p.id === item.productId);
+      const incomeGroups = [{
+          id: '4.1', name: 'Operating Income', balance: totalIncome, 
+          accounts: [{ id: 'sales-summary', name: 'Sales Revenue (from Invoices)', balance: totalIncome }], 
+          subGroups: []
+      }, ...getGroupData(coaGroups.filter(g => g.nature === 'INCOME'), '4')];
+      
+      const expenseGroups = getGroupData(coaGroups.filter(g => g.nature === 'EXPENSE'), '6');
+      
+      // 2. Calculate COGS for delivered orders in the period
+      const deliveredOrders = allOrders.filter(order => {
+        if (order.status !== 'Delivered') return false;
+        const deliveryDate = new Date(order.date); // Assuming order date is delivery date for simplicity
+        return (!sDate || deliveryDate >= sDate) && (!eDate || deliveryDate <= eDate);
+      });
+      const cogs = deliveredOrders.reduce((total, order) => {
+        return total + order.items.reduce((itemCost, item) => {
+            const product = allProducts.find(p => p.id === item.productId);
             return itemCost + ((product?.cost || 0) * item.quantity);
         }, 0);
       }, 0);
 
-      const incomeGroups = buildHierarchy("INCOME");
-      const expenseGroups = buildHierarchy("EXPENSE");
-      
-      const totalIncome = incomeGroups.reduce((acc, g) => acc + g.balance, 0);
+      // 3. Calculate Total Expenses from Journal Vouchers
       const totalExpenses = Math.abs(expenseGroups.reduce((acc, g) => acc + g.balance, 0));
       
-      const netProfit = totalIncome - totalExpenses - cogs;
-
-      return { incomeGroups, expenseGroups, cogs, totalIncome, totalExpenses, netProfit };
-    }, [coaGroups, coaLedgers, journalVouchers, allProducts, allOrders, groupsLoading, ledgersLoading, vouchersLoading, productsLoading, ordersLoading, startDate, endDate]);
+      // 4. Calculate Net Profit
+      const netProfit = totalIncome - (totalExpenses + cogs);
+      
+      return { incomeGroups, expenseGroups, cogs, totalIncome, totalExpenses, netProfit, loading: false };
+    }, [coaGroups, coaLedgers, journalVouchers, allProducts, allOrders, allSalesInvoices, groupsLoading, ledgersLoading, vouchersLoading, productsLoading, ordersLoading, invoicesLoading, startDate, endDate]);
 
     const flattenForExport = (groups: any[], level = 0, data: any[] = []) => {
         groups.forEach(group => {
@@ -290,7 +289,7 @@ export default function ProfitAndLossPage() {
           </div>
         </CardHeader>
         <CardContent className="pt-6">
-             {(groupsLoading || ledgersLoading || vouchersLoading || productsLoading || ordersLoading) ? (
+             {pnlData.loading ? (
                 <div className="flex justify-center items-center h-64"><Loader2 className="animate-spin" /></div>
             ) : (
             <>
@@ -326,3 +325,4 @@ export default function ProfitAndLossPage() {
     </>
   );
 }
+
