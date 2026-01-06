@@ -142,23 +142,21 @@ function PartiesPageContent() {
     if (!firestore) return null;
     const baseQuery = collection(firestore, 'parties');
     
-    // Partners can only see customers.
     if (isPartnerView) {
       return query(baseQuery, where('type', '==', 'Customer'));
     }
     
-    // Admins and other roles can see all parties
     return baseQuery;
   }, [isPartnerView, firestore]);
 
   const { data: businessParties, loading: partiesLoading } = useCollection<Party>(partiesQuery);
+  const { data: coaLedgers, loading: coaLoading } = useCollection<CoaLedger>(collection(firestore, 'coa_ledgers'));
   
   const parties = React.useMemo(() => {
-    // This logic is now simplified as the query itself handles role-based filtering.
     return businessParties || [];
   }, [businessParties]);
 
-  const loading = partiesLoading;
+  const loading = partiesLoading || coaLoading;
   
   const [typeFilters, setTypeFilters] = React.useState<(PartyType|UserRole)[]>([]);
   const [statusFilters, setStatusFilters] = React.useState<PartyStatus[]>(['Active']);
@@ -208,7 +206,7 @@ function PartiesPageContent() {
     setStatusFilters(prev => (prev.includes(status) ? prev.filter(s => s !== status) : [...prev, s]));
   };
   const handleCreatorFilterChange = (creator: string) => {
-    setCreatorFilters(prev => (prev.includes(creator) ? prev.filter(c => c !== creator) : [...prev, creator]));
+    setCreatorFilters(prev => (prev.includes(creator) ? prev.filter(c => c !== creator) : [...prev, c]));
   };
 
   const filteredParties = React.useMemo(() => {
@@ -267,21 +265,42 @@ function PartiesPageContent() {
     }
 
     try {
+        const batch = writeBatch(firestore);
+        
         if (editingParty) {
             const partyRef = doc(firestore, 'parties', editingParty.id);
-            await setDoc(partyRef, newParty, { merge: true });
+            batch.set(partyRef, newParty, { merge: true });
             toast({ title: 'Party Updated', description: `Details for "${newParty.name}" have been updated.` });
         } else {
+            const newPartyRef = doc(collection(firestore, 'parties'));
             const creatorName = userProfile?.businessName || authUser?.displayName || 'Admin User';
-            const newPartyData: Omit<Party, 'id'> = {
+            
+            const newLedgerRef = doc(collection(firestore, 'coa_ledgers'));
+            const newLedgerData: Omit<CoaLedger, 'id'> = {
+                name: newParty.name,
+                groupId: newParty.type === 'Customer' ? '1.1.2' : '2.1.1',
+                nature: newParty.type === 'Customer' ? 'ASSET' : 'LIABILITY',
+                type: newParty.type === 'Customer' ? 'RECEIVABLE' : 'PAYABLE',
+                posting: { isPosting: true, normalBalance: newParty.type === 'Customer' ? 'DEBIT' : 'CREDIT', isSystem: false, allowManualJournal: true },
+                status: 'ACTIVE',
+                openingBalance: { amount: newParty.openingBalance || 0, drCr: newParty.type === 'Customer' ? 'DR' : 'CR', asOf: new Date().toISOString() },
+            };
+            batch.set(newLedgerRef, newLedgerData);
+
+            const newPartyData: Party = {
+                id: newPartyRef.id,
                 ...newParty,
                 status: 'Active',
                 createdAt: new Date().toISOString(),
                 createdBy: creatorName,
+                coaLedgerId: newLedgerRef.id,
             };
-            await addDoc(collection(firestore, 'parties'), newPartyData);
+            batch.set(newPartyRef, newPartyData);
+            
             toast({ title: 'Party Added', description: `"${newParty.name}" has been successfully added.` });
         }
+
+        await batch.commit();
         setIsSheetOpen(false);
     } catch (error) {
         console.error("Error saving party:", error);
@@ -471,7 +490,6 @@ function PartiesPageContent() {
                   const createdAt = (party as Party).createdAt;
                   let formattedDate = 'N/A';
                   if (createdAt) {
-                      // Check if it's a Firestore Timestamp object or a string
                       if (typeof createdAt === 'string') {
                           formattedDate = format(new Date(createdAt), 'dd/MM/yyyy');
                       } else if (createdAt && typeof (createdAt as any).toDate === 'function') {
@@ -721,7 +739,7 @@ export default function PartiesPage() {
     }, []);
 
     if (!isClient) {
-        return null; // Render nothing on the server
+        return null;
     }
 
     return <PartiesPageContent />;
