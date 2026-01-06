@@ -194,7 +194,7 @@ export default function CreditNotePage() {
                                         <TableRow key={item.productId}>
                                             <TableCell>{item.name}</TableCell>
                                             <TableCell className="text-center">{item.quantity}</TableCell>
-                                            <TableCell className="text-right">{item.price.toFixed(2)}</TableCell>
+                                            <TableCell className="text-right">{(item.price || 0).toFixed(2)}</TableCell>
                                             <TableCell>
                                                 <Input 
                                                     type="number" 
