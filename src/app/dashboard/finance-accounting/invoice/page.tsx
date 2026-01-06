@@ -32,7 +32,7 @@ import html2canvas from 'html2canvas';
 
 import { PageHeader } from '@/components/page-header';
 import { cn } from '@/lib/utils';
-import type { Order, OrderStatus, UserProfile, UserRole, WorkOrder, PickupPoint, SalesOrder, RefundRequest, Product, SalesInvoice, SalesInvoiceItem, JournalVoucher, CoaLedger, Party } from '@/lib/types';
+import type { Order, OrderStatus, UserProfile, UserRole, WorkOrder, PickupPoint, SalesOrder, RefundRequest, Product, SalesInvoice, SalesInvoiceItem, JournalVoucher, CoaLedger, Party, CompanyInfo } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -68,7 +68,7 @@ import {
 import Image from 'next/image';
 import { Separator } from '@/components/ui/separator';
 import { useFirestore, useCollection, useUser, useDoc } from '@/firebase';
-import { collection, query, orderBy, doc, where, or, updateDoc, writeBatch, limit, getDoc, getDocs } from 'firebase/firestore';
+import { collection, query, orderBy, doc, where, or, updateDoc, writeBatch, limit, getDoc } from 'firebase/firestore';
 import { OrderStatusTracker } from '../../my-orders/_components/order-status';
 import {
   Dialog,
@@ -230,94 +230,84 @@ function DeliveryNoteDialog({
 
 function GatePassDialog({ open, onOpenChange, invoice, companyInfo }: { open: boolean, onOpenChange: (open: boolean) => void, invoice: SalesInvoice | null, companyInfo: CompanyInfo | null }) {
     const pdfRef = React.useRef<HTMLDivElement>(null);
-    const [isDownloading, setIsDownloading] = React.useState(false);
 
     const handlePrint = () => {
-        const content = pdfRef.current;
-        if (!content) return;
-
-        const printWindow = window.open('', '', 'height=600,width=800');
-        printWindow?.document.write('<html><head><title>Print Gate Pass</title>');
-        printWindow?.document.write('<style>@media print { body { -webkit-print-color-adjust: exact; } @page { size: A5 landscape; margin: 10mm; } } </style>');
-        printWindow?.document.write('</head><body >');
-        printWindow?.document.write(content.innerHTML);
-        printWindow?.document.write('</body></html>');
-        printWindow?.document.close();
-        printWindow?.focus();
-        setTimeout(() => { printWindow?.print(); printWindow?.close(); }, 250);
+        window.print();
     };
 
     if (!invoice) return null;
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-w-3xl">
+            <DialogContent className="max-w-3xl no-print">
                 <DialogHeader>
                     <DialogTitle>Gate Pass for Order: {invoice.orderNumber}</DialogTitle>
                 </DialogHeader>
-                <div className="p-4" ref={pdfRef}>
-                     <header className="flex justify-between items-start border-b pb-4">
-                        <div>
-                            {companyInfo?.logo && <Image src={companyInfo.logo} alt="Logo" width={150} height={40} crossOrigin="anonymous" />}
-                        </div>
-                        <div className="text-right">
-                            <h1 className="text-xl font-bold text-primary">Delivery Note / Gate Pass</h1>
-                            <p className="text-sm"><strong>Order No:</strong> {invoice.orderNumber}</p>
-                            <p className="text-sm"><strong>Date:</strong> {format(new Date(), 'dd/MM/yyyy')}</p>
-                        </div>
-                    </header>
-                    <section className="my-4 grid grid-cols-2 gap-4 text-sm">
-                         <div>
-                            <h3 className="font-semibold">Deliver To:</h3>
-                            <p className="font-bold">{invoice.deliveryDetails?.customerName}</p>
-                            <p>{invoice.deliveryDetails?.shippingAddress}</p>
-                        </div>
-                        <div className="text-right">
-                            <h3 className="font-semibold">Shipping Details:</h3>
-                            <p><strong>Method:</strong> {invoice.deliveryDetails?.shippingMethod}</p>
-                            <p><strong>Vehicle:</strong> {invoice.deliveryDetails?.vehicleNumber}</p>
-                            <p><strong>Driver:</strong> {invoice.deliveryDetails?.driverName} ({invoice.deliveryDetails?.driverPhone})</p>
-                        </div>
-                    </section>
-                    <section>
-                         <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead>Sr.</TableHead>
-                                    <TableHead>Item Name</TableHead>
-                                    <TableHead className="text-right">Quantity</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {invoice.items.map((item, index) => (
-                                    <TableRow key={item.productId}>
-                                        <TableCell>{index + 1}</TableCell>
-                                        <TableCell>{item.name}</TableCell>
-                                        <TableCell className="text-right">{item.quantity}</TableCell>
-                                    </TableRow>
-                                ))}
-                            </TableBody>
-                        </Table>
-                    </section>
-                     <footer className="mt-16 flex justify-between items-end">
-                        <div className="text-xs space-y-4">
-                           <p className="text-muted-foreground">Goods are received in good condition.</p>
-                            <div className="pt-12">
-                                <Separator className="w-48"/>
-                                <p className="pt-1 font-semibold">Receiver's Signature</p>
+                <div className="p-4 border rounded-md">
+                    <div className="w-[210mm] max-w-full mx-auto p-8 bg-white text-black" ref={pdfRef} id="gate-pass-printable">
+                         <header className="flex justify-between items-start border-b pb-4">
+                            <div>
+                                {companyInfo?.logo && <Image src={companyInfo.logo} alt="Logo" width={150} height={40} crossOrigin="anonymous" />}
                             </div>
-                        </div>
-                         <div className="flex flex-col items-center">
-                            <QRCodeSVG value={`GATEPASS:${invoice.orderNumber}`} size={80} />
-                            <p className="text-xs mt-2">Scan for Gate Out</p>
-                        </div>
-                        <div className="text-right">
-                            <p className="font-semibold mb-12">For, {companyInfo?.companyName}</p>
-                            <div className="h-16 w-32"></div>
-                            <Separator />
-                            <p className="text-xs pt-1">Authorized Signatory</p>
-                        </div>
-                    </footer>
+                            <div className="text-right">
+                                <h1 className="text-xl font-bold text-primary">Delivery Note / Gate Pass</h1>
+                                <p className="text-sm"><strong>Order No:</strong> {invoice.orderNumber}</p>
+                                <p className="text-sm"><strong>Date:</strong> {format(new Date(), 'dd/MM/yyyy')}</p>
+                            </div>
+                        </header>
+                        <section className="my-4 grid grid-cols-2 gap-4 text-sm">
+                             <div>
+                                <h3 className="font-semibold">Deliver To:</h3>
+                                <p className="font-bold">{invoice.deliveryDetails?.customerName}</p>
+                                <p>{invoice.deliveryDetails?.shippingAddress}</p>
+                            </div>
+                            <div className="text-right">
+                                <h3 className="font-semibold">Shipping Details:</h3>
+                                <p><strong>Method:</strong> {invoice.deliveryDetails?.shippingMethod}</p>
+                                <p><strong>Vehicle:</strong> {invoice.deliveryDetails?.vehicleNumber}</p>
+                                <p><strong>Driver:</strong> {invoice.deliveryDetails?.driverName} ({invoice.deliveryDetails?.driverPhone})</p>
+                            </div>
+                        </section>
+                        <section>
+                             <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead>Sr.</TableHead>
+                                        <TableHead>Item Name</TableHead>
+                                        <TableHead className="text-right">Quantity</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {invoice.items.map((item, index) => (
+                                        <TableRow key={item.productId}>
+                                            <TableCell>{index + 1}</TableCell>
+                                            <TableCell>{item.name}</TableCell>
+                                            <TableCell className="text-right">{item.quantity}</TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </section>
+                         <footer className="mt-16 flex justify-between items-end">
+                            <div className="text-xs space-y-4">
+                               <p className="text-muted-foreground">Goods are received in good condition.</p>
+                                <div className="pt-12">
+                                    <Separator className="w-48"/>
+                                    <p className="pt-1 font-semibold">Receiver's Signature</p>
+                                </div>
+                            </div>
+                             <div className="flex flex-col items-center">
+                                <QRCodeSVG value={`GATEPASS:${invoice.orderNumber}`} size={80} />
+                                <p className="text-xs mt-2">Scan for Gate Out</p>
+                            </div>
+                            <div className="text-right">
+                                <p className="font-semibold mb-12">For, {companyInfo?.companyName}</p>
+                                <div className="h-16 w-32"></div>
+                                <Separator />
+                                <p className="text-xs pt-1">Authorized Signatory</p>
+                            </div>
+                        </footer>
+                    </div>
                 </div>
                 <DialogFooter>
                     <DialogClose asChild><Button variant="outline">Close</Button></DialogClose>
@@ -440,7 +430,7 @@ function OrderRow({ order, onGenerateInvoice, onUpdateStatus, pickupPoints, dyna
                   </DropdownMenuTrigger>
                   <DropdownMenuContent>
                     <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                     <DropdownMenuItem onClick={() => router.push(`/dashboard/sales/orders/view?id=${order.id}`)}>
+                     <DropdownMenuItem onClick={() => router.push(`/dashboard/sales/orders/view?id=${order.orderNumber}`)}>
                         <Eye className="mr-2 h-4 w-4" /> View Order
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => onEdit(order.id)}>
@@ -788,7 +778,7 @@ function InvoicePage() {
         setIsDeliveryNoteOpen(true);
     };
 
-   const handleConfirmDeliveryNote = async (deliveryDetails: any) => {
+    const handleConfirmDeliveryNote = async (deliveryDetails: any) => {
         if (!selectedInvoiceForDelivery) return;
 
         const invoiceRef = doc(firestore, 'salesInvoices', selectedInvoiceForDelivery.invoiceNumber);
@@ -893,7 +883,7 @@ function InvoicePage() {
               </TableRow>
             </TableHeader>
               {loading ? (
-                <TableBody><TableRow><TableCell colSpan={7} className="h-24 text-center">Loading orders...</TableCell></TableRow></TableBody>
+                <TableBody><TableRow><TableCell colSpan={8} className="h-24 text-center">Loading orders...</TableCell></TableRow></TableBody>
               ) : orders && orders.length > 0 ? (
                 orders.map((order) => {
                   const dynamicStatus = getDynamicOrderStatus(order);
@@ -903,7 +893,7 @@ function InvoicePage() {
                 })
               ) : (
                 <TableBody><TableRow>
-                  <TableCell colSpan={7} className="h-24 text-center">
+                  <TableCell colSpan={8} className="h-24 text-center">
                     No sales orders found.
                   </TableCell>
                 </TableRow></TableBody>

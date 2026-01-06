@@ -136,4 +136,8 @@
   tr, td, th {
     page-break-inside: avoid;
   }
+  
+  #gate-pass-printable {
+    display: block !important;
+  }
 }
