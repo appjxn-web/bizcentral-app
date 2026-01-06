@@ -1,4 +1,3 @@
-
 'use client';
 
 import * as React from 'react';
@@ -27,14 +26,15 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { CircleDollarSign, ArrowUpCircle, ArrowDownCircle, Download, Loader2, Check, ChevronsUpDown, ShieldCheck } from 'lucide-react';
 import { format } from 'date-fns';
+import Image from 'next/image';
 import { useFirestore, useDoc, useCollection } from '@/firebase';
 import { collection, query, doc, where, Timestamp } from 'firebase/firestore';
 import type { JournalVoucher, CoaLedger, Party, CompanyInfo, SalesInvoice } from '@/lib/types';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { cn } from '@/lib/utils';
-import Image from 'next/image';
 import { Badge } from '@/components/ui/badge';
+
 
 const formatIndianCurrency = (num: number) => {
   return new Intl.NumberFormat('en-IN', {
@@ -49,33 +49,45 @@ const numberToWords = (num: number): string => {
     const b = ['', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety'];
     const number = parseFloat(num.toFixed(2));
     if (isNaN(number)) return '';
-    if (number === 0) return 'zero';
+    if (number === 0) return 'zero rupees only.';
 
-    const [integerPart, decimalPart] = number.toString().split('.');
-    
-    let words = '';
-    // This simplified function only handles up to thousands.
-    // A production-ready function would need to handle lakhs, crores, etc.
-    if (integerPart.length > 3) {
-      words += a[parseInt(integerPart.slice(0, -3), 10)] + ' thousand ';
-    }
-    const lastThree = parseInt(integerPart.slice(-3), 10);
-    if (lastThree >= 100) {
-      words += a[Math.floor(lastThree / 100)] + ' hundred ';
-    }
-    const lastTwo = lastThree % 100;
-    if (lastTwo >= 20) {
-      words += b[Math.floor(lastTwo / 20)] + ' ' + a[lastTwo % 10];
-    } else if (lastTwo > 0) {
-      words += a[lastTwo];
-    }
+    const integerPart = Math.floor(number);
+    const decimalPart = Math.round((number - integerPart) * 100);
 
-    let finalString = words.trim() + ' rupees';
-    if (decimalPart && parseInt(decimalPart) > 0) {
-        finalString += ' and ' + (b[Math.floor(parseInt(decimalPart) / 10)] + ' ' + a[parseInt(decimalPart) % 10]).trim() + ' paise';
+    const numToWords = (n: number): string => {
+        let str = '';
+        if (n >= 10000000) {
+            str += numToWords(Math.floor(n / 10000000)) + ' crore ';
+            n %= 10000000;
+        }
+        if (n >= 100000) {
+            str += numToWords(Math.floor(n / 100000)) + ' lakh ';
+            n %= 100000;
+        }
+        if (n >= 1000) {
+            str += numToWords(Math.floor(n / 1000)) + ' thousand ';
+            n %= 1000;
+        }
+        if (n >= 100) {
+            str += a[Math.floor(n / 100)] + ' hundred ';
+            n %= 100;
+        }
+        if (n > 19) {
+            str += b[Math.floor(n / 20)] + (a[n % 10] ? ' ' + a[n % 10] : '');
+        } else if (n > 0) {
+            str += a[n];
+        }
+        return str.trim();
+    };
+
+    let words = numToWords(integerPart);
+    if (!words) words = "zero";
+    let finalString = words.charAt(0).toUpperCase() + words.slice(1) + ' Rupees';
+    if (decimalPart > 0) {
+        finalString += ' and ' + numToWords(decimalPart) + ' Paise';
     }
     
-    return finalString.charAt(0).toUpperCase() + finalString.slice(1) + ' only.';
+    return finalString + ' Only.';
 };
 
 
@@ -88,7 +100,6 @@ function PartyStatementPageContent() {
   const [accountHolder, setAccountHolder] = React.useState<Party | CoaLedger | null>(null);
   const [openCombobox, setOpenCombobox] = React.useState(false);
 
-  // Data fetching
   const { data: companyInfo } = useDoc<CompanyInfo>(doc(firestore, 'company', 'info'));
   const { data: parties, loading: partiesLoading } = useCollection<Party>(collection(firestore, 'parties'));
   const { data: ledgers, loading: ledgersLoading } = useCollection<CoaLedger>(collection(firestore, 'coa_ledgers'));
@@ -154,8 +165,16 @@ function PartyStatementPageContent() {
           credit: entry.credit || 0,
         };
       });
+      
+    // Fetch customer ID from party if accountHolder is a ledger
+    let customerIdForInvoice = selectedAccountId;
+    if (accountHolder && 'type' in accountHolder && accountHolder.type !== 'Customer') {
+       const partyWithLedger = parties?.find(p => p.coaLedgerId === selectedAccountId);
+       if (partyWithLedger) customerIdForInvoice = partyWithLedger.id;
+    }
 
-    const relevantInvoices = (salesInvoices || []).filter(inv => inv.customerId === selectedAccountId || inv.coaLedgerId === selectedAccountId);
+
+    const relevantInvoices = (salesInvoices || []).filter(inv => inv.customerId === customerIdForInvoice || inv.coaLedgerId === selectedAccountId);
     const invoiceTransactions = relevantInvoices.map(inv => ({
         id: inv.id,
         date: inv.date,
@@ -205,7 +224,8 @@ function PartyStatementPageContent() {
         totalDebit: periodTransactions.reduce((s, t) => s + t.debit, 0) 
       },
     };
-  }, [selectedAccountId, allJournalVouchers, ledgers, dateFrom, dateTo, salesInvoices]);
+  }, [selectedAccountId, allJournalVouchers, ledgers, dateFrom, dateTo, salesInvoices, accountHolder, parties]);
+
 
   const handleDownloadPdf = async () => {
     const element = pdfRef.current;
@@ -477,5 +497,3 @@ export default function PartyStatementPage() {
     if (!isClient) return <div className="flex h-screen items-center justify-center"><Loader2 className="animate-spin" /></div>;
     return <PartyStatementPageContent />;
 }
-
-    

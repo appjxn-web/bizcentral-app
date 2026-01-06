@@ -1,5 +1,3 @@
-
-
 'use client';
 
 import * as React from 'react';
@@ -22,7 +20,7 @@ import {
   TableFooter,
 } from '@/components/ui/table';
 import { Landmark, Loader2, PlusCircle, ChevronDown, ChevronRight, Download } from 'lucide-react';
-import type { CoaGroup, CoaLedger, JournalVoucher, Product, WorkOrder } from '@/lib/types';
+import type { CoaGroup, CoaLedger, JournalVoucher, Product, WorkOrder, Order } from '@/lib/types';
 import { AddLedgerAccountDialog } from './_components/add-ledger-account-dialog';
 import { useFirestore, useCollection, useUser } from '@/firebase';
 import { collection, query, orderBy, doc, Timestamp } from 'firebase/firestore';
@@ -57,6 +55,7 @@ function BalanceSheetContent() {
   const { data: coaLedgers, loading: ledgersLoading } = useCollection<CoaLedger>(collection(firestore, 'coa_ledgers'));
   const { data: products, loading: productsLoading } = useCollection<Product>(collection(firestore, 'products'));
   const { data: workOrders, loading: workOrdersLoading } = useCollection<WorkOrder>(collection(firestore, 'workOrders'));
+  const { data: allOrders, loading: ordersLoading } = useCollection<Order>(collection(firestore, 'orders'));
   
   const jvQuery = React.useMemo(() => {
     if (!user || !currentRole) return null;
@@ -93,7 +92,7 @@ function BalanceSheetContent() {
   };
 
   const { assets, liabilities, equity, pnl, loading, kpis } = React.useMemo(() => {
-    if (groupsLoading || ledgersLoading || vouchersLoading || productsLoading || workOrdersLoading || !coaGroups || !coaLedgers) {
+    if (groupsLoading || ledgersLoading || vouchersLoading || productsLoading || workOrdersLoading || ordersLoading || !coaGroups || !coaLedgers || !journalVouchers) {
         return { assets: [], liabilities: [], equity: [], pnl: 0, loading: true, kpis: { assets: 0, liabilities: 0, equity: 0, totalLiabilitiesAndEquity: 0 }};
     }
 
@@ -140,7 +139,6 @@ function BalanceSheetContent() {
             if (ledger) liveBalances.set(ledger.id, value);
         }
 
-        // Calculate Raw Material value separately, subtracting issued quantities
         let rawMaterialValue = products.filter(p => p.type === 'Raw Materials').reduce((sum, p) => sum + ((p.openingStock || 0) * (p.cost || 0)), 0);
         for(const issuedValue of issuedRawMaterialValue.values()) {
             rawMaterialValue -= issuedValue;
@@ -148,7 +146,6 @@ function BalanceSheetContent() {
         const rmLedger = coaLedgers.find(l => l.name === 'Stock-in-Hand – Raw Material');
         if (rmLedger) liveBalances.set(rmLedger.id, rawMaterialValue);
 
-        // Set the calculated WIP value
         const wipLedger = coaLedgers.find(l => l.name === 'Stock-in-Hand – Work-in-Progress');
         if (wipLedger) liveBalances.set(wipLedger.id, totalWipValue);
     }
@@ -169,6 +166,44 @@ function BalanceSheetContent() {
         });
     });
     
+    // --- P&L Calculation for Equity ---
+    const periodVouchers = journalVouchers.filter(jv => {
+      const jvDate = jv.date instanceof Timestamp ? jv.date.toDate() : new Date(jv.date);
+      return (!sDate || jvDate >= sDate) && (!eDate || jvDate <= eDate);
+    });
+
+    const incomeLedgers = coaLedgers.filter(l => l.nature === 'INCOME').map(l => l.id);
+    const expenseLedgers = coaLedgers.filter(l => l.nature === 'EXPENSE').map(l => l.id);
+    
+    let totalIncome = 0;
+    let totalExpenses = 0;
+
+    periodVouchers.forEach(jv => {
+      jv.entries.forEach(entry => {
+        if (incomeLedgers.includes(entry.accountId)) {
+          totalIncome += (entry.credit || 0) - (entry.debit || 0);
+        }
+        if (expenseLedgers.includes(entry.accountId)) {
+          totalExpenses += (entry.debit || 0) - (entry.credit || 0);
+        }
+      });
+    });
+
+    const deliveredOrders = (allOrders || []).filter(order => {
+        const orderDate = new Date(order.date);
+        return order.status === 'Delivered' && (!sDate || orderDate >= sDate) && (!eDate || orderDate <= eDate);
+    });
+
+    const cogs = deliveredOrders.reduce((total, order) => {
+        return total + order.items.reduce((itemCost, item) => {
+            const product = allProducts?.find(p => p.id === item.productId);
+            return itemCost + ((product?.cost || 0) * item.quantity);
+        }, 0);
+    }, 0);
+    const currentPnl = totalIncome - (totalExpenses + cogs);
+
+    // --- End P&L Calculation ---
+
     const getGroupData = (group: CoaGroup): any => {
         const subGroups = coaGroups.filter(g => g.parentId === group.id).map(g => getGroupData(g));
         const ledgers = coaLedgers.filter(l => l.groupId === group.id).map(l => ({
@@ -190,10 +225,6 @@ function BalanceSheetContent() {
     const assetsData = buildHierarchy("ASSET");
     const liabilitiesData = buildHierarchy("LIABILITY");
     const equityData = buildHierarchy("EQUITY");
-    
-    const incomeTotal = buildHierarchy("INCOME").reduce((acc, g) => acc + g.balance, 0); 
-    const expenseTotal = buildHierarchy("EXPENSE").reduce((acc, g) => acc + g.balance, 0);
-    const currentPnl = -(incomeTotal + expenseTotal);
 
     const totalAssets = assetsData.reduce((acc, g) => acc + g.balance, 0);
     const totalLiabilities = Math.abs(liabilitiesData.reduce((acc, g) => acc + g.balance, 0));
@@ -204,7 +235,7 @@ function BalanceSheetContent() {
         assets: assetsData, liabilities: liabilitiesData, equity: equityData, pnl: currentPnl, loading: false,
         kpis: { assets: totalAssets, liabilities: totalLiabilities, equity: totalEquity, totalLiabilitiesAndEquity: totalLiabilities + totalEquity }
     };
-  }, [coaGroups, coaLedgers, journalVouchers, products, workOrders, groupsLoading, ledgersLoading, vouchersLoading, productsLoading, workOrdersLoading, startDate, endDate]);
+  }, [coaGroups, coaLedgers, journalVouchers, products, workOrders, allOrders, groupsLoading, ledgersLoading, vouchersLoading, productsLoading, workOrdersLoading, ordersLoading, startDate, endDate]);
 
   const toggleGroup = (groupId: string) => {
     setOpenGroups(prev => ({ ...prev, [groupId]: !(prev[groupId] ?? true) }));
@@ -312,7 +343,7 @@ function BalanceSheetContent() {
               <TableRow 
                 key={acc.id} 
                 className="text-sm italic hover:bg-muted/50 cursor-pointer" 
-                onClick={() => router.push(`/dashboard/finance-accounting/balance-sheet/view?accountId=${acc.id}`)}
+                onClick={() => router.push(`/dashboard/finance-accounting/party-statement?partyId=${acc.id}`)}
               >
                 <TableCell style={{ paddingLeft: `${(level + 1) * 20 + 12}px` }}>
                   <div className="pl-6 border-l-2 border-muted-foreground/20 ml-2">
@@ -386,7 +417,7 @@ function BalanceSheetContent() {
                 {liabilities.map(g => renderRow(g))}
                 {equity.map(g => renderRow(g))}
                  <TableRow className="font-bold bg-blue-50/40">
-                    <TableCell className="pl-6">Profit / Loss (Current Period)</TableCell>
+                    <TableCell className="pl-12">Profit / Loss (Current Period)</TableCell>
                     <TableCell className="text-right pr-6 font-mono">{formatCurrency(pnl)}</TableCell>
                  </TableRow>
               </TableBody>
