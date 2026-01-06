@@ -197,9 +197,13 @@ export const onCreditNoteCreated = onDocumentCreated("creditNotes/{noteId}", asy
     
     // Assuming credit notes are mostly for sales returns.
     // This credits the customer and debits a sales returns account.
-    const partyData = (await db.collection('parties').doc(note.partyId).get()).data() as Party | undefined;
+    const partySnap = await db.collection('parties').doc(note.partyId).get();
+    const partyData = partySnap.data() as Party | undefined;
     const customerLedgerId = partyData?.coaLedgerId;
-    if (!customerLedgerId) return;
+    if (!customerLedgerId) {
+      console.error(`Could not find ledger for party ${note.partyId}`);
+      return;
+    }
 
     const jvData = {
       date: note.date,
@@ -225,9 +229,13 @@ export const onDebitNoteCreated = onDocumentCreated("debitNotes/{noteId}", async
 
     // Assuming debit notes are mostly for purchase returns.
     // This debits the supplier and credits a purchase returns account.
-    const partyData = (await db.collection('parties').doc(note.partyId).get()).data() as Party | undefined;
+    const partySnap = await db.collection('parties').doc(note.partyId).get();
+    const partyData = partySnap.data() as Party | undefined;
     const supplierLedgerId = partyData?.coaLedgerId;
-    if (!supplierLedgerId) return;
+    if (!supplierLedgerId) {
+      console.error(`Could not find ledger for party ${note.partyId}`);
+      return;
+    }
 
     const jvData = {
       date: note.date,
@@ -357,4 +365,3 @@ export const onMilestoneUpdate = onDocumentWritten("goals/{goalId}/milestones/{m
 export const onGoalUpdate = onDocumentCreated("goalUpdates/{updateId}", async () => {});
 
     
-```
