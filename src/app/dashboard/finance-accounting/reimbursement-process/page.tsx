@@ -1,5 +1,3 @@
-
-
 'use client';
 
 import * as React from 'react';
@@ -262,13 +260,14 @@ export default function ReimbursementProcessPage() {
     }
   };
 
-  const grnPayments: (GrnPaymentRequest & { advancePaid: number; balanceDue: number; items: Grn['items']; subtotal: number; totalGst: number; type: 'grn' })[] = React.useMemo(() => {
+  const grnPayments = React.useMemo(() => {
     if (!grnsData) return [];
     return grnsData.map(grn => {
         const invoiceAmount = grn.grandTotal;
         const advanceRequest = advanceRequestsData?.find(adv => adv.poId === grn.poId && (adv.status === 'Paid'));
         const advancePaid = advanceRequest?.advanceAmount || 0;
         const balanceDue = invoiceAmount - advancePaid;
+        const supplier = parties?.find(p => p.id === grn.supplierId);
 
         return {
             id: grn.id,
@@ -276,6 +275,7 @@ export default function ReimbursementProcessPage() {
             poId: grn.poId,
             supplierName: grn.supplierName,
             supplierId: grn.supplierId,
+            supplierCoaId: supplier?.coaLedgerId,
             invoiceAmount,
             grnDate: grn.grnDate,
             status: grn.paymentStatus || 'Pending Approval',
@@ -284,7 +284,7 @@ export default function ReimbursementProcessPage() {
             items: grn.items,
             subtotal: grn.subtotal,
             totalGst: grn.cgst + grn.sgst + grn.igst,
-            type: 'grn',
+            type: 'grn' as const,
         }
     });
   }, [grnsData, advanceRequestsData, parties]);
@@ -292,14 +292,17 @@ export default function ReimbursementProcessPage() {
   const allSupplierPayments = React.useMemo(() => {
     const advances = (advanceRequestsData || [])
         .filter(req => req.status === 'Approved')
-        .map(req => ({
-            ...req,
-            type: 'advance' as const,
-            amount: req.advanceAmount,
-            balanceDue: req.advanceAmount, // For consistency
-            invoiceAmount: req.poAmount, // For consistency
-            supplierCoaId: parties?.find(p => p.id === req.supplierId)?.coaLedgerId,
-        }));
+        .map(req => {
+            const supplier = parties?.find(p => p.id === req.supplierId);
+            return {
+                ...req,
+                type: 'advance' as const,
+                amount: req.advanceAmount,
+                balanceDue: req.advanceAmount, // For consistency
+                invoiceAmount: req.poAmount, // For consistency
+                supplierCoaId: supplier?.coaLedgerId,
+            };
+        });
     const grns = grnPayments.filter(req => req.status === 'Approved');
 
     return [...advances, ...grns];
