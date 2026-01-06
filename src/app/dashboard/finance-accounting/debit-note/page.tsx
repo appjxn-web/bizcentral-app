@@ -65,7 +65,7 @@ export default function DebitNotePage() {
             partyId,
             partyName: parties?.find(p => p.id === partyId)?.name || 'Unknown',
             date,
-            originalInvoiceId,
+            originalInvoiceId: originalInvoiceId === 'none' ? '' : originalInvoiceId,
             amount: Number(amount),
             reason,
             status: 'Issued',

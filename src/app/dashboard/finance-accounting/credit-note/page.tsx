@@ -46,22 +46,24 @@ export default function CreditNotePage() {
         return salesInvoices.filter(inv => inv.customerId === partyId);
     }, [partyId, salesInvoices]);
 
-    React.useEffect(() => {
-        if (originalInvoiceId) {
-            const invoice = salesInvoices?.find(inv => inv.invoiceNumber === originalInvoiceId);
+    const handleInvoiceSelection = (invoiceId: string) => {
+        setOriginalInvoiceId(invoiceId);
+        if (invoiceId && invoiceId !== 'none') {
+            const invoice = salesInvoices?.find(inv => inv.invoiceNumber === invoiceId);
             if (invoice) {
                 setSelectedInvoice(invoice);
                 setCreditItems(invoice.items.map(item => ({
                     ...item,
                     returnQty: 0,
-                    revisedRate: item.rate,
+                    revisedRate: item.price,
                 })));
             }
         } else {
             setSelectedInvoice(null);
             setCreditItems([]);
         }
-    }, [originalInvoiceId, salesInvoices]);
+    };
+
 
     const handleItemChange = (index: number, field: 'returnQty' | 'revisedRate', value: string) => {
         const numericValue = Number(value);
@@ -77,14 +79,14 @@ export default function CreditNotePage() {
     const totalCreditAmount = React.useMemo(() => {
         return creditItems.reduce((acc, item) => {
             // Price difference credit: (original rate - revised rate) * (original qty - returned qty)
-            const priceDifferenceCredit = (item.rate - item.revisedRate) * (item.quantity - item.returnQty);
+            const priceDifferenceCredit = (item.price - item.revisedRate) * (item.quantity - item.returnQty);
             // Return credit: returned qty * revised rate
             const returnCredit = item.returnQty * item.revisedRate;
             
             const totalItemCredit = priceDifferenceCredit + returnCredit;
             
             // Add GST on top of the credit amount
-            const itemGst = totalItemCredit * (item.gstRate / 100);
+            const itemGst = totalItemCredit * ((item.gstRate || 18) / 100);
 
             return acc + totalItemCredit + itemGst;
         }, 0);
@@ -107,7 +109,7 @@ export default function CreditNotePage() {
             partyId,
             partyName: parties?.find(p => p.id === partyId)?.name || 'Unknown',
             date,
-            originalInvoiceId,
+            originalInvoiceId: originalInvoiceId === 'none' ? '' : originalInvoiceId,
             amount: totalCreditAmount,
             reason,
             status: 'Issued',
@@ -154,12 +156,12 @@ export default function CreditNotePage() {
                         </div>
                          <div className="space-y-2">
                             <Label htmlFor="invoice-id">Original Invoice ID (Optional)</Label>
-                            <Select value={originalInvoiceId} onValueChange={setOriginalInvoiceId} disabled={!partyId}>
+                            <Select value={originalInvoiceId} onValueChange={handleInvoiceSelection} disabled={!partyId}>
                                 <SelectTrigger id="invoice-id">
                                     <SelectValue placeholder="Select an invoice" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                     <SelectItem value="">None</SelectItem>
+                                     <SelectItem value="none">None</SelectItem>
                                     {customerInvoices.map(inv => (
                                         <SelectItem key={inv.id} value={inv.invoiceNumber}>
                                             {inv.invoiceNumber} - ({format(new Date(inv.date), 'dd/MM/yy')}) - ₹{inv.grandTotal.toFixed(2)}
@@ -192,7 +194,7 @@ export default function CreditNotePage() {
                                         <TableRow key={item.productId}>
                                             <TableCell>{item.name}</TableCell>
                                             <TableCell className="text-center">{item.quantity}</TableCell>
-                                            <TableCell className="text-right">{item.rate.toFixed(2)}</TableCell>
+                                            <TableCell className="text-right">{item.price.toFixed(2)}</TableCell>
                                             <TableCell>
                                                 <Input 
                                                     type="number" 
