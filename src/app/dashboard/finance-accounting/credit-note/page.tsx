@@ -73,11 +73,11 @@ export default function CreditNotePage() {
                 setSelectedInvoice(invoice);
                 setCreditItems(invoice.items.map(item => ({
                     ...item,
-                    rate: item.price || 0,
-                    price: item.price || 0,
+                    rate: item.rate || 0,
+                    price: item.rate || 0,
                     discount: item.discount || 0,
                     returnQty: 0,
-                    revisedRate: item.price || 0,
+                    revisedRate: item.rate || 0,
                 })));
             }
         } else {
@@ -285,7 +285,7 @@ export default function CreditNotePage() {
                                                         <Input type="number" value={item.revisedRate} onChange={(e) => handleItemChange(index, 'revisedRate', e.target.value)} className="text-right" />
                                                     </TableCell>
                                                     <TableCell className="text-right font-mono">{formatIndianCurrency(revisedTotal)}</TableCell>
-                                                    <TableCell className="text-right font-mono font-semibold text-green-600">{formatIndianCurrency(creditAmount > 0 ? creditAmount : 0)}</TableCell>
+                                                    <TableCell className="text-right font-mono font-bold text-green-600">{formatIndianCurrency(creditAmount > 0 ? creditAmount : 0)}</TableCell>
                                                 </TableRow>
                                             )
                                         }

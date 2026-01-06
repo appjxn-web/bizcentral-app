@@ -76,11 +76,11 @@ export default function DebitNotePage() {
                 setSelectedInvoice(invoice);
                 setDebitItems(invoice.items.map(item => ({
                     ...item,
-                    rate: item.price || 0,
-                    price: item.price || 0,
+                    rate: item.rate || 0,
+                    price: item.rate || 0,
                     discount: item.discount || 0,
                     adjustQty: 0,
-                    revisedRate: item.price || 0,
+                    revisedRate: item.rate || 0,
                 })));
             }
         } else {
@@ -262,7 +262,7 @@ export default function DebitNotePage() {
                                                 />
                                             </TableCell>
                                             <TableCell className="text-right font-mono">{formatIndianCurrency(revisedTotal)}</TableCell>
-                                            <TableCell className="text-right font-mono font-semibold text-green-600">{formatIndianCurrency(debitAmount > 0 ? debitAmount : 0)}</TableCell>
+                                            <TableCell className="text-right font-mono font-bold text-green-600">{formatIndianCurrency(debitAmount > 0 ? debitAmount : 0)}</TableCell>
                                         </TableRow>
                                     )})}
                                 </TableBody>
