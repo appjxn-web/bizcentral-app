@@ -76,11 +76,11 @@ export default function DebitNotePage() {
                 setSelectedInvoice(invoice);
                 setDebitItems(invoice.items.map(item => ({
                     ...item,
-                    rate: item.rate || 0,
-                    price: item.rate || 0,
+                    rate: item.price || 0,
+                    price: item.price || 0,
                     discount: item.discount || 0,
                     adjustQty: 0,
-                    revisedRate: item.rate || 0,
+                    revisedRate: item.price || 0,
                 })));
             }
         } else {
@@ -105,16 +105,14 @@ export default function DebitNotePage() {
         let totalGst = 0;
         let subtotal = 0;
         let totalDiscount = 0;
+        let totalOriginalAmount = 0;
+        let totalRevisedAmount = 0;
+
 
         if (reason === 'Price Escalation') {
-            taxableAmount = debitItems.reduce((acc, item) => {
-                const originalNetRate = (item.rate || 0) * (1 - (item.discount || 0) / 100);
-                const priceDifference = item.revisedRate - originalNetRate;
-                if (priceDifference > 0) {
-                    return acc + (priceDifference * item.quantity);
-                }
-                return acc;
-            }, 0);
+            totalOriginalAmount = debitItems.reduce((acc, item) => acc + (item.quantity * item.price), 0);
+            totalRevisedAmount = debitItems.reduce((acc, item) => acc + (item.quantity * item.revisedRate), 0);
+            taxableAmount = totalRevisedAmount - totalOriginalAmount;
             subtotal = taxableAmount;
         }
 
@@ -124,7 +122,7 @@ export default function DebitNotePage() {
         const sgst = isInterstate ? 0 : totalGst / 2;
         const igst = isInterstate ? totalGst : 0;
         
-        return { subtotal, totalDiscount, taxableAmount, totalGst, grandTotal, cgst, sgst, igst };
+        return { subtotal, totalDiscount, taxableAmount, totalGst, grandTotal, cgst, sgst, igst, totalOriginalAmount, totalRevisedAmount };
     }, [debitItems, isInterstate, reason]);
 
 
@@ -156,7 +154,7 @@ export default function DebitNotePage() {
             reason,
             status: 'Issued',
             createdAt: serverTimestamp(),
-            ...(selectedInvoice && { items: debitItems.filter(item => item.revisedRate > (item.rate || 0)) }),
+            ...(selectedInvoice && { items: debitItems.filter(item => item.revisedRate > (item.price || 0)) }),
         };
 
         await setDoc(doc(firestore, 'debitNotes', newNoteId), { ...newDebitNote, id: newNoteId });
@@ -247,14 +245,14 @@ export default function DebitNotePage() {
                                 </TableHeader>
                                 <TableBody>
                                     {debitItems.map((item, index) => {
-                                        const originalTotal = item.quantity * (item.rate || 0);
+                                        const originalTotal = item.quantity * item.price;
                                         const revisedTotal = item.quantity * item.revisedRate;
                                         const debitAmount = revisedTotal - originalTotal;
                                         return (
                                         <TableRow key={item.productId}>
                                             <TableCell>{item.name}</TableCell>
                                             <TableCell className="text-center">{item.quantity}</TableCell>
-                                            <TableCell className="text-right">{formatIndianCurrency(item.rate || 0)}</TableCell>
+                                            <TableCell className="text-right">{formatIndianCurrency(item.price)}</TableCell>
                                             <TableCell className="text-right font-mono">{formatIndianCurrency(originalTotal)}</TableCell>
                                             <TableCell>
                                                 <Input 
@@ -275,8 +273,20 @@ export default function DebitNotePage() {
                     {selectedInvoice && (
                         <div className="pt-4 border-t flex justify-end">
                             <div className="space-y-2 w-full max-w-sm">
-                                <div className="flex justify-between">
-                                    <span>Subtotal (Debit Value)</span>
+                                {reason === 'Price Escalation' && (
+                                    <>
+                                        <div className="flex justify-between">
+                                            <span>Total Original Amount</span>
+                                            <span className="font-mono">{formatIndianCurrency(calculations.totalOriginalAmount)}</span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span>Total Revised Amount</span>
+                                            <span className="font-mono">{formatIndianCurrency(calculations.totalRevisedAmount)}</span>
+                                        </div>
+                                    </>
+                                )}
+                                <div className="flex justify-between font-semibold">
+                                    <span>Taxable Value</span>
                                     <span className="font-mono">{formatIndianCurrency(calculations.taxableAmount)}</span>
                                 </div>
                                 {isInterstate ? (
