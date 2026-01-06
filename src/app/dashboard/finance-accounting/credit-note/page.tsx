@@ -107,15 +107,9 @@ export default function CreditNotePage() {
 
       if (reason === 'Goods Return' && selectedInvoice) {
           subtotal = creditItems.reduce((acc, item) => acc + (item.returnQty * item.rate), 0);
-          const originalSubtotalOfReturnedItems = creditItems.reduce((acc, item) => {
-              if (item.returnQty > 0) {
-                  return acc + (item.returnQty * item.rate)
-              }
-              return acc;
-          }, 0);
           
           if(selectedInvoice.subtotal > 0){
-             totalDiscount = (originalSubtotalOfReturnedItems / selectedInvoice.subtotal) * selectedInvoice.discount;
+             totalDiscount = (subtotal / selectedInvoice.subtotal) * selectedInvoice.discount;
           }
           
           taxableAmount = subtotal - totalDiscount;
@@ -249,7 +243,7 @@ export default function CreditNotePage() {
                                         <TableHead className="text-center">Orig. Qty</TableHead>
                                         <TableHead className="text-right">Orig. Rate</TableHead>
                                         {reason === 'Goods Return' && <TableHead className="text-right">Orig. Disc. %</TableHead>}
-                                        {reason === 'Revised Rate' && <TableHead className="text-right">Orig. Total</TableHead>}
+                                        {reason !== 'Revised discount' && <TableHead className="text-right">Orig. Total</TableHead>}
                                         
                                         {reason === 'Goods Return' && <TableHead className="w-24 text-center">Return Qty</TableHead>}
                                         {reason === 'Revised Rate' && <TableHead className="w-32 text-right">Revised Rate</TableHead>}
@@ -268,6 +262,7 @@ export default function CreditNotePage() {
                                                     <TableCell className="text-center">{item.quantity}</TableCell>
                                                     <TableCell className="text-right">{formatIndianCurrency(item.rate)}</TableCell>
                                                     <TableCell className="text-right">{item.discount || 0}%</TableCell>
+                                                    <TableCell className="text-right font-mono">{formatIndianCurrency(item.quantity * item.rate)}</TableCell>
                                                     <TableCell>
                                                         <Input type="number" value={item.returnQty} onChange={(e) => handleItemChange(index, 'returnQty', e.target.value)} max={item.quantity} className="text-center" />
                                                     </TableCell>
@@ -310,35 +305,24 @@ export default function CreditNotePage() {
                                 {reason === 'Revised Rate' && (
                                     <TableFooter>
                                         <TableRow>
-                                            <TableCell colSpan={3} className="text-right font-semibold">Subtotal</TableCell>
+                                            <TableCell colSpan={3} className="text-right font-semibold">Taxable Value</TableCell>
                                             <TableCell className="text-right font-mono">{formatIndianCurrency(calculations.totalOriginalAmount)}</TableCell>
                                             <TableCell></TableCell>
                                             <TableCell className="text-right font-mono">{formatIndianCurrency(calculations.totalRevisedAmount)}</TableCell>
                                             <TableCell className="text-right font-mono font-bold text-green-600">{formatIndianCurrency(calculations.taxableAmount)}</TableCell>
                                         </TableRow>
-                                         <TableRow>
-                                            <TableCell colSpan={6} className="text-right font-semibold">Taxable Value (Credit)</TableCell>
-                                            <TableCell className="text-right font-mono font-bold">{formatIndianCurrency(calculations.taxableAmount)}</TableCell>
+                                        <TableRow>
+                                            <TableCell colSpan={3} className="text-right">GST</TableCell>
+                                            <TableCell className="text-right font-mono">{formatIndianCurrency(calculations.totalOriginalAmount * 0.18)}</TableCell>
+                                            <TableCell></TableCell>
+                                            <TableCell className="text-right font-mono">{formatIndianCurrency(calculations.totalRevisedAmount * 0.18)}</TableCell>
+                                            <TableCell className="text-right font-mono font-bold text-green-600">{formatIndianCurrency(calculations.totalGst)}</TableCell>
                                         </TableRow>
-                                        {isInterstate ? (
-                                            <TableRow>
-                                                <TableCell colSpan={6} className="text-right">IGST</TableCell>
-                                                <TableCell className="text-right font-mono">{formatIndianCurrency(calculations.igst)}</TableCell>
-                                            </TableRow>
-                                        ) : (
-                                            <>
-                                            <TableRow>
-                                                <TableCell colSpan={6} className="text-right">CGST</TableCell>
-                                                <TableCell className="text-right font-mono">{formatIndianCurrency(calculations.cgst)}</TableCell>
-                                            </TableRow>
-                                            <TableRow>
-                                                <TableCell colSpan={6} className="text-right">SGST</TableCell>
-                                                <TableCell className="text-right font-mono">{formatIndianCurrency(calculations.sgst)}</TableCell>
-                                            </TableRow>
-                                            </>
-                                        )}
                                         <TableRow className="bg-muted font-bold text-lg">
-                                            <TableCell colSpan={6} className="text-right">Total Credit Amount</TableCell>
+                                            <TableCell colSpan={3} className="text-right">Total Amount</TableCell>
+                                            <TableCell className="text-right font-mono">{formatIndianCurrency(calculations.totalOriginalAmount * 1.18)}</TableCell>
+                                            <TableCell></TableCell>
+                                            <TableCell className="text-right font-mono">{formatIndianCurrency(calculations.totalRevisedAmount * 1.18)}</TableCell>
                                             <TableCell className="text-right font-mono">{formatIndianCurrency(calculations.grandTotal)}</TableCell>
                                         </TableRow>
                                     </TableFooter>
@@ -357,17 +341,7 @@ export default function CreditNotePage() {
                         <div className="pt-4 border-t flex justify-end">
                             <div className="space-y-2 w-full max-w-sm">
                                 <div className="flex justify-between">
-                                    <span>Subtotal</span>
-                                    <span className="font-mono">{formatIndianCurrency(calculations.subtotal)}</span>
-                                </div>
-                                {calculations.totalDiscount > 0 && (
-                                    <div className="flex justify-between text-red-600">
-                                        <span>Less: Pro-rata Discount</span>
-                                        <span className="font-mono">- {formatIndianCurrency(calculations.totalDiscount)}</span>
-                                    </div>
-                                )}
-                                <div className="flex justify-between font-semibold">
-                                    <span>Taxable Value</span>
+                                    <span>Taxable Value (Credit)</span>
                                     <span className="font-mono">{formatIndianCurrency(calculations.taxableAmount)}</span>
                                 </div>
                                 {isInterstate ? (

@@ -269,35 +269,24 @@ export default function DebitNotePage() {
                                 </TableBody>
                                  <TableFooter>
                                     <TableRow>
-                                        <TableCell colSpan={3} className="text-right font-semibold">Subtotal</TableCell>
+                                        <TableCell colSpan={3} className="text-right font-semibold">Taxable Value</TableCell>
                                         <TableCell className="text-right font-mono">{formatIndianCurrency(calculations.totalOriginalAmount)}</TableCell>
                                         <TableCell></TableCell>
                                         <TableCell className="text-right font-mono">{formatIndianCurrency(calculations.totalRevisedAmount)}</TableCell>
                                         <TableCell className="text-right font-mono font-bold text-green-600">{formatIndianCurrency(calculations.taxableAmount)}</TableCell>
                                     </TableRow>
                                     <TableRow>
-                                        <TableCell colSpan={6} className="text-right font-semibold">Taxable Value (Debit)</TableCell>
-                                        <TableCell className="text-right font-mono font-bold">{formatIndianCurrency(calculations.taxableAmount)}</TableCell>
+                                        <TableCell colSpan={3} className="text-right">GST</TableCell>
+                                        <TableCell className="text-right font-mono">{formatIndianCurrency(calculations.totalOriginalAmount * 0.18)}</TableCell>
+                                        <TableCell></TableCell>
+                                        <TableCell className="text-right font-mono">{formatIndianCurrency(calculations.totalRevisedAmount * 0.18)}</TableCell>
+                                        <TableCell className="text-right font-mono font-bold text-green-600">{formatIndianCurrency(calculations.totalGst)}</TableCell>
                                     </TableRow>
-                                    {isInterstate ? (
-                                        <TableRow>
-                                            <TableCell colSpan={6} className="text-right">IGST</TableCell>
-                                            <TableCell className="text-right font-mono">{formatIndianCurrency(calculations.igst)}</TableCell>
-                                        </TableRow>
-                                    ) : (
-                                        <>
-                                        <TableRow>
-                                            <TableCell colSpan={6} className="text-right">CGST</TableCell>
-                                            <TableCell className="text-right font-mono">{formatIndianCurrency(calculations.cgst)}</TableCell>
-                                        </TableRow>
-                                        <TableRow>
-                                            <TableCell colSpan={6} className="text-right">SGST</TableCell>
-                                            <TableCell className="text-right font-mono">{formatIndianCurrency(calculations.sgst)}</TableCell>
-                                        </TableRow>
-                                        </>
-                                    )}
                                     <TableRow className="bg-muted font-bold text-lg">
-                                        <TableCell colSpan={6} className="text-right">Total Debit Amount</TableCell>
+                                        <TableCell colSpan={3} className="text-right">Total Amount</TableCell>
+                                        <TableCell className="text-right font-mono">{formatIndianCurrency(calculations.totalOriginalAmount * 1.18)}</TableCell>
+                                        <TableCell></TableCell>
+                                        <TableCell className="text-right font-mono">{formatIndianCurrency(calculations.totalRevisedAmount * 1.18)}</TableCell>
                                         <TableCell className="text-right font-mono">{formatIndianCurrency(calculations.grandTotal)}</TableCell>
                                     </TableRow>
                                 </TableFooter>
