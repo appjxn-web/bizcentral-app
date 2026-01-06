@@ -169,20 +169,10 @@ export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}", a
           voucherType: "Sales Voucher"
         });
 
-        // Adjusted: Also use the specific customer ledger for the Advance adjustment
-        if (invoice.amountPaid > 0) {
-            const adjJvRef = db.collection("journalVouchers").doc();
-            transaction.set(adjJvRef, {
-                id: adjJvRef.id,
-                date: invoice.date,
-                narration: `Adjustment of advance for Invoice ${invoice.invoiceNumber}`,
-                entries: [
-                    { accountId: customerLedgerId, debit: invoice.amountPaid, credit: 0 },
-                    { accountId: customerLedgerId, credit: invoice.amountPaid, debit: 0 } // This logic depends on your specific adjustment flow
-                ],
-                createdAt: admin.firestore.FieldValue.serverTimestamp(),
-                voucherType: "Journal Voucher"
-            });
+        // Update the original Sales Order status to "Ready for Dispatch"
+        if (invoice.orderId) {
+            const orderRef = db.collection('orders').doc(invoice.orderId);
+            transaction.update(orderRef, { status: 'Ready for Dispatch' });
         }
       });
     } catch (e) { console.error(e); }
@@ -394,3 +384,4 @@ export const onMilestoneUpdate = onDocumentWritten("goals/{goalId}/milestones/{m
 export const onGoalUpdate = onDocumentCreated("goalUpdates/{updateId}", async () => {});
 
     
+

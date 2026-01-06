@@ -131,13 +131,18 @@ function StocksPageContent() {
     if (!orders || !products || !boms) return 0;
     
     // Find all open sales orders for finished goods
-    const openSalesOrders = orders.filter(o => o.status !== 'Delivered' && o.status !== 'Canceled');
+    const openSalesOrders = orders.filter(o => !['Delivered', 'Canceled', 'Shipped', 'Ready for Dispatch'].includes(o.status));
     let requiredQty = 0;
 
     // Iterate through each open sales order
     for (const order of openSalesOrders) {
       // Iterate through items in that sales order
       for (const item of order.items) {
+        // If the current product is the one being sold, add its quantity
+        if (item.productId === productId) {
+          requiredQty += item.quantity;
+        }
+        
         // Find the BOM for the finished product in the sales order
         const bomForOrderedProduct = boms.find(b => b.productId === item.productId);
         if (bomForOrderedProduct) {
@@ -199,7 +204,7 @@ function StocksPageContent() {
     try {
         const docTypeKey = 'Purchase Request'; 
         
-        const newPrId = getNextDocNumber(docTypeKey, settingsData?.prefixes, requests || []);
+        const newPrId = getNextDocNumber(docTypeKey, settingsData.prefixes, requests || []);
 
         const prData = {
             id: newPrId,
@@ -454,4 +459,5 @@ export default function StocksPageWrapper() {
 
     return <StocksPageContent />;
 }
+
 
