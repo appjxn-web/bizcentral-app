@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -33,7 +34,7 @@ import html2canvas from 'html2canvas';
 import { PageHeader } from '@/components/page-header';
 import { cn } from '@/lib/utils';
 import type { Order, OrderStatus, UserProfile, UserRole, WorkOrder, PickupPoint, SalesOrder, RefundRequest, Product, SalesInvoice, SalesInvoiceItem, JournalVoucher, CoaLedger, Party, CompanyInfo } from '@/lib/types';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import {
   Card,
   CardContent,
@@ -232,7 +233,21 @@ function GatePassDialog({ open, onOpenChange, invoice, companyInfo }: { open: bo
     const pdfRef = React.useRef<HTMLDivElement>(null);
 
     const handlePrint = () => {
-        window.print();
+        const printContent = pdfRef.current?.innerHTML;
+        if (printContent) {
+            const printWindow = window.open('', '', 'height=800,width=800');
+            if(printWindow) {
+                printWindow.document.write('<html><head><title>Print Gate Pass</title>');
+                printWindow.document.write('<style>@media print{@page { size: A4; margin: 0; } body { margin: 1.5cm; } .no-print { display: none; } } body { font-family: sans-serif; }</style>');
+                printWindow.document.write('</head><body>');
+                printWindow.document.write(printContent);
+                printWindow.document.write('</body></html>');
+                printWindow.document.close();
+                printWindow.focus();
+                printWindow.print();
+                printWindow.close();
+            }
+        }
     };
 
     if (!invoice) return null;
@@ -514,7 +529,7 @@ function OrderRow({ order, onGenerateInvoice, onUpdateStatus, pickupPoints, dyna
   )
 }
 
-function GeneratedInvoiceRow({ invoice, onUpdateStatus, allProducts, getOrderInHand, allSalesInvoices, journalVouchers, allCoaLedgers, allParties, liveBalances, onEdit, onGenerateDeliveryNote }: { invoice: SalesInvoice, onUpdateStatus: (id: string, status: 'Paid' | 'Unpaid') => void, allProducts: Product[] | null, getOrderInHand: (productId: string) => number, allSalesInvoices: SalesInvoice[] | null, journalVouchers: JournalVoucher[] | null, allCoaLedgers: CoaLedger[] | null, allParties: Party[] | null, liveBalances: Map<string, number>, onEdit: (invoiceId: string) => void, onGenerateDeliveryNote: (invoice: SalesInvoice) => void }) {
+function GeneratedInvoiceRow({ invoice, onUpdateStatus, allProducts, getOrderInHand, allSalesInvoices, journalVouchers, allCoaLedgers, allParties, liveBalances, onEdit, onGenerateDeliveryNote, onViewGatePass }: { invoice: SalesInvoice, onUpdateStatus: (id: string, status: 'Paid' | 'Unpaid') => void, allProducts: Product[] | null, getOrderInHand: (productId: string) => number, allSalesInvoices: SalesInvoice[] | null, journalVouchers: JournalVoucher[] | null, allCoaLedgers: CoaLedger[] | null, allParties: Party[] | null, liveBalances: Map<string, number>, onEdit: (invoiceId: string) => void, onGenerateDeliveryNote: (invoice: SalesInvoice) => void, onViewGatePass: (invoice: SalesInvoice) => void }) {
     const [isOpen, setIsOpen] = React.useState(false);
     const router = useRouter();
 
@@ -528,7 +543,7 @@ function GeneratedInvoiceRow({ invoice, onUpdateStatus, allProducts, getOrderInH
 
     const party = allParties?.find(p => p.id === invoice.customerId);
     const partyBalance = party?.coaLedgerId ? liveBalances.get(party.coaLedgerId) : 0;
-    const balanceText = partyBalance > 0 ? `${formatIndianCurrency(partyBalance)} Dr` : `${formatIndianCurrency(Math.abs(partyBalance))} Cr`;
+    const balanceText = partyBalance > 0 ? `${formatIndianCurrency(partyBalance)} Dr` : `${formatIndianCurrency(Math.abs(partyBalance || 0))} Cr`;
 
 
     return (
@@ -565,9 +580,15 @@ function GeneratedInvoiceRow({ invoice, onUpdateStatus, allProducts, getOrderInH
                                  <DropdownMenuItem onClick={() => onEdit(invoice.invoiceNumber)}>
                                     <Edit className="mr-2 h-4 w-4"/> Edit
                                 </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => onGenerateDeliveryNote(invoice)}>
-                                  <Truck className="mr-2 h-4 w-4" /> Delivery Note
-                                </DropdownMenuItem>
+                                {invoice.deliveryDetails ? (
+                                    <DropdownMenuItem onClick={() => onViewGatePass(invoice)}>
+                                        <Eye className="mr-2 h-4 w-4" /> View Gate Pass
+                                    </DropdownMenuItem>
+                                ) : (
+                                    <DropdownMenuItem onClick={() => onGenerateDeliveryNote(invoice)}>
+                                      <Truck className="mr-2 h-4 w-4" /> Delivery Note
+                                    </DropdownMenuItem>
+                                )}
                                 {invoice.status !== 'Paid' && (
                                      <DropdownMenuItem onClick={() => onUpdateStatus(invoice.invoiceNumber, 'Paid')}>
                                         <CheckCircle className="mr-2 h-4 w-4"/> Mark as Paid
@@ -779,30 +800,34 @@ function InvoicePage() {
     };
 
     const handleConfirmDeliveryNote = async (deliveryDetails: any) => {
-        if (!selectedInvoiceForDelivery) return;
+      if (!selectedInvoiceForDelivery) return;
 
-        const invoiceRef = doc(firestore, 'salesInvoices', selectedInvoiceForDelivery.invoiceNumber);
-        
-        const orderToUpdate = orders?.find(o => o.orderNumber === selectedInvoiceForDelivery.orderNumber);
-        if (!orderToUpdate) {
-            toast({ variant: "destructive", title: "Error", description: `Could not find original sales order ${selectedInvoiceForDelivery.orderNumber}` });
-            return;
-        }
-        const orderRef = doc(firestore, 'orders', orderToUpdate.id);
-
-        const batch = writeBatch(firestore);
-        batch.update(invoiceRef, { deliveryDetails });
-        batch.update(orderRef, { status: 'Shipped' });
-        await batch.commit();
-        
-        toast({
-            title: "Order Shipped!",
-            description: "Delivery details saved and order status updated."
-        });
-        
-        setGatePassData({ ...selectedInvoiceForDelivery, deliveryDetails });
-        setIsDeliveryNoteOpen(false);
-        setIsGatePassDialogOpen(true);
+      const invoiceRef = doc(firestore, 'salesInvoices', selectedInvoiceForDelivery.invoiceNumber);
+      
+      const orderToUpdate = orders?.find(o => o.orderNumber === selectedInvoiceForDelivery.orderNumber);
+      
+      if (!orderToUpdate) {
+        toast({ variant: "destructive", title: "Error", description: `Could not find original sales order ${selectedInvoiceForDelivery.orderNumber}` });
+        return;
+      }
+      
+      const orderRef = doc(firestore, 'orders', orderToUpdate.id);
+      
+      const batch = writeBatch(firestore);
+      batch.update(invoiceRef, { deliveryDetails });
+      batch.update(orderRef, { status: 'Shipped' });
+      await batch.commit();
+      
+      toast({
+          title: "Order Shipped!",
+          description: "Delivery details saved and order status updated."
+      });
+      
+      const updatedInvoiceData = { ...selectedInvoiceForDelivery, deliveryDetails };
+      
+      setGatePassData(updatedInvoiceData);
+      setIsDeliveryNoteOpen(false);
+      setIsGatePassDialogOpen(true);
     };
 
     const onViewInvoice = (invoiceId: string) => {
@@ -942,6 +967,7 @@ function InvoicePage() {
                       liveBalances={liveBalances}
                       onEdit={handleEditInvoice}
                       onGenerateDeliveryNote={handleOpenDeliveryNoteDialog}
+                      onViewGatePass={setGatePassData}
                     />
                   ))
               ) : (
@@ -962,8 +988,8 @@ function InvoicePage() {
       />
 
        <GatePassDialog
-        open={isGatePassDialogOpen}
-        onOpenChange={setIsGatePassDialogOpen}
+        open={!!gatePassData}
+        onOpenChange={() => setGatePassData(null)}
         invoice={gatePassData}
         companyInfo={companyInfo}
        />
