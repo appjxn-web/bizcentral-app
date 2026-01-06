@@ -54,8 +54,9 @@ export default function CreditNotePage() {
                 setSelectedInvoice(invoice);
                 setCreditItems(invoice.items.map(item => ({
                     ...item,
+                    price: item.price || 0, // Ensure price is a number
                     returnQty: 0,
-                    revisedRate: item.price,
+                    revisedRate: item.price || 0,
                 })));
             }
         } else {
