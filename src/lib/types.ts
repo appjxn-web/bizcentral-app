@@ -991,6 +991,7 @@ export interface SalesInvoice {
     orderNumber?: string; // Human-readable order number
     customerId: string;
     customerName: string;
+    coaLedgerId: string;
     date: string;
     items: SalesInvoiceItem[];
     subtotal: number;

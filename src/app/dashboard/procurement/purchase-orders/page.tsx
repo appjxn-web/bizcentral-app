@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -57,7 +56,7 @@ import { cn } from '@/lib/utils';
 import { MoreHorizontal, PlusCircle, Share2, Send, FileText, ClipboardList, CheckCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useCollection } from '@/firebase';
-import { collection, doc, deleteDoc, updateDoc } from 'firebase/firestore';
+import { collection, doc, deleteDoc, updateDoc, addDoc, serverTimestamp } from 'firebase/firestore';
 import type { PurchaseOrder, PoStatus } from '@/lib/types';
 
 
@@ -85,6 +84,7 @@ export default function PurchaseOrdersPage() {
   const [isAdvanceDialogOpen, setIsAdvanceDialogOpen] = React.useState(false);
   const [advancingPO, setAdvancingPO] = React.useState<PurchaseOrder | null>(null);
   const [advanceAmount, setAdvanceAmount] = React.useState(0);
+  const [advanceReason, setAdvanceReason] = React.useState('');
 
   const kpis = React.useMemo(() => {
     if (!purchaseOrders) return { total: 0, draft: 0, sent: 0, completed: 0 };
@@ -131,30 +131,35 @@ export default function PurchaseOrdersPage() {
     const totalAmount = po.grandTotal;
     setAdvancingPO(po);
     setAdvanceAmount(totalAmount / 2); // Default to 50%
+    setAdvanceReason('');
     setIsAdvanceDialogOpen(true);
   };
   
-  const handleRequestAdvance = () => {
+  const handleRequestAdvance = async () => {
     if (!advancingPO) return;
     
-    const allAdvanceRequests = JSON.parse(localStorage.getItem('advanceRequests') || '[]');
-    const newRequest = {
-        id: `ADV-${Date.now()}`,
-        poId: advancingPO.id,
-        supplierName: advancingPO.supplierName,
-        poAmount: advancingPO.grandTotal,
-        advanceAmount,
-        requestDate: new Date().toISOString(),
-        status: 'Pending Approval'
-    };
-    
-    localStorage.setItem('advanceRequests', JSON.stringify([...allAdvanceRequests, newRequest]));
-    toast({
-      title: 'Advance Requested',
-      description: `Request for an advance of ₹${advanceAmount.toFixed(2)} has been sent for approval.`,
-    });
-    
-    setIsAdvanceDialogOpen(false);
+    try {
+        await addDoc(collection(firestore, 'advanceRequests'), {
+            poId: advancingPO.id,
+            supplierName: advancingPO.supplierName,
+            supplierId: advancingPO.supplierId,
+            poAmount: advancingPO.grandTotal,
+            advanceAmount,
+            reason: advanceReason,
+            requestDate: new Date().toISOString(),
+            status: 'Pending Approval'
+        });
+
+        toast({
+          title: 'Advance Requested',
+          description: `Request for an advance of ₹${advanceAmount.toFixed(2)} has been sent for approval.`,
+        });
+        
+        setIsAdvanceDialogOpen(false);
+    } catch (e) {
+        console.error(e);
+        toast({ variant: 'destructive', title: 'Request Failed' });
+    }
   };
 
   return (
@@ -271,7 +276,7 @@ export default function PurchaseOrdersPage() {
                                                     <AlertDialogTrigger asChild>
                                                         <DropdownMenuItem
                                                             onSelect={(e) => e.preventDefault()}
-                                                            className="text-red-600 focus:text-red-600"
+                                                            className="text-red-600 focus:text-red-600 focus:bg-red-50 dark:focus:bg-red-900/40"
                                                             onClick={(e) => e.stopPropagation()}
                                                         >
                                                             Delete
@@ -319,14 +324,25 @@ export default function PurchaseOrdersPage() {
                 <DialogTitle>Request Advance for PO: {advancingPO?.id}</DialogTitle>
                 <DialogDescription>Enter the amount you need to pay as an advance to the supplier.</DialogDescription>
             </DialogHeader>
-            <div className="py-4">
-                <Label htmlFor="advance-amount">Advance Amount (₹)</Label>
-                <Input
-                    id="advance-amount"
-                    type="number"
-                    value={advanceAmount}
-                    onChange={(e) => setAdvanceAmount(Number(e.target.value))}
-                />
+            <div className="py-4 space-y-4">
+                <div className="space-y-2">
+                    <Label htmlFor="advance-amount">Advance Amount (₹)</Label>
+                    <Input
+                        id="advance-amount"
+                        type="number"
+                        value={advanceAmount}
+                        onChange={(e) => setAdvanceAmount(Number(e.target.value))}
+                    />
+                </div>
+                 <div className="space-y-2">
+                    <Label htmlFor="advance-reason">Reason for Advance</Label>
+                    <Input
+                        id="advance-reason"
+                        placeholder="e.g., Raw material procurement"
+                        value={advanceReason}
+                        onChange={(e) => setAdvanceReason(e.target.value)}
+                    />
+                </div>
             </div>
             <DialogFooter>
                 <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>

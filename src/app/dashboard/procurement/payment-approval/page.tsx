@@ -19,13 +19,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-  TableFooter,
 } from '@/components/ui/table';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Badge } from '@/components/ui/badge';
-import { useToast } from '@/hooks/use-toast';
-import { cn } from '@/lib/utils';
-import { MoreHorizontal, CheckCircle, XCircle, CircleDollarSign, Hourglass, Loader2, ChevronRight, ChevronDown } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -33,27 +27,17 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Badge } from '@/components/ui/badge';
+import { useToast } from '@/hooks/use-toast';
+import { cn } from '@/lib/utils';
+import { MoreHorizontal, CheckCircle, XCircle, CircleDollarSign, Hourglass, Loader2, ChevronRight, ChevronDown } from 'lucide-react';
 import { format } from 'date-fns';
 import { useFirestore, useCollection } from '@/firebase';
-import { collection, doc, updateDoc, query, where, writeBatch, serverTimestamp, addDoc } from 'firebase/firestore';
-import type { Grn, GrnPaymentRequest, AdvanceRequest, PurchaseRequest, CoaLedger } from '@/lib/types';
+import { collection, doc, updateDoc, query, where } from 'firebase/firestore';
+import type { Grn, GrnPaymentRequest, AdvanceRequest, PurchaseRequest } from '@/lib/types';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Separator } from '@/components/ui/separator';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-  DialogClose,
-} from '@/components/ui/dialog';
-import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { errorEmitter } from '@/firebase/error-emitter';
-import { FirestorePermissionError } from '@/firebase/errors';
-
 
 type PaymentRequestStatus = 'Pending Approval' | 'Approved' | 'Rejected' | 'Paid';
 
@@ -226,10 +210,6 @@ export default function PaymentApprovalPage() {
   const { data: grnsData, loading: grnsLoading } = useCollection<Grn>(collection(firestore, 'grns'));
   const { data: advanceRequestsData, loading: advancesLoading } = useCollection<AdvanceRequest>(collection(firestore, 'advanceRequests'));
   const { data: purchaseRequestsData, loading: poLoading } = useCollection<PurchaseRequest>(collection(firestore, 'purchaseRequests'));
-  const { data: coaLedgers, loading: ledgersLoading } = useCollection<CoaLedger>(collection(firestore, 'coa_ledgers'));
-  
-  const [paymentDialog, setPaymentDialog] = React.useState<{ isOpen: boolean; request: any | null }>({ isOpen: false, request: null });
-  const [isProcessingPayment, setIsProcessingPayment] = React.useState(false);
 
   const grnPayments: (GrnPaymentRequest & { advancePaid: number; balanceDue: number; items: Grn['items']; subtotal: number; totalGst: number; })[] = React.useMemo(() => {
     if (!grnsData) return [];
@@ -252,7 +232,7 @@ export default function PaymentApprovalPage() {
             balanceDue,
             items: grn.items,
             subtotal: grn.subtotal,
-            totalGst: grn.totalGst,
+            totalGst: grn.cgst + grn.sgst + grn.igst,
         }
     });
   }, [grnsData, advanceRequestsData]);
