@@ -1,5 +1,4 @@
 
-
 'use server';
 import {
   onDocumentCreated,
@@ -11,7 +10,7 @@ import {
 } from "firebase-functions/v2/firestore";
 import * as admin from "firebase-admin";
 import {getFirestore, FieldValue} from "firebase-admin/firestore";
-import type {Order, SalesInvoice, Party, Goal, UserProfile, CreditNote, DebitNote, RefundRequest} from "./types";
+import type {Order, SalesInvoice, Party, Goal, UserProfile, CreditNote, DebitNote, RefundRequest, Product} from "./types";
 
 if (admin.apps.length === 0) { admin.initializeApp(); }
 const db = getFirestore();
@@ -159,15 +158,46 @@ export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}", a
             salesEntries.push({ accountId: "L-2.1.2-2", credit: invoice.sgst || 0, debit: 0 });
         }
 
-        const jvRef = db.collection("journalVouchers").doc();
-        transaction.set(jvRef, {
-          id: jvRef.id,
+        const salesJvRef = db.collection("journalVouchers").doc();
+        transaction.set(salesJvRef, {
+          id: salesJvRef.id,
           date: invoice.date,
           narration: `Sales Invoice ${invoice.invoiceNumber} to ${invoice.customerName}`,
           entries: salesEntries,
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
           voucherType: "Sales Voucher"
         });
+
+        // --- COGS Entry ---
+        let totalCost = 0;
+        const cogsEntries = [];
+        const cogsLedgerId = await getLedgerIdByName("COST OF GOODS SOLD (COGS)");
+        const finishedGoodsLedgerId = await getLedgerIdByName("Stock-in-Hand – Finished Goods");
+
+        if (cogsLedgerId && finishedGoodsLedgerId) {
+            for (const item of invoice.items) {
+                const productRef = db.collection('products').doc(item.productId);
+                const productSnap = await transaction.get(productRef);
+                const product = productSnap.data() as Product | undefined;
+                const itemCost = (product?.cost || 0) * item.quantity;
+                totalCost += itemCost;
+            }
+
+            if (totalCost > 0) {
+                cogsEntries.push({ accountId: cogsLedgerId, debit: totalCost, credit: 0 });
+                cogsEntries.push({ accountId: finishedGoodsLedgerId, debit: 0, credit: totalCost });
+                
+                const cogsJvRef = db.collection("journalVouchers").doc();
+                transaction.set(cogsJvRef, {
+                    id: cogsJvRef.id,
+                    date: invoice.date,
+                    narration: `COGS for Invoice ${invoice.invoiceNumber}`,
+                    entries: cogsEntries,
+                    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                    voucherType: "Journal Voucher"
+                });
+            }
+        }
 
         // Update the original Sales Order status to "Ready for Dispatch"
         if (invoice.orderId) {
@@ -385,3 +415,6 @@ export const onGoalUpdate = onDocumentCreated("goalUpdates/{updateId}", async ()
 
     
 
+
+
+    
