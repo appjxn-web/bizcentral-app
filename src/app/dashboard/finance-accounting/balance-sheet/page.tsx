@@ -21,7 +21,7 @@ import {
   TableFooter,
 } from '@/components/ui/table';
 import { Landmark, Loader2, PlusCircle, ChevronDown, ChevronRight, Download } from 'lucide-react';
-import type { CoaGroup, CoaLedger, JournalVoucher, Product, WorkOrder, Order, SalesInvoice } from '@/lib/types';
+import type { CoaGroup, CoaLedger, JournalVoucher, Product, WorkOrder, Order, SalesInvoice, Party } from '@/lib/types';
 import { AddLedgerAccountDialog } from './_components/add-ledger-account-dialog';
 import { useFirestore, useCollection, useUser } from '@/firebase';
 import { collection, query, orderBy, doc, Timestamp } from 'firebase/firestore';
@@ -58,6 +58,7 @@ function BalanceSheetContent() {
   const { data: workOrders, loading: workOrdersLoading } = useCollection<WorkOrder>(collection(firestore, 'workOrders'));
   const { data: allOrders, loading: ordersLoading } = useCollection<Order>(collection(firestore, 'orders'));
   const { data: salesInvoices, loading: invoicesLoading } = useCollection<SalesInvoice>(collection(firestore, 'salesInvoices'));
+  const { data: parties, loading: partiesLoading } = useCollection<Party>(collection(firestore, 'parties'));
   
   const jvQuery = React.useMemo(() => {
     if (!user || !currentRole) return null;
@@ -94,7 +95,7 @@ function BalanceSheetContent() {
   };
 
   const { assets, liabilities, equity, pnl, loading, kpis } = React.useMemo(() => {
-    if (groupsLoading || ledgersLoading || vouchersLoading || productsLoading || workOrdersLoading || ordersLoading || invoicesLoading || !coaGroups || !coaLedgers || !journalVouchers || !products || !allOrders || !salesInvoices) {
+    if (groupsLoading || ledgersLoading || vouchersLoading || productsLoading || workOrdersLoading || ordersLoading || invoicesLoading || partiesLoading || !coaGroups || !coaLedgers || !journalVouchers || !products || !allOrders || !salesInvoices || !parties) {
         return { assets: [], liabilities: [], equity: [], pnl: 0, loading: true, kpis: { assets: 0, liabilities: 0, equity: 0, totalLiabilitiesAndEquity: 0 }};
     }
 
@@ -114,7 +115,7 @@ function BalanceSheetContent() {
       if (new Date(inv.date) > eDate) return;
 
       // DEBIT: Customer (Asset)
-      const customerLedgerId = coaLedgers.find(l => l.id === inv.customerId)?.id || parties.find(p => p.id === inv.customerId)?.coaLedgerId;
+      const customerLedgerId = inv.coaLedgerId;
       if (customerLedgerId && liveBalances.has(customerLedgerId)) {
         liveBalances.set(customerLedgerId, (liveBalances.get(customerLedgerId) || 0) + inv.grandTotal);
       }
@@ -186,7 +187,7 @@ function BalanceSheetContent() {
             totalLiabilitiesAndEquity: Math.abs(totalLiabilities + totalEquityBase) + currentPnl
         }
     };
-  }, [coaGroups, coaLedgers, journalVouchers, products, allOrders, salesInvoices, groupsLoading, ledgersLoading, vouchersLoading, productsLoading, ordersLoading, invoicesLoading, endDate]);
+  }, [coaGroups, coaLedgers, journalVouchers, products, allOrders, salesInvoices, parties, groupsLoading, ledgersLoading, vouchersLoading, productsLoading, ordersLoading, invoicesLoading, partiesLoading, endDate]);
 
   const toggleGroup = (groupId: string) => {
     setOpenGroups(prev => ({ ...prev, [groupId]: !(prev[groupId] ?? true) }));
@@ -396,5 +397,3 @@ export default function BalanceSheetPage() {
     React.useEffect(() => { setIsClient(true); }, []);
     return isClient ? <BalanceSheetContent /> : null;
 }
-
-    
