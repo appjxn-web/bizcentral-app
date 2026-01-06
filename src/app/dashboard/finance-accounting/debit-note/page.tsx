@@ -18,14 +18,6 @@ import { getNextDocNumber } from '@/lib/number-series';
 import { format } from 'date-fns';
 import { Separator } from '@/components/ui/separator';
 
-const formatIndianCurrency = (num: number) => {
-  return new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    minimumFractionDigits: 2,
-  }).format(num || 0);
-};
-
 interface DebitItem extends SalesInvoiceItem {
   adjustQty: number;
   revisedRate: number;
@@ -34,6 +26,14 @@ interface DebitItem extends SalesInvoiceItem {
 const companyDetails = {
   gstin: '08AAFCJ5369P1ZR', // Mock company GSTIN
 };
+
+const formatIndianCurrency = (num: number) => {
+    return new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR',
+      minimumFractionDigits: 2,
+    }).format(num || 0);
+  };
 
 export default function DebitNotePage() {
     const { toast } = useToast();
@@ -207,7 +207,7 @@ export default function DebitNotePage() {
                                      <SelectItem value="none">None (Manual Entry)</SelectItem>
                                     {supplierInvoices.map(inv => (
                                         <SelectItem key={inv.id} value={inv.invoiceNumber}>
-                                            {inv.invoiceNumber} - ({format(new Date(inv.date), 'dd/MM/yy')}) - ₹{inv.grandTotal.toFixed(2)}
+                                            {inv.invoiceNumber} - ({format(new Date(inv.date), 'dd/MM/yy')}) - {formatIndianCurrency(inv.grandTotal)}
                                         </SelectItem>
                                     ))}
                                 </SelectContent>
@@ -239,21 +239,24 @@ export default function DebitNotePage() {
                                         <TableHead>Item</TableHead>
                                         <TableHead className="text-center">Orig. Qty</TableHead>
                                         <TableHead className="text-right">Orig. Rate</TableHead>
+                                        <TableHead className="text-right">Orig. Total</TableHead>
                                         <TableHead className="w-32 text-right">Revised Rate</TableHead>
-                                        <TableHead className="text-right">Total Debit</TableHead>
+                                        <TableHead className="text-right">Revised Total</TableHead>
+                                        <TableHead className="text-right">Debit Amount</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
                                     {debitItems.map((item, index) => {
-                                        const originalNetRate = (item.rate || 0) * (1 - (item.discount || 0) / 100);
-                                        const priceDifference = item.revisedRate - originalNetRate;
-                                        const total = priceDifference > 0 ? priceDifference * item.quantity : 0;
+                                        const originalTotal = item.quantity * (item.rate || 0);
+                                        const revisedTotal = item.quantity * item.revisedRate;
+                                        const debitAmount = revisedTotal - originalTotal;
                                         return (
                                         <TableRow key={item.productId}>
                                             <TableCell>{item.name}</TableCell>
                                             <TableCell className="text-center">{item.quantity}</TableCell>
                                             <TableCell className="text-right">{formatIndianCurrency(item.rate || 0)}</TableCell>
-                                             <TableCell>
+                                            <TableCell className="text-right font-mono">{formatIndianCurrency(originalTotal)}</TableCell>
+                                            <TableCell>
                                                 <Input 
                                                     type="number" 
                                                     value={item.revisedRate} 
@@ -261,7 +264,8 @@ export default function DebitNotePage() {
                                                     className="text-right"
                                                 />
                                             </TableCell>
-                                            <TableCell className="text-right font-mono font-semibold">{formatIndianCurrency(total)}</TableCell>
+                                            <TableCell className="text-right font-mono">{formatIndianCurrency(revisedTotal)}</TableCell>
+                                            <TableCell className="text-right font-mono font-semibold text-green-600">{formatIndianCurrency(debitAmount > 0 ? debitAmount : 0)}</TableCell>
                                         </TableRow>
                                     )})}
                                 </TableBody>
