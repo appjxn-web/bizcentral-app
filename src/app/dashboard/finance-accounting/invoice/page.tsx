@@ -1,3 +1,5 @@
+
+
 'use client';
 
 import * as React from 'react';
@@ -117,20 +119,36 @@ function DeliveryNoteDialog({
   isOpen,
   onOpenChange,
   invoice,
+  customer,
   onConfirm,
 }: {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
   invoice: SalesInvoice | null;
+  customer: Party | null;
   onConfirm: (deliveryDetails: any) => void;
 }) {
+  const [customerName, setCustomerName] = React.useState('');
+  const [shippingAddress, setShippingAddress] = React.useState('');
   const [shippingMethod, setShippingMethod] = React.useState('');
   const [vehicleNumber, setVehicleNumber] = React.useState('');
   const [driverName, setDriverName] = React.useState('');
   const [driverPhone, setDriverPhone] = React.useState('');
 
+  React.useEffect(() => {
+    if (invoice && customer) {
+        setCustomerName(customer.name);
+        const address = customer.address;
+        const addressString = address ? [address.line1, address.line2, address.city, address.state, address.pin].filter(Boolean).join(', ') : '';
+        setShippingAddress(addressString);
+    }
+  }, [invoice, customer]);
+
+
   const handleSubmit = () => {
     onConfirm({
+      customerName,
+      shippingAddress,
       shippingMethod,
       vehicleNumber,
       driverName,
@@ -148,6 +166,14 @@ function DeliveryNoteDialog({
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-4">
+            <div className="space-y-2">
+                <Label htmlFor="customer-name">Customer Name</Label>
+                <Input id="customer-name" value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
+            </div>
+             <div className="space-y-2">
+                <Label htmlFor="shipping-address">Shipping Address</Label>
+                <Textarea id="shipping-address" value={shippingAddress} onChange={(e) => setShippingAddress(e.target.value)} />
+            </div>
           <div className="space-y-2">
             <Label htmlFor="shipping-method">Shipping Method</Label>
             <Input id="shipping-method" value={shippingMethod} onChange={(e) => setShippingMethod(e.target.value)} placeholder="e.g., By Road, Courier" />
@@ -416,7 +442,7 @@ function GeneratedInvoiceRow({ invoice, onUpdateStatus, allProducts, getOrderInH
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4"/></Button></DropdownMenuTrigger>
                             <DropdownMenuContent>
-                                <DropdownMenuItem onClick={() => router.push(`/dashboard/sales/invoice/view?id=${invoice.invoiceNumber}`)}>
+                                <DropdownMenuItem onClick={() => router.push(`/dashboard/finance-accounting/invoice/view?id=${invoice.invoiceNumber}`)}>
                                     <Eye className="mr-2 h-4 w-4"/> View
                                 </DropdownMenuItem>
                                  <DropdownMenuItem onClick={() => onEdit(invoice.invoiceNumber)}>
@@ -576,7 +602,7 @@ function InvoicePage() {
                 });
             });
         }
-
+        
         if (allSalesInvoices && allParties) {
             allSalesInvoices.forEach(inv => {
                 const party = allParties.find(p => p.id === inv.customerId);
@@ -588,6 +614,7 @@ function InvoicePage() {
                 }
             });
         }
+
 
         return balances;
     }, [allCoaLedgers, journalVouchers, allSalesInvoices, allParties]);
@@ -660,7 +687,7 @@ function InvoicePage() {
     };
 
     const onViewInvoice = (invoiceId: string) => {
-        router.push(`/dashboard/sales/invoice/view?id=${invoiceId}`);
+        router.push(`/dashboard/finance-accounting/invoice/view?id=${invoiceId}`);
     };
 
     const handleEditOrder = (orderId: string) => {
@@ -811,6 +838,7 @@ function InvoicePage() {
         isOpen={isDeliveryNoteOpen}
         onOpenChange={setIsDeliveryNoteOpen}
         invoice={selectedInvoiceForDelivery}
+        customer={allParties?.find(p => p.id === selectedInvoiceForDelivery?.customerId) || null}
         onConfirm={handleConfirmDeliveryNote}
       />
     </>
@@ -830,3 +858,5 @@ export default function InvoicePageWrapper() {
 
     return <InvoicePage />;
 }
+
+    
