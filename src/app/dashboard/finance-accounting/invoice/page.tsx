@@ -300,17 +300,23 @@ function GatePassDialog({ open, onOpenChange, invoice, companyInfo }: { open: bo
                                 <p className="text-sm"><strong>Date:</strong> {format(new Date(), 'dd/MM/yyyy')}</p>
                             </div>
                         </header>
-                        <section className="print-section print-grid">
-                             <div>
-                                <h3 className="font-semibold">Deliver To:</h3>
-                                <p className="font-bold">{invoice.deliveryDetails?.customerName}</p>
-                                <p>{invoice.deliveryDetails?.shippingAddress}</p>
-                            </div>
-                            <div className="text-right">
-                                <h3 className="font-semibold">Shipping Details:</h3>
-                                <p><strong>Method:</strong> {invoice.deliveryDetails?.shippingMethod}</p>
-                                <p><strong>Vehicle:</strong> {invoice.deliveryDetails?.vehicleNumber}</p>
-                                <p><strong>Driver:</strong> {invoice.deliveryDetails?.driverName} ({invoice.deliveryDetails?.driverPhone})</p>
+                         <section className="print-section">
+                            <h2 className="font-semibold text-lg text-center underline">GATE PASS</h2>
+                            <div className="print-grid">
+                                <div>
+                                    <h3 className="font-semibold">Deliver To:</h3>
+                                    <p className="font-bold">{invoice.deliveryDetails?.customerName}</p>
+                                    <p>{invoice.deliveryDetails?.shippingAddress}</p>
+                                </div>
+                                <div className="text-right">
+                                    <h3 className="font-semibold">Shipping Details:</h3>
+                                    <p><strong>Method:</strong> {invoice.deliveryDetails?.shippingMethod}</p>
+                                    {invoice.deliveryDetails?.shippingCost && invoice.deliveryDetails.shippingCost > 0 && (
+                                        <p><strong>Cost:</strong> {formatIndianCurrency(invoice.deliveryDetails.shippingCost)}</p>
+                                    )}
+                                    <p><strong>Vehicle:</strong> {invoice.deliveryDetails?.vehicleNumber}</p>
+                                    <p><strong>Driver:</strong> {invoice.deliveryDetails?.driverName} ({invoice.deliveryDetails?.driverPhone})</p>
+                                </div>
                             </div>
                         </section>
                         <section className="print-section">
@@ -474,7 +480,7 @@ function OrderRow({ order, onGenerateInvoice, onUpdateStatus, pickupPoints, dyna
                   </DropdownMenuTrigger>
                   <DropdownMenuContent>
                     <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                     <DropdownMenuItem onClick={() => router.push(`/dashboard/sales/orders/view?id=${order.orderNumber}`)}>
+                     <DropdownMenuItem onClick={() => router.push(`/dashboard/sales/orders/view?id=${order.id}`)}>
                         <Eye className="mr-2 h-4 w-4" /> View Order
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => onEdit(order.id)}>
@@ -568,7 +574,7 @@ function InvoicePage() {
     const { data: settingsData } = useDoc<any>(doc(firestore, 'company', 'settings'));
     const { data: pickupPoints } = useCollection<PickupPoint>(collection(firestore, 'pickupPoints'));
     const { data: allProducts, loading: productsLoading } = useCollection<Product>(collection(firestore, 'products'));
-    const { data: parties } = useCollection<Party>(collection(firestore, 'parties'));
+    const { data: parties, loading: partiesLoading } = useCollection<Party>(collection(firestore, 'parties'));
     const { data: companyInfo } = useDoc<CompanyInfo>(doc(firestore, 'company', 'info'));
     
     const [isDeliveryNoteOpen, setIsDeliveryNoteOpen] = React.useState(false);
@@ -654,19 +660,29 @@ function InvoicePage() {
     };
 
     const handleConfirmDeliveryNote = async (deliveryDetails: any) => {
-      if (!selectedInvoiceForDelivery) return;
-      const orderToUpdate = orders?.find(o => o.orderNumber === selectedInvoiceForDelivery.orderNumber);
-      if (!orderToUpdate) {
-        toast({ variant: "destructive", title: "Error", description: `Could not find original sales order ${selectedInvoiceForDelivery.orderNumber}` });
-        return;
+      if (!selectedInvoiceForDelivery || !firestore) return;
+    
+      const orderQuery = query(
+          collection(firestore, 'orders'),
+          where('orderNumber', '==', selectedInvoiceForDelivery.orderNumber),
+          limit(1)
+      );
+
+      const orderSnapshot = await getDocs(orderQuery);
+
+      if (orderSnapshot.empty) {
+          toast({ variant: "destructive", title: "Error", description: `Could not find original sales order ${selectedInvoiceForDelivery.orderNumber}` });
+          return;
       }
       
+      const orderToUpdateRef = orderSnapshot.docs[0].ref;
+
       const batch = writeBatch(firestore);
       const invoiceRef = doc(firestore, 'salesInvoices', selectedInvoiceForDelivery.id);
-      const orderRef = doc(firestore, 'orders', orderToUpdate.id);
       
       batch.update(invoiceRef, { deliveryDetails });
-      batch.update(orderRef, { status: 'Shipped' });
+      batch.update(orderToUpdateRef, { status: 'Shipped' });
+      
       await batch.commit();
       
       toast({
@@ -692,7 +708,7 @@ function InvoicePage() {
         router.push(`/dashboard/finance-accounting/invoice/create?id=${invoiceId}`);
     };
 
-    const loading = ordersLoading || workOrdersLoading || productsLoading || invoicesLoading;
+    const loading = ordersLoading || workOrdersLoading || productsLoading || invoicesLoading || partiesLoading;
 
   return (
     <>
