@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import type { Timestamp } from 'firebase/firestore';
@@ -1020,6 +1021,7 @@ export interface DebitNote {
     amount: number;
     reason: string;
     status: 'Draft' | 'Issued' | 'Settled';
+    createdAt: any;
 }
 
 export interface CreditNote {
@@ -1032,7 +1034,9 @@ export interface CreditNote {
     amount: number;
     reason: string;
     status: 'Draft' | 'Issued' | 'Settled';
+    createdAt: any;
 }
+
 
 export interface ServiceInvoice {
   id: string;
