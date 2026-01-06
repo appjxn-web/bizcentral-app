@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -65,7 +66,7 @@ import {
 import Image from 'next/image';
 import { Separator } from '@/components/ui/separator';
 import { useFirestore, useCollection, useUser, useDoc } from '@/firebase';
-import { collection, query, orderBy, doc, where, or, updateDoc, writeBatch, limit, getDoc } from 'firebase/firestore';
+import { collection, query, orderBy, doc, where, or, updateDoc, writeBatch, limit, getDoc, getDocs } from 'firebase/firestore';
 import { OrderStatusTracker } from '../../my-orders/_components/order-status';
 import {
   Dialog,
@@ -608,14 +609,14 @@ function InvoicePage() {
     
     const liveBalances = React.useMemo(() => {
         const balances = new Map<string, number>();
-        if (!allCoaLedgers) return balances;
-
+        if (!allCoaLedgers || !allParties) return balances;
+    
         allCoaLedgers.forEach(acc => {
             const openingBal = acc.openingBalance?.amount || 0;
             const balance = acc.openingBalance?.drCr === 'CR' ? -openingBal : openingBal;
             balances.set(acc.id, balance);
         });
-
+    
         if (journalVouchers) {
             journalVouchers.forEach(jv => {
                 jv.entries.forEach(entry => {
@@ -628,7 +629,7 @@ function InvoicePage() {
             });
         }
         
-        if (allSalesInvoices && allParties) {
+        if (allSalesInvoices) {
             allSalesInvoices.forEach(inv => {
                 const party = allParties.find(p => p.id === inv.customerId);
                 const ledgerId = party?.coaLedgerId;
@@ -639,7 +640,6 @@ function InvoicePage() {
                 }
             });
         }
-
 
         return balances;
     }, [allCoaLedgers, journalVouchers, allSalesInvoices, allParties]);
@@ -688,10 +688,19 @@ function InvoicePage() {
         if (!selectedInvoiceForDelivery) return;
 
         const invoiceRef = doc(firestore, 'salesInvoices', selectedInvoiceForDelivery.invoiceNumber);
-        const orderRef = doc(firestore, 'orders', selectedInvoiceForDelivery.orderId);
         
-        await updateDoc(invoiceRef, { deliveryDetails });
-        await updateDoc(orderRef, { status: 'Shipped' });
+        // Find the original order document by its document ID
+        const orderToUpdate = orders?.find(o => o.orderNumber === selectedInvoiceForDelivery.orderNumber);
+        if (!orderToUpdate) {
+            toast({ variant: "destructive", title: "Error", description: `Could not find original sales order ${selectedInvoiceForDelivery.orderNumber}` });
+            return;
+        }
+        const orderRef = doc(firestore, 'orders', orderToUpdate.id);
+
+        const batch = writeBatch(firestore);
+        batch.update(invoiceRef, { deliveryDetails });
+        batch.update(orderRef, { status: 'Shipped' });
+        await batch.commit();
         
         toast({
             title: "Order Shipped!",
