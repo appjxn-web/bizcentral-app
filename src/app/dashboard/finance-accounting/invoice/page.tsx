@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -33,7 +32,7 @@ import html2canvas from 'html2canvas';
 
 import { PageHeader } from '@/components/page-header';
 import { cn } from '@/lib/utils';
-import type { Order, OrderStatus, UserProfile, UserRole, WorkOrder, PickupPoint, SalesOrder, RefundRequest, Product, SalesInvoice, SalesInvoiceItem, JournalVoucher, CoaLedger, Party, CompanyInfo } from '@/lib/types';
+import type { Order, OrderStatus, UserProfile, UserRole, WorkOrder, PickupPoint, SalesOrder, RefundRequest, Product, SalesInvoice, SalesInvoiceItem } from '@/lib/types';
 import { Button, buttonVariants } from '@/components/ui/button';
 import {
   Card,
@@ -233,21 +232,7 @@ function GatePassDialog({ open, onOpenChange, invoice, companyInfo }: { open: bo
     const pdfRef = React.useRef<HTMLDivElement>(null);
 
     const handlePrint = () => {
-        const printContent = pdfRef.current?.innerHTML;
-        if (printContent) {
-            const printWindow = window.open('', '', 'height=800,width=800');
-            if(printWindow) {
-                printWindow.document.write('<html><head><title>Print Gate Pass</title>');
-                printWindow.document.write('<style>@media print{@page { size: A4; margin: 0; } body { margin: 1.5cm; } .no-print { display: none; } } body { font-family: sans-serif; }</style>');
-                printWindow.document.write('</head><body>');
-                printWindow.document.write(printContent);
-                printWindow.document.write('</body></html>');
-                printWindow.document.close();
-                printWindow.focus();
-                printWindow.print();
-                printWindow.close();
-            }
-        }
+        window.print();
     };
 
     if (!invoice) return null;
@@ -259,13 +244,14 @@ function GatePassDialog({ open, onOpenChange, invoice, companyInfo }: { open: bo
                     <DialogTitle>Gate Pass for Order: {invoice.orderNumber}</DialogTitle>
                 </DialogHeader>
                 <div className="p-4 border rounded-md">
-                    <div className="w-[210mm] max-w-full mx-auto p-8 bg-white text-black" ref={pdfRef} id="gate-pass-printable">
+                    <div className="w-[210mm] max-w-full mx-auto p-8 bg-white text-black font-sans" ref={pdfRef} id="gate-pass-printable">
                          <header className="flex justify-between items-start border-b pb-4">
                             <div>
                                 {companyInfo?.logo && <Image src={companyInfo.logo} alt="Logo" width={150} height={40} crossOrigin="anonymous" />}
                             </div>
                             <div className="text-right">
-                                <h1 className="text-xl font-bold text-primary">Delivery Note / Gate Pass</h1>
+                                <h1 className="text-xl font-bold text-primary">{companyInfo?.companyName}</h1>
+                                <p className="text-sm"><strong>Delivery Note / Gate Pass</strong></p>
                                 <p className="text-sm"><strong>Order No:</strong> {invoice.orderNumber}</p>
                                 <p className="text-sm"><strong>Date:</strong> {format(new Date(), 'dd/MM/yyyy')}</p>
                             </div>
@@ -307,7 +293,7 @@ function GatePassDialog({ open, onOpenChange, invoice, companyInfo }: { open: bo
                             <div className="text-xs space-y-4">
                                <p className="text-muted-foreground">Goods are received in good condition.</p>
                                 <div className="pt-12">
-                                    <Separator className="w-48"/>
+                                    <Separator className="w-48 bg-black"/>
                                     <p className="pt-1 font-semibold">Receiver's Signature</p>
                                 </div>
                             </div>
@@ -318,7 +304,7 @@ function GatePassDialog({ open, onOpenChange, invoice, companyInfo }: { open: bo
                             <div className="text-right">
                                 <p className="font-semibold mb-12">For, {companyInfo?.companyName}</p>
                                 <div className="h-16 w-32"></div>
-                                <Separator />
+                                <Separator className="bg-black"/>
                                 <p className="text-xs pt-1">Authorized Signatory</p>
                             </div>
                         </footer>
@@ -529,142 +515,6 @@ function OrderRow({ order, onGenerateInvoice, onUpdateStatus, pickupPoints, dyna
   )
 }
 
-function GeneratedInvoiceRow({ invoice, onUpdateStatus, allProducts, getOrderInHand, allSalesInvoices, journalVouchers, allCoaLedgers, allParties, liveBalances, onEdit, onGenerateDeliveryNote, onViewGatePass }: { invoice: SalesInvoice, onUpdateStatus: (id: string, status: 'Paid' | 'Unpaid') => void, allProducts: Product[] | null, getOrderInHand: (productId: string) => number, allSalesInvoices: SalesInvoice[] | null, journalVouchers: JournalVoucher[] | null, allCoaLedgers: CoaLedger[] | null, allParties: Party[] | null, liveBalances: Map<string, number>, onEdit: (invoiceId: string) => void, onGenerateDeliveryNote: (invoice: SalesInvoice) => void, onViewGatePass: (invoice: SalesInvoice) => void }) {
-    const [isOpen, setIsOpen] = React.useState(false);
-    const router = useRouter();
-
-    const paymentTransactions = React.useMemo(() => {
-        if (!journalVouchers || !invoice.orderNumber) return [];
-        return journalVouchers.filter(jv => 
-            jv.voucherType === 'Receipt Voucher' && 
-            jv.narration.includes(invoice.orderNumber)
-        );
-    }, [journalVouchers, invoice.orderNumber]);
-
-    const party = allParties?.find(p => p.id === invoice.customerId);
-    const partyBalance = party?.coaLedgerId ? liveBalances.get(party.coaLedgerId) : 0;
-    const balanceText = partyBalance > 0 ? `${formatIndianCurrency(partyBalance)} Dr` : `${formatIndianCurrency(Math.abs(partyBalance || 0))} Cr`;
-
-
-    return (
-        <Collapsible asChild key={invoice.id} open={isOpen} onOpenChange={setIsOpen}>
-            <TableBody>
-                <TableRow>
-                    <TableCell>
-                        <CollapsibleTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-8 w-8">
-                                {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                                <span className="sr-only">Toggle details</span>
-                            </Button>
-                        </CollapsibleTrigger>
-                    </TableCell>
-                    <TableCell className="font-mono">{invoice.invoiceNumber}</TableCell>
-                    <TableCell>{invoice.customerName}</TableCell>
-                    <TableCell>{format(new Date(invoice.date), 'dd/MM/yyyy')}</TableCell>
-                    <TableCell>
-                        <Badge className={cn('text-xs', getStatusBadgeVariant(invoice.status))} variant="outline">
-                        {invoice.status}
-                        </Badge>
-                    </TableCell>
-                    <TableCell className="text-right font-mono">{formatIndianCurrency(invoice.grandTotal)}</TableCell>
-                     <TableCell className={cn("text-right font-mono", (partyBalance || 0) > 0 ? "text-red-600" : "text-green-600")}>
-                        {balanceText}
-                    </TableCell>
-                    <TableCell className="text-right">
-                        <DropdownMenu>
-                            <DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4"/></Button></DropdownMenuTrigger>
-                            <DropdownMenuContent>
-                                <DropdownMenuItem onClick={() => router.push(`/dashboard/finance-accounting/invoice/view?id=${invoice.invoiceNumber}`)}>
-                                    <Eye className="mr-2 h-4 w-4"/> View
-                                </DropdownMenuItem>
-                                 <DropdownMenuItem onClick={() => onEdit(invoice.invoiceNumber)}>
-                                    <Edit className="mr-2 h-4 w-4"/> Edit
-                                </DropdownMenuItem>
-                                {invoice.deliveryDetails ? (
-                                    <DropdownMenuItem onClick={() => onViewGatePass(invoice)}>
-                                        <Eye className="mr-2 h-4 w-4" /> View Gate Pass
-                                    </DropdownMenuItem>
-                                ) : (
-                                    <DropdownMenuItem onClick={() => onGenerateDeliveryNote(invoice)}>
-                                      <Truck className="mr-2 h-4 w-4" /> Delivery Note
-                                    </DropdownMenuItem>
-                                )}
-                                {invoice.status !== 'Paid' && (
-                                     <DropdownMenuItem onClick={() => onUpdateStatus(invoice.invoiceNumber, 'Paid')}>
-                                        <CheckCircle className="mr-2 h-4 w-4"/> Mark as Paid
-                                    </DropdownMenuItem>
-                                )}
-                            </DropdownMenuContent>
-                        </DropdownMenu>
-                    </TableCell>
-                </TableRow>
-                <CollapsibleContent asChild>
-                  <TableRow>
-                      <TableCell colSpan={8} className="p-0">
-                          <div className="p-6 space-y-6 bg-muted/50">
-                              <div className="space-y-2">
-                                {invoice.items.map((item, index) => {
-                                    const product = allProducts?.find(p => p.id === item.productId);
-                                    const stock = product?.openingStock || 0;
-                                    const orderInHand = getOrderInHand(item.productId);
-                                    return (
-                                        <div key={`${item.productId}-${index}`} className="flex items-center justify-between py-2 border-b">
-                                            <div className="flex items-center gap-4">
-                                                <Image src={product?.imageUrl || `https://picsum.photos/seed/${item.productId}/64/64`} alt={item.name} width={64} height={64} className="rounded-md object-cover" />
-                                                <div>
-                                                    <p className="font-medium">{item.name}</p>
-                                                    <p className="text-sm text-muted-foreground">Qty: {item.quantity}</p>
-                                                    <div className="flex gap-4 text-xs text-muted-foreground">
-                                                        <span>Available Stock: {stock}</span>
-                                                        <span>Order in Hand: {orderInHand}</span>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            <p className="font-medium">{formatIndianCurrency(item.amount)}</p>
-                                        </div>
-                                    )
-                                })}
-                              </div>
-                              <Separator />
-                              <div className="grid md:grid-cols-2 gap-6">
-                                  <div className="space-y-4">
-                                      <h4 className="font-semibold">Payment Summary</h4>
-                                      <div className="text-sm space-y-1 text-muted-foreground">
-                                          <div className="flex justify-between"><span>Subtotal:</span> <span className="font-mono">{formatIndianCurrency(invoice.subtotal)}</span></div>
-                                          <div className="flex justify-between"><span>Discount:</span> <span className="font-mono">{formatIndianCurrency(invoice.discount)}</span></div>
-                                          <div className="flex justify-between"><span>Taxes (CGST+SGST):</span> <span className="font-mono">{formatIndianCurrency(invoice.cgst + invoice.sgst)}</span></div>
-                                          <div className="flex justify-between font-bold text-foreground"><span>Grand Total:</span> <span className="font-mono">{formatIndianCurrency(invoice.grandTotal)}</span></div>
-                                          <Separator/>
-                                          <div className="flex justify-between font-medium text-green-600"><span>Paid:</span> <span className="font-mono">{formatIndianCurrency(invoice.amountPaid || 0)}</span></div>
-                                          <div className="flex justify-between font-bold text-red-600"><span>Balance Due:</span> <span className="font-mono">{formatIndianCurrency(invoice.balanceDue || 0)}</span></div>
-                                      </div>
-                                      {paymentTransactions.length > 0 && (
-                                        <div>
-                                            <p className="text-xs font-semibold">Payment Transactions:</p>
-                                            <div className="text-xs text-muted-foreground font-mono space-y-1 mt-1">
-                                                {paymentTransactions.map(jv => {
-                                                    const paymentEntry = jv.entries.find((e: any) => e.debit > 0);
-                                                    const accountName = allCoaLedgers?.find(l => l.id === paymentEntry?.accountId)?.name;
-                                                    return (
-                                                        <p key={jv.id}>
-                                                            {format(new Date(jv.date), 'dd/MM/yy')}: {formatIndianCurrency(paymentEntry?.debit || 0)} via {accountName}
-                                                        </p>
-                                                    )
-                                                })}
-                                            </div>
-                                        </div>
-                                      )}
-                                  </div>
-                              </div>
-                          </div>
-                      </TableCell>
-                  </TableRow>
-                </CollapsibleContent>
-            </TableBody>
-        </Collapsible>
-    )
-}
-
 function InvoicePage() {
     const router = useRouter();
     const firestore = useFirestore();
@@ -675,10 +525,6 @@ function InvoicePage() {
     const { data: settingsData } = useDoc<any>(doc(firestore, 'company', 'settings'));
     const { data: pickupPoints } = useCollection<PickupPoint>(collection(firestore, 'pickupPoints'));
     const { data: allProducts, loading: productsLoading } = useCollection<Product>(collection(firestore, 'products'));
-    const { data: journalVouchers } = useCollection<JournalVoucher>(collection(firestore, 'journalVouchers'));
-    const { data: allCoaLedgers } = useCollection<CoaLedger>(collection(firestore, 'coa_ledgers'));
-    const { data: allParties } = useCollection<Party>(collection(firestore, 'parties'));
-    const { data: companyInfo } = useDoc<CompanyInfo>(doc(firestore, 'company', 'info'));
     
     const [isDeliveryNoteOpen, setIsDeliveryNoteOpen] = React.useState(false);
     const [selectedInvoiceForDelivery, setSelectedInvoiceForDelivery] = React.useState<SalesInvoice | null>(null);
@@ -722,43 +568,6 @@ function InvoicePage() {
         return { totalBilled, totalPaid, totalOutstanding };
     }, [allSalesInvoices]);
     
-    const liveBalances = React.useMemo(() => {
-        const balances = new Map<string, number>();
-        if (!allCoaLedgers || !allParties) return balances;
-    
-        allCoaLedgers.forEach(acc => {
-            const openingBal = acc.openingBalance?.amount || 0;
-            const balance = acc.openingBalance?.drCr === 'CR' ? -openingBal : openingBal;
-            balances.set(acc.id, balance);
-        });
-    
-        if (journalVouchers) {
-            journalVouchers.forEach(jv => {
-                jv.entries.forEach(entry => {
-                    if (balances.has(entry.accountId)) {
-                        const currentBal = balances.get(entry.accountId)!;
-                        const newBal = currentBal + (entry.debit || 0) - (entry.credit || 0);
-                        balances.set(entry.accountId, newBal);
-                    }
-                });
-            });
-        }
-        
-        if (allSalesInvoices) {
-            allSalesInvoices.forEach(inv => {
-                const party = allParties.find(p => p.id === inv.customerId);
-                const ledgerId = party?.coaLedgerId;
-                
-                if (ledgerId && balances.has(ledgerId)) {
-                    const currentBal = balances.get(ledgerId)!;
-                    balances.set(ledgerId, currentBal + inv.grandTotal);
-                }
-            });
-        }
-
-        return balances;
-    }, [allCoaLedgers, journalVouchers, allSalesInvoices, allParties]);
-
 
     const handleGenerateInvoice = (order: Order) => {
         const dataToPass = {
@@ -801,19 +610,16 @@ function InvoicePage() {
 
     const handleConfirmDeliveryNote = async (deliveryDetails: any) => {
       if (!selectedInvoiceForDelivery) return;
-
-      const invoiceRef = doc(firestore, 'salesInvoices', selectedInvoiceForDelivery.invoiceNumber);
-      
       const orderToUpdate = orders?.find(o => o.orderNumber === selectedInvoiceForDelivery.orderNumber);
-      
       if (!orderToUpdate) {
         toast({ variant: "destructive", title: "Error", description: `Could not find original sales order ${selectedInvoiceForDelivery.orderNumber}` });
         return;
       }
       
+      const batch = writeBatch(firestore);
+      const invoiceRef = doc(firestore, 'salesInvoices', selectedInvoiceForDelivery.id);
       const orderRef = doc(firestore, 'orders', orderToUpdate.id);
       
-      const batch = writeBatch(firestore);
       batch.update(invoiceRef, { deliveryDetails });
       batch.update(orderRef, { status: 'Shipped' });
       await batch.commit();
@@ -827,7 +633,6 @@ function InvoicePage() {
       
       setGatePassData(updatedInvoiceData);
       setIsDeliveryNoteOpen(false);
-      setIsGatePassDialogOpen(true);
     };
 
     const onViewInvoice = (invoiceId: string) => {
@@ -938,43 +743,62 @@ function InvoicePage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-12"><span className="sr-only">Expand</span></TableHead>
                 <TableHead>Invoice #</TableHead>
                 <TableHead>Customer</TableHead>
                 <TableHead>Date</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Amount</TableHead>
-                <TableHead className="text-right">Closing Balance</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
+              <TableBody>
               {invoicesLoading ? (
-                 <TableBody>
-                    <TableRow><TableCell colSpan={8} className="h-24 text-center">Loading invoices...</TableCell></TableRow>
-                 </TableBody>
+                 <TableRow><TableCell colSpan={6} className="h-24 text-center">Loading invoices...</TableCell></TableRow>
               ) : allSalesInvoices && allSalesInvoices.length > 0 ? (
                 allSalesInvoices.map((invoice) => (
-                    <GeneratedInvoiceRow 
-                      key={invoice.id} 
-                      invoice={invoice} 
-                      onUpdateStatus={handleInvoicePaymentStatus} 
-                      allProducts={allProducts || []} 
-                      getOrderInHand={getOrderInHand} 
-                      allSalesInvoices={allSalesInvoices || []}
-                      journalVouchers={journalVouchers || []}
-                      allCoaLedgers={allCoaLedgers || []}
-                      allParties={allParties || []}
-                      liveBalances={liveBalances}
-                      onEdit={handleEditInvoice}
-                      onGenerateDeliveryNote={handleOpenDeliveryNoteDialog}
-                      onViewGatePass={setGatePassData}
-                    />
+                    <TableRow key={invoice.id}>
+                        <TableCell className="font-mono">{invoice.invoiceNumber}</TableCell>
+                        <TableCell>{invoice.customerName}</TableCell>
+                        <TableCell>{format(new Date(invoice.date), 'dd/MM/yyyy')}</TableCell>
+                        <TableCell>
+                            <Badge className={cn('text-xs', getStatusBadgeVariant(invoice.status))} variant="outline">
+                                {invoice.status}
+                            </Badge>
+                        </TableCell>
+                        <TableCell className="text-right font-mono">{formatIndianCurrency(invoice.grandTotal)}</TableCell>
+                        <TableCell className="text-right">
+                           <DropdownMenu>
+                                <DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4"/></Button></DropdownMenuTrigger>
+                                <DropdownMenuContent>
+                                    <DropdownMenuItem onClick={() => onViewInvoice(invoice.invoiceNumber)}>
+                                        <Eye className="mr-2 h-4 w-4"/> View
+                                    </DropdownMenuItem>
+                                     <DropdownMenuItem onClick={() => handleEditInvoice(invoice.invoiceNumber)}>
+                                        <Edit className="mr-2 h-4 w-4"/> Edit
+                                    </DropdownMenuItem>
+                                    {invoice.deliveryDetails ? (
+                                        <DropdownMenuItem onClick={() => setGatePassData(invoice)}>
+                                            <Eye className="mr-2 h-4 w-4" /> View Gate Pass
+                                        </DropdownMenuItem>
+                                    ) : (
+                                        <DropdownMenuItem onClick={() => handleOpenDeliveryNoteDialog(invoice)}>
+                                          <Truck className="mr-2 h-4 w-4" /> Delivery Note
+                                        </DropdownMenuItem>
+                                    )}
+                                    {invoice.status !== 'Paid' && (
+                                        <DropdownMenuItem onClick={() => handleInvoicePaymentStatus(invoice.invoiceNumber, 'Paid')}>
+                                            <CheckCircle className="mr-2 h-4 w-4"/> Mark as Paid
+                                        </DropdownMenuItem>
+                                    )}
+                                </DropdownMenuContent>
+                           </DropdownMenu>
+                        </TableCell>
+                    </TableRow>
                   ))
               ) : (
-                 <TableBody>
-                    <TableRow><TableCell colSpan={8} className="h-24 text-center">No invoices created yet.</TableCell></TableRow>
-                 </TableBody>
+                 <TableRow><TableCell colSpan={6} className="h-24 text-center">No invoices created yet.</TableCell></TableRow>
               )}
+              </TableBody>
           </Table>
         </CardContent>
       </Card>
@@ -983,7 +807,7 @@ function InvoicePage() {
         isOpen={isDeliveryNoteOpen}
         onOpenChange={setIsDeliveryNoteOpen}
         invoice={selectedInvoiceForDelivery}
-        customer={allParties?.find(p => p.id === selectedInvoiceForDelivery?.customerId) || null}
+        customer={parties?.find(p => p.id === selectedInvoiceForDelivery?.customerId) || null}
         onConfirm={handleConfirmDeliveryNote}
       />
 
