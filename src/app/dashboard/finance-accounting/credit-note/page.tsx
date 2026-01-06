@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -14,9 +13,15 @@ import { useToast } from '@/hooks/use-toast';
 import { PlusCircle, Save } from 'lucide-react';
 import type { Party, CreditNote, SalesInvoice } from '@/lib/types';
 import { useFirestore, useCollection, useDoc } from '@/firebase';
-import { collection, addDoc, serverTimestamp, doc, setDoc, query, where } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, doc, setDoc } from 'firebase/firestore';
 import { getNextDocNumber } from '@/lib/number-series';
 import { format } from 'date-fns';
+import { Separator } from '@/components/ui/separator';
+
+interface CreditItem extends SalesInvoice['items'][0] {
+  returnQty: number;
+  revisedRate: number;
+}
 
 export default function CreditNotePage() {
     const { toast } = useToast();
@@ -27,9 +32,10 @@ export default function CreditNotePage() {
     const { data: salesInvoices } = useCollection<SalesInvoice>(collection(firestore, 'salesInvoices'));
 
     const [partyId, setPartyId] = React.useState('');
-    const [amount, setAmount] = React.useState('');
-    const [reason, setReason] = React.useState('');
     const [originalInvoiceId, setOriginalInvoiceId] = React.useState('');
+    const [selectedInvoice, setSelectedInvoice] = React.useState<SalesInvoice | null>(null);
+    const [creditItems, setCreditItems] = React.useState<CreditItem[]>([]);
+    const [reason, setReason] = React.useState('');
     const [date, setDate] = React.useState(format(new Date(), 'yyyy-MM-dd'));
 
     const customers = parties?.filter(p => p.type === 'Customer') || [];
@@ -39,9 +45,46 @@ export default function CreditNotePage() {
         return salesInvoices.filter(inv => inv.customerId === partyId);
     }, [partyId, salesInvoices]);
 
+    React.useEffect(() => {
+        if (originalInvoiceId) {
+            const invoice = salesInvoices?.find(inv => inv.invoiceNumber === originalInvoiceId);
+            if (invoice) {
+                setSelectedInvoice(invoice);
+                setCreditItems(invoice.items.map(item => ({
+                    ...item,
+                    returnQty: item.quantity, // Default return quantity to original quantity
+                    revisedRate: item.rate, // Default revised rate to original rate
+                })));
+            }
+        } else {
+            setSelectedInvoice(null);
+            setCreditItems([]);
+        }
+    }, [originalInvoiceId, salesInvoices]);
+
+    const handleItemChange = (index: number, field: 'returnQty' | 'revisedRate', value: string) => {
+        const numericValue = Number(value);
+        if (isNaN(numericValue)) return;
+
+        setCreditItems(prev => 
+            prev.map((item, i) => 
+                i === index ? { ...item, [field]: numericValue } : item
+            )
+        );
+    };
+
+    const totalCreditAmount = React.useMemo(() => {
+        return creditItems.reduce((acc, item) => {
+            const originalValue = item.quantity * item.rate;
+            const revisedValue = (item.quantity - item.returnQty) * item.revisedRate;
+            const creditValue = item.returnQty * item.revisedRate;
+            return acc + creditValue;
+        }, 0);
+    }, [creditItems]);
+
     const handleSave = async () => {
-        if (!partyId || !amount || !reason) {
-            toast({ variant: 'destructive', title: 'Missing information' });
+        if (!partyId || !reason || (creditItems.length > 0 && totalCreditAmount <= 0)) {
+            toast({ variant: 'destructive', title: 'Missing information', description: 'Please fill all fields and ensure there is a credit amount.' });
             return;
         }
         
@@ -57,7 +100,7 @@ export default function CreditNotePage() {
             partyName: parties?.find(p => p.id === partyId)?.name || 'Unknown',
             date,
             originalInvoiceId,
-            amount: Number(amount),
+            amount: totalCreditAmount,
             reason,
             status: 'Issued',
             createdAt: serverTimestamp(),
@@ -68,9 +111,10 @@ export default function CreditNotePage() {
         
         // Reset form
         setPartyId('');
-        setAmount('');
-        setReason('');
         setOriginalInvoiceId('');
+        setSelectedInvoice(null);
+        setCreditItems([]);
+        setReason('');
     };
 
     return (
@@ -101,16 +145,13 @@ export default function CreditNotePage() {
                             <Input id="date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
                         </div>
                          <div className="space-y-2">
-                            <Label htmlFor="amount">Amount</Label>
-                            <Input id="amount" type="number" placeholder="Enter amount to credit" value={amount} onChange={e => setAmount(e.target.value)} />
-                        </div>
-                        <div className="space-y-2">
                             <Label htmlFor="invoice-id">Original Invoice ID (Optional)</Label>
-                            <Select value={originalInvoiceId} onValueChange={setOriginalInvoiceId} disabled={!partyId || customerInvoices.length === 0}>
+                            <Select value={originalInvoiceId} onValueChange={setOriginalInvoiceId} disabled={!partyId}>
                                 <SelectTrigger id="invoice-id">
                                     <SelectValue placeholder="Select an invoice" />
                                 </SelectTrigger>
                                 <SelectContent>
+                                     <SelectItem value="">None</SelectItem>
                                     {customerInvoices.map(inv => (
                                         <SelectItem key={inv.id} value={inv.invoiceNumber}>
                                             {inv.invoiceNumber} - ({format(new Date(inv.date), 'dd/MM/yy')}) - ₹{inv.grandTotal.toFixed(2)}
@@ -119,9 +160,60 @@ export default function CreditNotePage() {
                                 </SelectContent>
                             </Select>
                         </div>
-                         <div className="space-y-2 md:col-span-2">
+                         <div className="space-y-2">
                             <Label htmlFor="reason">Reason for Credit Note</Label>
                             <Input id="reason" placeholder="e.g., Goods returned, Price correction" value={reason} onChange={e => setReason(e.target.value)} />
+                        </div>
+                    </div>
+
+                    {selectedInvoice && (
+                        <div className="pt-4 border-t">
+                            <h3 className="text-lg font-medium mb-2">Adjust Invoice Items</h3>
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead>Item</TableHead>
+                                        <TableHead className="text-center">Original Qty</TableHead>
+                                        <TableHead className="text-right">Original Rate</TableHead>
+                                        <TableHead className="w-32 text-center">Return Qty</TableHead>
+                                        <TableHead className="w-32 text-right">Revised Rate</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {creditItems.map((item, index) => (
+                                        <TableRow key={item.productId}>
+                                            <TableCell>{item.name}</TableCell>
+                                            <TableCell className="text-center">{item.quantity}</TableCell>
+                                            <TableCell className="text-right">{item.rate.toFixed(2)}</TableCell>
+                                            <TableCell>
+                                                <Input 
+                                                    type="number" 
+                                                    value={item.returnQty} 
+                                                    onChange={(e) => handleItemChange(index, 'returnQty', e.target.value)}
+                                                    max={item.quantity}
+                                                    className="text-center"
+                                                />
+                                            </TableCell>
+                                             <TableCell>
+                                                <Input 
+                                                    type="number" 
+                                                    value={item.revisedRate} 
+                                                    onChange={(e) => handleItemChange(index, 'revisedRate', e.target.value)}
+                                                    className="text-right"
+                                                />
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </div>
+                    )}
+                    <div className="pt-4 border-t flex justify-end">
+                        <div className="space-y-2 w-full max-w-sm">
+                            <div className="flex justify-between items-center text-xl font-bold">
+                                <Label className="text-lg">Total Credit Amount</Label>
+                                <span className="font-mono">{formatIndianCurrency(totalCreditAmount)}</span>
+                            </div>
                         </div>
                     </div>
                 </CardContent>
@@ -149,7 +241,7 @@ export default function CreditNotePage() {
                                     <TableCell className="font-mono">{note.creditNoteNumber}</TableCell>
                                     <TableCell>{note.partyName}</TableCell>
                                     <TableCell>{note.reason}</TableCell>
-                                    <TableCell className="text-right font-mono">{note.amount.toFixed(2)}</TableCell>
+                                    <TableCell className="text-right font-mono">{formatIndianCurrency(note.amount)}</TableCell>
                                 </TableRow>
                             ))}
                         </TableBody>

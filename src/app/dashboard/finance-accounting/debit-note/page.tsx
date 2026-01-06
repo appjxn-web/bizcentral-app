@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -18,6 +17,14 @@ import { collection, addDoc, serverTimestamp, doc, setDoc } from 'firebase/fires
 import { getNextDocNumber } from '@/lib/number-series';
 import { format } from 'date-fns';
 
+const formatIndianCurrency = (num: number) => {
+  return new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    minimumFractionDigits: 2,
+  }).format(num || 0);
+};
+
 export default function DebitNotePage() {
     const { toast } = useToast();
     const firestore = useFirestore();
@@ -34,10 +41,6 @@ export default function DebitNotePage() {
     const [date, setDate] = React.useState(format(new Date(), 'yyyy-MM-dd'));
 
     const suppliers = parties?.filter(p => p.type === 'Supplier' || p.type === 'Vendor') || [];
-
-    // Note: A debit note to a supplier would reference a purchase invoice from them.
-    // As we don't have a purchase invoice collection, this part remains a text input.
-    // If we were to implement purchase invoices, this would mirror the credit note logic.
 
     const handleSave = async () => {
         if (!partyId || !amount || !reason) {
@@ -138,7 +141,7 @@ export default function DebitNotePage() {
                                     <TableCell className="font-mono">{note.debitNoteNumber}</TableCell>
                                     <TableCell>{note.partyName}</TableCell>
                                     <TableCell>{note.reason}</TableCell>
-                                    <TableCell className="text-right font-mono">{note.amount.toFixed(2)}</TableCell>
+                                    <TableCell className="text-right font-mono">{formatIndianCurrency(note.amount)}</TableCell>
                                 </TableRow>
                             ))}
                         </TableBody>
