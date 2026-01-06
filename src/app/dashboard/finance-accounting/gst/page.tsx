@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -35,7 +34,7 @@ import { format } from 'date-fns';
 import { useRouter } from 'next/navigation';
 import { useFirestore, useCollection } from '@/firebase';
 import { collection, query, where } from 'firebase/firestore';
-import type { SalesInvoice, JournalVoucher, Party, Product } from '@/lib/types';
+import type { SalesInvoice, Party, Grn } from '@/lib/types';
 
 
 interface GstTransaction {
@@ -59,11 +58,9 @@ export default function GstPage() {
   const [year, setYear] = React.useState(new Date().getFullYear().toString());
   const [month, setMonth] = React.useState((new Date().getMonth() + 1).toString());
 
-  // Corrected to fetch from salesInvoices collection
   const { data: invoicesData } = useCollection<SalesInvoice>(collection(firestore, 'salesInvoices'));
-  const { data: jvData } = useCollection<JournalVoucher>(collection(firestore, 'journalVouchers'));
   const { data: partiesData } = useCollection<Party>(collection(firestore, 'parties'));
-  const { data: productsData } = useCollection<any>(collection(firestore, 'products'));
+  const { data: grnsData } = useCollection<Grn>(collection(firestore, 'grns'));
 
   const gstr1 = React.useMemo(() => {
     if (!invoicesData) return [];
@@ -85,41 +82,30 @@ export default function GstPage() {
   }, [invoicesData, year, month, partiesData]);
 
   const gstr2b = React.useMemo(() => {
-    if (!jvData || !partiesData) return [];
-    return jvData
-      .filter(jv => {
-          const jvDate = new Date(jv.date);
-          return jv.narration.toLowerCase().includes('purchase') && 
-                 jvDate.getFullYear().toString() === year &&
-                 (jvDate.getMonth() + 1).toString() === month;
+    if (!grnsData || !partiesData) return [];
+    return grnsData
+      .filter(grn => {
+          const grnDate = new Date(grn.grnDate);
+          return grnDate.getFullYear().toString() === year &&
+                 (grnDate.getMonth() + 1).toString() === month;
       })
-      .map(jv => {
-          const debitEntry = jv.entries.find(e => e.debit > 0);
-          const creditEntry = jv.entries.find(e => e.credit > 0);
-          const party = partiesData?.find(p => p.coaLedgerId === creditEntry?.accountId);
-          
-          if (!debitEntry || !party) return null;
-
-          const taxableValue = debitEntry.debit;
-          // Assuming 18% GST for all purchases for simplicity
-          const totalGst = taxableValue * 0.18;
-          const isInterstate = companyDetails.gstin.substring(0, 2) !== party.gstin?.substring(0, 2);
-
+      .map(grn => {
+          const party = partiesData?.find(p => p.id === grn.supplierId);
           return {
-              id: jv.id,
-              date: jv.date,
-              invoiceNo: jv.id, // Using JV ID as a proxy
-              partyName: party.name,
-              gstin: party.gstin || 'N/A',
-              taxableValue: taxableValue || 0,
-              cgst: isInterstate ? 0 : (totalGst / 2) || 0,
-              sgst: isInterstate ? 0 : (totalGst / 2) || 0,
-              igst: isInterstate ? totalGst : 0,
-              totalGst: totalGst || 0,
-              totalAmount: (taxableValue || 0) + (totalGst || 0),
+              id: grn.id,
+              date: grn.grnDate,
+              invoiceNo: grn.id, // Using GRN ID as a proxy for bill no.
+              partyName: grn.supplierName,
+              gstin: party?.gstin || 'N/A',
+              taxableValue: grn.subtotal || 0,
+              cgst: grn.cgst || 0,
+              sgst: grn.sgst || 0,
+              igst: grn.igst || 0,
+              totalGst: grn.totalGst || 0,
+              totalAmount: grn.grandTotal || 0,
           };
       }).filter(Boolean) as GstTransaction[];
-  }, [jvData, partiesData, year, month]);
+  }, [grnsData, partiesData, year, month]);
 
   const kpis = React.useMemo(() => {
     const totalSales = gstr1.reduce((sum, item) => sum + item.taxableValue, 0);
