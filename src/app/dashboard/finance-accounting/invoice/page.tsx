@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -66,7 +65,7 @@ import {
 import Image from 'next/image';
 import { Separator } from '@/components/ui/separator';
 import { useFirestore, useCollection, useUser, useDoc } from '@/firebase';
-import { collection, query, orderBy, doc, where, or, updateDoc, writeBatch, limit } from 'firebase/firestore';
+import { collection, query, orderBy, doc, where, or, updateDoc, writeBatch, limit, getDoc } from 'firebase/firestore';
 import { OrderStatusTracker } from '../../my-orders/_components/order-status';
 import {
   Dialog,
@@ -130,10 +129,12 @@ function DeliveryNoteDialog({
 }) {
   const [customerName, setCustomerName] = React.useState('');
   const [shippingAddress, setShippingAddress] = React.useState('');
-  const [shippingMethod, setShippingMethod] = React.useState('');
+  const [shippingMethod, setShippingMethod] = React.useState('Pre-paid');
   const [vehicleNumber, setVehicleNumber] = React.useState('');
   const [driverName, setDriverName] = React.useState('');
   const [driverPhone, setDriverPhone] = React.useState('');
+  const [shippingCost, setShippingCost] = React.useState('');
+  const [remarks, setRemarks] = React.useState('');
 
   React.useEffect(() => {
     if (invoice && customer) {
@@ -150,6 +151,8 @@ function DeliveryNoteDialog({
       customerName,
       shippingAddress,
       shippingMethod,
+      shippingCost: Number(shippingCost) || 0,
+      remarks,
       vehicleNumber,
       driverName,
       driverPhone,
@@ -158,7 +161,7 @@ function DeliveryNoteDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Create Delivery Note / Gate Pass</DialogTitle>
           <DialogDescription>
@@ -174,26 +177,48 @@ function DeliveryNoteDialog({
                 <Label htmlFor="shipping-address">Shipping Address</Label>
                 <Textarea id="shipping-address" value={shippingAddress} onChange={(e) => setShippingAddress(e.target.value)} />
             </div>
-          <div className="space-y-2">
-            <Label htmlFor="shipping-method">Shipping Method</Label>
-            <Input id="shipping-method" value={shippingMethod} onChange={(e) => setShippingMethod(e.target.value)} placeholder="e.g., By Road, Courier" />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="vehicle-number">Vehicle Number</Label>
-            <Input id="vehicle-number" value={vehicleNumber} onChange={(e) => setVehicleNumber(e.target.value)} placeholder="e.g., RJ14 AB 1234" />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="driver-name">Driver Name</Label>
-            <Input id="driver-name" value={driverName} onChange={(e) => setDriverName(e.target.value)} placeholder="e.g., Ramesh Kumar" />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="driver-phone">Driver Phone</Label>
-            <Input id="driver-phone" type="tel" value={driverPhone} onChange={(e) => setDriverPhone(e.target.value)} placeholder="e.g., 9876543210" />
-          </div>
+            <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                    <Label htmlFor="shipping-method">Shipping Method</Label>
+                    <Select value={shippingMethod} onValueChange={setShippingMethod}>
+                        <SelectTrigger id="shipping-method">
+                            <SelectValue placeholder="Select method" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="Pre-paid">Pre-paid</SelectItem>
+                            <SelectItem value="To pay">To pay</SelectItem>
+                            <SelectItem value="By Road">By Road</SelectItem>
+                            <SelectItem value="By Courier">By Courier</SelectItem>
+                        </SelectContent>
+                    </Select>
+                </div>
+                 <div className="space-y-2">
+                    <Label htmlFor="shipping-cost">Shipping Cost (₹)</Label>
+                    <Input id="shipping-cost" type="number" value={shippingCost} onChange={(e) => setShippingCost(e.target.value)} placeholder="0.00" />
+                </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                    <Label htmlFor="vehicle-number">Vehicle Number</Label>
+                    <Input id="vehicle-number" value={vehicleNumber} onChange={(e) => setVehicleNumber(e.target.value)} placeholder="e.g., RJ14 AB 1234" />
+                </div>
+                <div className="space-y-2">
+                    <Label htmlFor="driver-name">Driver Name</Label>
+                    <Input id="driver-name" value={driverName} onChange={(e) => setDriverName(e.target.value)} placeholder="e.g., Ramesh Kumar" />
+                </div>
+            </div>
+             <div className="space-y-2">
+                <Label htmlFor="driver-phone">Driver Phone</Label>
+                <Input id="driver-phone" type="tel" value={driverPhone} onChange={(e) => setDriverPhone(e.target.value)} placeholder="e.g., 9876543210" />
+            </div>
+            <div className="space-y-2">
+                <Label htmlFor="remarks">Remarks</Label>
+                <Textarea id="remarks" value={remarks} onChange={(e) => setRemarks(e.target.value)} placeholder="Any special instructions..." />
+            </div>
         </div>
         <DialogFooter>
           <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-          <Button onClick={handleSubmit}>Generate &amp; Mark as Shipped</Button>
+          <Button onClick={handleSubmit}>Generate & Mark as Shipped</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -660,7 +685,7 @@ function InvoicePage() {
     };
 
     const handleConfirmDeliveryNote = async (deliveryDetails: any) => {
-        if (!selectedInvoiceForDelivery) return;
+        if (!selectedInvoiceForDelivery || !selectedInvoiceForDelivery.orderId) return;
 
         const orderRef = doc(firestore, 'orders', selectedInvoiceForDelivery.orderId);
         
@@ -677,7 +702,6 @@ function InvoicePage() {
         localStorage.setItem('gatePassData', JSON.stringify({
             orderId: selectedInvoiceForDelivery.orderNumber,
             invoiceId: selectedInvoiceForDelivery.invoiceNumber,
-            customerName: selectedInvoiceForDelivery.customerName,
             ...deliveryDetails
         }));
 
@@ -858,5 +882,3 @@ export default function InvoicePageWrapper() {
 
     return <InvoicePage />;
 }
-
-    
