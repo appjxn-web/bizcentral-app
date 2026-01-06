@@ -104,6 +104,8 @@ export default function CreditNotePage() {
         let taxableAmount = 0;
         let totalOriginalAmount = 0;
         let totalRevisedAmount = 0;
+        let totalOriginalDiscount = 0;
+        let totalRevisedDiscount = 0;
   
         if (reason === 'Goods Return' && selectedInvoice) {
             subtotal = creditItems.reduce((acc, item) => acc + (item.returnQty * item.rate), 0);
@@ -115,10 +117,20 @@ export default function CreditNotePage() {
             
             taxableAmount = subtotal - totalDiscount;
   
-        } else if (reason === 'Revised Rate') {
+        } else if (reason === 'Revised Rate' && selectedInvoice) {
+            const originalDiscountPercent = selectedInvoice.subtotal > 0 ? (selectedInvoice.discount / selectedInvoice.subtotal) : 0;
+
             totalOriginalAmount = creditItems.reduce((acc, item) => acc + (item.quantity * item.rate), 0);
             totalRevisedAmount = creditItems.reduce((acc, item) => acc + (item.quantity * item.revisedRate), 0);
-            taxableAmount = totalOriginalAmount - totalRevisedAmount;
+            
+            totalOriginalDiscount = totalOriginalAmount * originalDiscountPercent;
+            totalRevisedDiscount = totalRevisedAmount * originalDiscountPercent;
+            
+            const originalTaxable = totalOriginalAmount - totalOriginalDiscount;
+            const revisedTaxable = totalRevisedAmount - totalRevisedDiscount;
+
+            taxableAmount = originalTaxable - revisedTaxable;
+
         } else if (reason === 'Revised discount' && selectedInvoice) {
             const originalDiscountAmount = selectedInvoice.discount || 0;
             const newDiscountAmount = selectedInvoice.subtotal * (revisedDiscount / 100);
@@ -132,7 +144,7 @@ export default function CreditNotePage() {
         const sgst = isInterstate ? 0 : totalGst / 2;
         const igst = isInterstate ? totalGst : 0;
         
-        return { subtotal, totalDiscount, taxableAmount, totalGst, grandTotal, cgst, sgst, igst, totalOriginalAmount, totalRevisedAmount };
+        return { subtotal, totalDiscount, taxableAmount, totalGst, grandTotal, cgst, sgst, igst, totalOriginalAmount, totalRevisedAmount, totalOriginalDiscount, totalRevisedDiscount };
       }, [creditItems, isInterstate, reason, revisedDiscount, selectedInvoice]);
 
 
@@ -163,7 +175,7 @@ export default function CreditNotePage() {
             reason,
             status: 'Issued',
             createdAt: serverTimestamp(),
-            items: creditItems.filter(item => item.returnQty > 0 || item.revisedRate !== item.price)
+            items: creditItems.filter(item => item.returnQty > 0 || item.revisedRate !== item.rate)
         };
 
         await setDoc(doc(firestore, 'creditNotes', newNoteId), { ...newCreditNote, id: newNoteId });
@@ -314,49 +326,49 @@ export default function CreditNotePage() {
                                         </TableRow>
                                          <TableRow>
                                             <TableCell colSpan={3} className="text-right font-semibold">Discount</TableCell>
-                                            <TableCell className="text-right font-mono text-red-600">- {formatIndianCurrency(0)}</TableCell>
+                                            <TableCell className="text-right font-mono text-red-600">- {formatIndianCurrency(calculations.totalOriginalDiscount)}</TableCell>
                                             <TableCell></TableCell>
-                                            <TableCell className="text-right font-mono text-red-600">- {formatIndianCurrency(0)}</TableCell>
-                                            <TableCell></TableCell>
+                                            <TableCell className="text-right font-mono text-red-600">- {formatIndianCurrency(calculations.totalRevisedDiscount)}</TableCell>
+                                            <TableCell className="text-right font-mono text-green-600">- {formatIndianCurrency(calculations.totalOriginalDiscount - calculations.totalRevisedDiscount)}</TableCell>
                                         </TableRow>
                                         <TableRow>
                                             <TableCell colSpan={3} className="text-right font-semibold">Taxable Value</TableCell>
-                                            <TableCell className="text-right font-mono">{formatIndianCurrency(calculations.totalOriginalAmount)}</TableCell>
+                                            <TableCell className="text-right font-mono">{formatIndianCurrency(calculations.totalOriginalAmount - calculations.totalOriginalDiscount)}</TableCell>
                                             <TableCell></TableCell>
-                                            <TableCell className="text-right font-mono">{formatIndianCurrency(calculations.totalRevisedAmount)}</TableCell>
+                                            <TableCell className="text-right font-mono">{formatIndianCurrency(calculations.totalRevisedAmount - calculations.totalRevisedDiscount)}</TableCell>
                                             <TableCell className="text-right font-mono font-bold text-green-600">{formatIndianCurrency(calculations.taxableAmount)}</TableCell>
                                         </TableRow>
                                         {isInterstate ? (
                                             <TableRow>
                                                 <TableCell colSpan={3} className="text-right">IGST</TableCell>
-                                                <TableCell className="text-right font-mono">{formatIndianCurrency(calculations.totalOriginalAmount * 0.18)}</TableCell>
+                                                <TableCell className="text-right font-mono">{formatIndianCurrency((calculations.totalOriginalAmount-calculations.totalOriginalDiscount) * 0.18)}</TableCell>
                                                 <TableCell></TableCell>
-                                                <TableCell className="text-right font-mono">{formatIndianCurrency(calculations.totalRevisedAmount * 0.18)}</TableCell>
+                                                <TableCell className="text-right font-mono">{formatIndianCurrency((calculations.totalRevisedAmount-calculations.totalRevisedDiscount) * 0.18)}</TableCell>
                                                 <TableCell className="text-right font-mono font-bold text-green-600">{formatIndianCurrency(calculations.igst)}</TableCell>
                                             </TableRow>
                                         ) : (
                                             <>
                                                 <TableRow>
                                                     <TableCell colSpan={3} className="text-right">CGST</TableCell>
-                                                    <TableCell className="text-right font-mono">{formatIndianCurrency(calculations.totalOriginalAmount * 0.09)}</TableCell>
+                                                    <TableCell className="text-right font-mono">{formatIndianCurrency((calculations.totalOriginalAmount-calculations.totalOriginalDiscount) * 0.09)}</TableCell>
                                                      <TableCell></TableCell>
-                                                    <TableCell className="text-right font-mono">{formatIndianCurrency(calculations.totalRevisedAmount * 0.09)}</TableCell>
+                                                    <TableCell className="text-right font-mono">{formatIndianCurrency((calculations.totalRevisedAmount-calculations.totalRevisedDiscount) * 0.09)}</TableCell>
                                                     <TableCell className="text-right font-mono font-bold text-green-600">{formatIndianCurrency(calculations.cgst)}</TableCell>
                                                 </TableRow>
                                                 <TableRow>
                                                     <TableCell colSpan={3} className="text-right">SGST</TableCell>
-                                                    <TableCell className="text-right font-mono">{formatIndianCurrency(calculations.totalOriginalAmount * 0.09)}</TableCell>
+                                                    <TableCell className="text-right font-mono">{formatIndianCurrency((calculations.totalOriginalAmount-calculations.totalOriginalDiscount) * 0.09)}</TableCell>
                                                      <TableCell></TableCell>
-                                                    <TableCell className="text-right font-mono">{formatIndianCurrency(calculations.totalRevisedAmount * 0.09)}</TableCell>
+                                                    <TableCell className="text-right font-mono">{formatIndianCurrency((calculations.totalRevisedAmount-calculations.totalRevisedDiscount) * 0.09)}</TableCell>
                                                     <TableCell className="text-right font-mono font-bold text-green-600">{formatIndianCurrency(calculations.sgst)}</TableCell>
                                                 </TableRow>
                                             </>
                                         )}
                                         <TableRow className="bg-muted font-bold text-lg">
                                             <TableCell colSpan={3} className="text-right">Total Amount</TableCell>
-                                            <TableCell className="text-right font-mono">{formatIndianCurrency(calculations.totalOriginalAmount * 1.18)}</TableCell>
+                                            <TableCell className="text-right font-mono">{formatIndianCurrency((calculations.totalOriginalAmount-calculations.totalOriginalDiscount) * 1.18)}</TableCell>
                                             <TableCell></TableCell>
-                                            <TableCell className="text-right font-mono">{formatIndianCurrency(calculations.totalRevisedAmount * 1.18)}</TableCell>
+                                            <TableCell className="text-right font-mono">{formatIndianCurrency((calculations.totalRevisedAmount-calculations.totalRevisedDiscount) * 1.18)}</TableCell>
                                             <TableCell className="text-right font-mono">{formatIndianCurrency(calculations.grandTotal)}</TableCell>
                                         </TableRow>
                                     </TableFooter>
