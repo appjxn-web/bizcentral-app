@@ -2,10 +2,14 @@
 'use client';
 
 import * as React from 'react';
+import Image from 'next/image';
 import { useSearchParams } from 'next/navigation';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
+
 import { PageHeader } from '@/components/page-header';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import {
   Table,
@@ -15,15 +19,13 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Download, Loader2, Printer } from 'lucide-react';
-import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
-import { QRCodeSVG } from 'qrcode.react';
-import Image from 'next/image';
-import { useFirestore, useDoc } from '@/firebase';
-import { doc } from 'firebase/firestore';
-import type { CompanyInfo, SalesInvoice, Party } from '@/lib/types';
+import { Download, Loader2, ArrowLeft } from 'lucide-react';
 import { format } from 'date-fns';
+import { QRCodeSVG } from 'qrcode.react';
+import { useFirestore, useDoc, useCollection } from '@/firebase';
+import { collection, query, where, doc, getDocs, limit } from 'firebase/firestore';
+import type { CompanyInfo, SalesInvoice, Party, Address, Order, CoaLedger } from '@/lib/types';
+
 
 const formatIndianCurrency = (num: number) => {
   return new Intl.NumberFormat('en-IN', {
@@ -112,7 +114,7 @@ export default function GatePassPage() {
 
     return (
         <>
-            <PageHeader title={`Gate Pass for Order: ${orderData.orderNumber}`}>
+            <PageHeader title={`Gate Pass for Order: ${orderNumber}`}>
                 <div className="flex gap-2">
                     <Button variant="outline" onClick={() => window.print()}>
                         <Printer className="mr-2 h-4 w-4" /> Print
@@ -132,7 +134,7 @@ export default function GatePassPage() {
                             </div>
                             <div className="text-right">
                                 <h1 className="text-2xl font-bold text-primary">Delivery Note / Gate Pass</h1>
-                                <p><strong>Order No:</strong> {orderData.orderNumber}</p>
+                                <p><strong>Order No:</strong> {orderNumber}</p>
                                 <p><strong>Date:</strong> {format(new Date(), 'dd/MM/yyyy')}</p>
                             </div>
                         </header>
@@ -182,7 +184,7 @@ export default function GatePassPage() {
                                 </div>
                             </div>
                              <div className="flex flex-col items-center">
-                                <QRCodeSVG value={`GATEPASS:${orderData.orderNumber}`} size={80} />
+                                <QRCodeSVG value={`GATEPASS:${orderNumber}`} size={80} />
                                 <p className="text-xs mt-2">Scan for Gate Out</p>
                             </div>
                             <div className="text-right">
