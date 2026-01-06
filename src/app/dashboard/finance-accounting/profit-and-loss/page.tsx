@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -100,28 +101,56 @@ export default function ProfitAndLossPage() {
         return { incomeGroups: [], expenseGroups: [], cogs: 0, totalIncome: 0, totalExpenses: 0, netProfit: 0, loading: true };
       }
 
-      // 1. Calculate Total Income directly from Sales Invoices
-      let totalInvoiceIncome = 0;
-      if (allSalesInvoices) {
-        allSalesInvoices.forEach(inv => {
-            const invDate = new Date(inv.date);
-            if ((!sDate || invDate >= sDate) && (!eDate || invDate <= eDate)) {
-                totalInvoiceIncome += inv.taxableAmount;
-            }
-        });
-      }
+      // Filter transactions for the selected period
+      const periodInvoices = (allSalesInvoices || []).filter(inv => {
+          const invDate = new Date(inv.date);
+          return (!sDate || invDate >= sDate) && (!eDate || invDate <= eDate);
+      });
+      const periodJVs = (journalVouchers || []).filter(jv => {
+          const jvDate = jv.date instanceof Timestamp ? jv.date.toDate() : new Date(jv.date);
+          return (!sDate || jvDate >= sDate) && (!eDate || jvDate <= eDate);
+      });
+      const periodDeliveredOrders = (allOrders || []).filter(order => {
+          if (order.status !== 'Delivered') return false;
+          const deliveryDate = new Date(order.date); // Assuming order date is delivery date for simplicity
+          return (!sDate || deliveryDate >= sDate) && (!eDate || deliveryDate <= eDate);
+      });
+
+
+      // 1. Calculate Total Income
+      const incomeFromInvoices = periodInvoices.reduce((sum, inv) => sum + inv.taxableAmount, 0);
+      const incomeFromJVs = periodJVs
+        .flatMap(jv => jv.entries)
+        .filter(e => coaLedgers.find(l => l.id === e.accountId)?.nature === 'INCOME')
+        .reduce((sum, e) => sum + (e.credit || 0) - (e.debit || 0), 0);
+      const totalIncome = incomeFromInvoices + incomeFromJVs;
       
+      // 2. Calculate COGS
+      const cogs = periodDeliveredOrders.reduce((total, order) => {
+        return total + order.items.reduce((itemCost, item) => {
+            const product = allProducts.find(p => p.id === item.productId);
+            return itemCost + ((product?.cost || 0) * item.quantity);
+        }, 0);
+      }, 0);
+      
+      // 3. Calculate Indirect Expenses
+      const expenseFromJVs = periodJVs
+        .flatMap(jv => jv.entries)
+        .filter(e => coaLedgers.find(l => l.id === e.accountId)?.nature === 'EXPENSE')
+        .reduce((sum, e) => sum + (e.debit || 0) - (e.credit || 0), 0);
+      const totalExpenses = expenseFromJVs + cogs;
+      
+      // 4. Calculate Net Profit
+      const netProfit = totalIncome - totalExpenses;
+
+      // --- For detailed breakdown ---
       const getGroupData = (groups: CoaGroup[], parentId: string | null = null): any[] => {
           return groups
             .filter(g => g.parentId === parentId)
             .map(group => {
               const ledgers = coaLedgers.filter(l => l.groupId === group.id);
               const ledgerBalances = ledgers.map(l => {
-                const balance = journalVouchers
-                  .filter(jv => {
-                      const jvDate = jv.date instanceof Timestamp ? jv.date.toDate() : new Date(jv.date);
-                      return (!sDate || jvDate >= sDate) && (!eDate || jvDate <= eDate);
-                  })
+                const balance = periodJVs
                   .flatMap(jv => jv.entries)
                   .filter(e => e.accountId === l.id)
                   .reduce((acc, e) => acc + ((l.nature === 'INCOME' ? e.credit : e.debit) || 0) - ((l.nature === 'INCOME' ? e.debit : e.credit) || 0), 0);
@@ -137,35 +166,13 @@ export default function ProfitAndLossPage() {
       };
       
       const incomeGroupsFromJv = getGroupData(coaGroups.filter(g => g.nature === 'INCOME'), '4');
-      const incomeFromJv = incomeGroupsFromJv.reduce((acc, g) => acc + g.balance, 0);
-      const totalIncome = totalInvoiceIncome + incomeFromJv;
-      
       const incomeGroups = [{
-          id: '4.1', name: 'Operating Income', balance: totalInvoiceIncome, 
-          accounts: [{ id: 'sales-summary', name: 'Sales Revenue (from Invoices)', balance: totalInvoiceIncome }], 
+          id: 'sales-revenue', name: 'Operating Income', balance: incomeFromInvoices, 
+          accounts: [{ id: 'sales-summary', name: 'Sales Revenue (from Invoices)', balance: incomeFromInvoices }], 
           subGroups: []
       }, ...incomeGroupsFromJv];
       
       const expenseGroups = getGroupData(coaGroups.filter(g => g.nature === 'EXPENSE'), '6');
-      
-      // 2. Calculate COGS for delivered orders in the period
-      const deliveredOrders = allOrders.filter(order => {
-        if (order.status !== 'Delivered') return false;
-        const deliveryDate = new Date(order.date); // Assuming order date is delivery date for simplicity
-        return (!sDate || deliveryDate >= sDate) && (!eDate || deliveryDate <= eDate);
-      });
-      const cogs = deliveredOrders.reduce((total, order) => {
-        return total + order.items.reduce((itemCost, item) => {
-            const product = allProducts.find(p => p.id === item.productId);
-            return itemCost + ((product?.cost || 0) * item.quantity);
-        }, 0);
-      }, 0);
-
-      // 3. Calculate Total Expenses from Journal Vouchers
-      const totalExpenses = Math.abs(expenseGroups.reduce((acc, g) => acc + g.balance, 0));
-      
-      // 4. Calculate Net Profit
-      const netProfit = totalIncome - (totalExpenses + cogs);
       
       return { incomeGroups, expenseGroups, cogs, totalIncome, totalExpenses, netProfit, loading: false };
     }, [coaGroups, coaLedgers, journalVouchers, allProducts, allOrders, allSalesInvoices, groupsLoading, ledgersLoading, vouchersLoading, productsLoading, ordersLoading, invoicesLoading, startDate, endDate]);
@@ -194,7 +201,7 @@ export default function ProfitAndLossPage() {
 
         const expenseData = flattenForExport(pnlData.expenseGroups);
         expenseData.unshift({ Indent: '', Particulars: 'COST OF GOODS SOLD (COGS)', Amount: pnlData.cogs });
-        expenseData.push({ Indent: '', Particulars: 'Total Expenses', Amount: pnlData.totalExpenses + pnlData.cogs });
+        expenseData.push({ Indent: '', Particulars: 'Total Expenses', Amount: pnlData.totalExpenses });
 
         const combinedData = [];
         const maxLength = Math.max(incomeData.length, expenseData.length);
@@ -257,7 +264,7 @@ export default function ProfitAndLossPage() {
             </Card>
             <Card className="border-l-4 border-l-red-500">
                 <CardHeader className="pb-2"><CardTitle className="text-sm">Total Expenses</CardTitle></CardHeader>
-                <CardContent><div className="text-2xl font-bold">{formatCurrency(pnlData.totalExpenses + pnlData.cogs)}</div></CardContent>
+                <CardContent><div className="text-2xl font-bold">{formatCurrency(pnlData.totalExpenses)}</div></CardContent>
             </Card>
             <Card className={`border-l-4 ${pnlData.netProfit >= 0 ? 'border-l-blue-500' : 'border-l-orange-500'}`}>
                 <CardHeader className="pb-2"><CardTitle className="text-sm">Net Profit / Loss</CardTitle></CardHeader>
@@ -316,7 +323,7 @@ export default function ProfitAndLossPage() {
                             </TableRow>
                             {pnlData.expenseGroups.map(g => renderRows(g))}
                         </TableBody>
-                        <TableFooter><TableRow className="bg-muted font-bold"><TableCell>Total Expenses</TableCell><TableCell className="text-right">{formatCurrency(pnlData.totalExpenses + pnlData.cogs)}</TableCell></TableRow></TableFooter>
+                        <TableFooter><TableRow className="bg-muted font-bold"><TableCell>Total Expenses</TableCell><TableCell className="text-right">{formatCurrency(pnlData.totalExpenses)}</TableCell></TableRow></TableFooter>
                     </Table>
                 </div>
                 <Separator className="my-8"/>
@@ -334,3 +341,4 @@ export default function ProfitAndLossPage() {
   );
 }
 
+```

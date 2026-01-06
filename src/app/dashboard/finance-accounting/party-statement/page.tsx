@@ -1,3 +1,4 @@
+
 'use client';
 
 import * as React from 'react';
@@ -152,6 +153,9 @@ function PartyStatementPageContent() {
 
     const openingBalance = targetLedger.openingBalance?.amount || 0;
     
+    const sDate = dateFrom ? new Date(dateFrom) : null;
+    if (sDate) sDate.setHours(0, 0, 0, 0);
+
     const jvTransactions = (allJournalVouchers || [])
       .filter(jv => jv.entries.some(e => e.accountId === selectedAccountId))
       .map(jv => {
@@ -166,16 +170,13 @@ function PartyStatementPageContent() {
         };
       });
       
-    // Fetch customer ID from party if accountHolder is a ledger
-    let customerIdForInvoice = selectedAccountId;
-    if (accountHolder && 'type' in accountHolder && accountHolder.type !== 'Customer') {
-       const partyWithLedger = parties?.find(p => p.coaLedgerId === selectedAccountId);
-       if (partyWithLedger) customerIdForInvoice = partyWithLedger.id;
-    }
-
-
-    const relevantInvoices = (salesInvoices || []).filter(inv => inv.customerId === customerIdForInvoice || inv.coaLedgerId === selectedAccountId);
-    const invoiceTransactions = relevantInvoices.map(inv => ({
+    // The partyId could be the ledger ID itself if it's a direct party ledger
+    // Or we find which party uses this ledger ID
+    const partyForLedger = parties?.find(p => p.coaLedgerId === selectedAccountId || p.id === selectedAccountId);
+    
+    const invoiceTransactions = (salesInvoices || [])
+        .filter(inv => inv.customerId === partyForLedger?.id)
+        .map(inv => ({
         id: inv.id,
         date: inv.date,
         createdAt: new Timestamp(new Date(inv.date).getTime() / 1000, 0), // Fallback createdAt
@@ -190,7 +191,7 @@ function PartyStatementPageContent() {
         return dateA.getTime() - dateB.getTime();
     });
     
-    const transactionsBeforePeriod = allTransactions.filter(tx => dateFrom && new Date(tx.date) < new Date(dateFrom));
+    const transactionsBeforePeriod = allTransactions.filter(tx => sDate && new Date(tx.date) < sDate);
 
     let periodOpeningBalance = openingBalance;
     transactionsBeforePeriod.forEach(tx => {
@@ -199,13 +200,10 @@ function PartyStatementPageContent() {
     
     const periodTransactions = allTransactions.filter(tx => {
         const txDate = new Date(tx.date);
-        const fromDate = dateFrom ? new Date(dateFrom) : null;
         const toDate = dateTo ? new Date(dateTo) : null;
+        if (toDate) toDate.setHours(23, 59, 59, 999);
 
-        if(fromDate) fromDate.setHours(0,0,0,0);
-        if(toDate) toDate.setHours(23,59,59,999);
-
-        return (!fromDate || txDate >= fromDate) && 
+        return (!sDate || txDate >= sDate) && 
                (!toDate || txDate <= toDate);
     });
 
@@ -224,7 +222,7 @@ function PartyStatementPageContent() {
         totalDebit: periodTransactions.reduce((s, t) => s + t.debit, 0) 
       },
     };
-  }, [selectedAccountId, allJournalVouchers, ledgers, dateFrom, dateTo, salesInvoices, accountHolder, parties]);
+  }, [selectedAccountId, allJournalVouchers, ledgers, dateFrom, dateTo, salesInvoices, parties]);
 
 
   const handleDownloadPdf = async () => {
@@ -363,7 +361,9 @@ function PartyStatementPageContent() {
                   </TableBody>
                    <TableFooter>
                     <TableRow>
-                        <TableCell colSpan={4} className="text-right font-bold">Closing Balance</TableCell>
+                        <TableCell colSpan={2} className="text-right font-bold">Closing Balance</TableCell>
+                        <TableCell className="text-right font-bold font-mono">{formatIndianCurrency(kpis.totalDebit)}</TableCell>
+                        <TableCell className="text-right font-bold font-mono">{formatIndianCurrency(kpis.totalCredit)}</TableCell>
                         <TableCell className="text-right font-bold font-mono">{formatIndianCurrency(kpis.balance)}</TableCell>
                     </TableRow>
                 </TableFooter>

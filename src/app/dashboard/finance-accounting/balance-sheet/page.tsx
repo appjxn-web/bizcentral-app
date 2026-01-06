@@ -95,7 +95,7 @@ function BalanceSheetContent() {
   };
 
   const { assets, liabilities, equity, pnl, loading, kpis } = React.useMemo(() => {
-    if (groupsLoading || ledgersLoading || vouchersLoading || productsLoading || workOrdersLoading || ordersLoading || invoicesLoading || !coaGroups || !coaLedgers || !journalVouchers || !products) {
+    if (groupsLoading || ledgersLoading || vouchersLoading || productsLoading || workOrdersLoading || ordersLoading || invoicesLoading || !coaGroups || !coaLedgers || !journalVouchers || !products || !allOrders || !salesInvoices) {
         return { assets: [], liabilities: [], equity: [], pnl: 0, loading: true, kpis: { assets: 0, liabilities: 0, equity: 0, totalLiabilitiesAndEquity: 0 }};
     }
 
@@ -105,130 +105,67 @@ function BalanceSheetContent() {
     const eDate = endDate ? new Date(endDate) : null;
     if (eDate) eDate.setHours(23, 59, 59, 999);
 
-
+    // Initialize with opening balances
     coaLedgers.forEach(acc => {
       const openingBal = acc.openingBalance?.amount || 0;
       const signedOpeningBal = acc.openingBalance?.drCr === 'CR' ? -openingBal : openingBal;
       liveBalances.set(acc.id, signedOpeningBal);
     });
 
-    if (salesInvoices) {
-      salesInvoices.forEach(inv => {
-          const invDate = new Date(inv.date);
-          if (eDate && invDate > eDate) return;
+    // Process all transactions up to the end date to establish balances
+    const relevantJVs = (journalVouchers || []).filter(jv => !eDate || new Date(jv.date) <= eDate);
+    const relevantInvoices = (salesInvoices || []).filter(inv => !eDate || new Date(inv.date) <= eDate);
+    
+    // Process Invoices first
+    relevantInvoices.forEach(inv => {
+      const customerLedgerId = inv.coaLedgerId;
+      if (customerLedgerId && liveBalances.has(customerLedgerId)) {
+        liveBalances.set(customerLedgerId, (liveBalances.get(customerLedgerId) || 0) + inv.grandTotal);
+      }
+      // Note: We are calculating P&L separately, so no need to credit sales/gst here for BS purposes,
+      // as that would double-count the equity portion. The liability for GST is handled via JVs.
+    });
 
-          const customerLedgerId = inv.coaLedgerId;
-          const cgstLedger = coaLedgers.find(l => l.name === 'Output GST – CGST');
-          const sgstLedger = coaLedgers.find(l => l.name === 'Output GST – SGST');
-          const igstLedger = coaLedgers.find(l => l.name === 'Output GST – IGST');
-          const salesLedger = coaLedgers.find(l => l.name === 'Sales – Domestic');
-
-          if (customerLedgerId && liveBalances.has(customerLedgerId)) {
-              liveBalances.set(customerLedgerId, liveBalances.get(customerLedgerId)! + inv.grandTotal);
-          }
-          if(cgstLedger) liveBalances.set(cgstLedger.id, liveBalances.get(cgstLedger.id)! - (inv.cgst || 0));
-          if(sgstLedger) liveBalances.set(sgstLedger.id, liveBalances.get(sgstLedger.id)! - (inv.sgst || 0));
-          if(igstLedger) liveBalances.set(igstLedger.id, liveBalances.get(igstLedger.id)! - (inv.igst || 0));
-          if(salesLedger) liveBalances.set(salesLedger.id, liveBalances.get(salesLedger.id)! - inv.taxableAmount);
+    // Process JVs (payments, expenses etc.)
+    relevantJVs.forEach(jv => {
+      jv.entries.forEach(entry => {
+        if (liveBalances.has(entry.accountId)) {
+          liveBalances.set(entry.accountId, (liveBalances.get(entry.accountId) || 0) + (entry.debit || 0) - (entry.credit || 0));
+        }
       });
-    }
-    
-    // WIP Calculation
-    const activeWorkOrders = workOrders?.filter(wo => wo.status === 'In Progress' || wo.status === 'Under QC') || [];
-    let totalWipValue = 0;
-    const issuedRawMaterialValue = new Map<string, number>();
-
-    for (const wo of activeWorkOrders) {
-        for (const issuedItem of wo.issuedItems || []) {
-            const product = products?.find(p => p.id === issuedItem.productId);
-            if (product) {
-                const itemValue = issuedItem.issuedQty * (product.cost || 0);
-                totalWipValue += itemValue;
-                
-                const currentIssuedValue = issuedRawMaterialValue.get(product.coaAccountId!) || 0;
-                issuedRawMaterialValue.set(product.coaAccountId!, currentIssuedValue + itemValue);
-            }
-        }
-    }
-    
-    // Inventory calculation logic
-    if (products && coaLedgers) {
-        const inventoryValues = {
-            'Stock-in-Hand – Finished Goods': products.filter(p => p.type === 'Finished Goods').reduce((sum, p) => sum + ((p.openingStock || 0) * (p.cost || 0)), 0),
-            'Stock-in-Hand – Spares': products.filter(p => p.type === 'Components' || p.type === 'Consumables').reduce((sum, p) => sum + ((p.openingStock || 0) * (p.cost || 0)), 0),
-        };
-
-        for (const [ledgerName, value] of Object.entries(inventoryValues)) {
-            const ledger = coaLedgers.find(l => l.name === ledgerName);
-            if (ledger) liveBalances.set(ledger.id, value);
-        }
-
-        let rawMaterialValue = products.filter(p => p.type === 'Raw Materials').reduce((sum, p) => sum + ((p.openingStock || 0) * (p.cost || 0)), 0);
-        for(const issuedValue of issuedRawMaterialValue.values()) {
-            rawMaterialValue -= issuedValue;
-        }
-        const rmLedger = coaLedgers.find(l => l.name === 'Stock-in-Hand – Raw Material');
-        if (rmLedger) liveBalances.set(rmLedger.id, rawMaterialValue);
-
-        const wipLedger = coaLedgers.find(l => l.name === 'Stock-in-Hand – Work-in-Progress');
-        if (wipLedger) liveBalances.set(wipLedger.id, totalWipValue);
-    }
-    
-    const relevantVouchers = (journalVouchers || []).filter(jv => {
-        const jvDate = jv.date instanceof Timestamp ? jv.date.toDate() : new Date(jv.date);
-        return eDate ? jvDate <= eDate : true;
     });
 
-
-    // Process Vouchers for payments etc.
-    relevantVouchers.forEach(jv => {
-        jv.entries.forEach(entry => {
-            if (liveBalances.has(entry.accountId)) {
-                const current = liveBalances.get(entry.accountId)!;
-                liveBalances.set(entry.accountId, current + (entry.debit || 0) - (entry.credit || 0));
-            }
-        });
-    });
-    
     // --- P&L Calculation for Equity ---
-    const periodVouchers = journalVouchers.filter(jv => {
-      const jvDate = jv.date instanceof Timestamp ? jv.date.toDate() : new Date(jv.date);
-      return (!sDate || jvDate >= sDate) && (!eDate || jvDate <= eDate);
-    });
-    
     const periodInvoices = (salesInvoices || []).filter(inv => {
         const invDate = new Date(inv.date);
         return (!sDate || invDate >= sDate) && (!eDate || invDate <= eDate);
     });
+    const periodJVs = (journalVouchers || []).filter(jv => {
+        const jvDate = new Date(jv.date);
+        return (!sDate || jvDate >= sDate) && (!eDate || jvDate <= eDate);
+    });
 
-    const incomeFromJv = periodVouchers
+    const incomeFromInvoices = periodInvoices.reduce((sum, inv) => sum + inv.taxableAmount, 0);
+    const incomeFromJVs = periodJVs
       .flatMap(jv => jv.entries)
       .filter(e => coaLedgers.find(l => l.id === e.accountId)?.nature === 'INCOME')
       .reduce((sum, e) => sum + (e.credit || 0) - (e.debit || 0), 0);
+    const totalIncome = incomeFromInvoices + incomeFromJVs;
       
-    const incomeFromInvoices = periodInvoices.reduce((sum, inv) => sum + inv.taxableAmount, 0);
-    const totalIncome = incomeFromJv + incomeFromInvoices;
-      
-    const expenseFromJv = periodVouchers
+    const cogs = (allOrders || [])
+        .filter(order => order.status === 'Delivered' && (!eDate || new Date(order.date) <= eDate))
+        .reduce((total, order) => total + order.items.reduce((itemCost, item) => {
+            const product = products.find(p => p.id === item.productId);
+            return itemCost + ((product?.cost || 0) * item.quantity);
+        }, 0), 0);
+
+    const expenseFromJVs = periodJVs
         .flatMap(jv => jv.entries)
         .filter(e => coaLedgers.find(l => l.id === e.accountId)?.nature === 'EXPENSE')
         .reduce((sum, e) => sum + (e.debit || 0) - (e.credit || 0), 0);
-
-    const deliveredOrders = (allOrders || []).filter(order => {
-        const orderDate = new Date(order.date);
-        return order.status === 'Delivered' && (!sDate || orderDate >= sDate) && (!eDate || orderDate <= eDate);
-    });
-
-    const cogs = deliveredOrders.reduce((total, order) => {
-        return total + order.items.reduce((itemCost, item) => {
-            const product = products?.find(p => p.id === item.productId);
-            return itemCost + ((product?.cost || 0) * item.quantity);
-        }, 0);
-    }, 0);
+    const totalExpenses = expenseFromJVs + cogs;
     
-    const totalExpenses = expenseFromJv + cogs;
     const currentPnl = totalIncome - totalExpenses;
-
     // --- End P&L Calculation ---
 
     const getGroupData = (group: CoaGroup): any => {
@@ -334,7 +271,12 @@ function BalanceSheetContent() {
   };
 
   const renderRow = (group: any, level = 0): React.ReactNode => {
-    const absBalance = Math.abs(group.balance);
+    let balance = group.balance;
+    // For liability accounts, if the balance is positive (Debit), it's an advance to a supplier.
+    // It should be treated as an asset, so we'll show it as such, but still under liabilities for now.
+    const isSupplierAdvance = group.nature === 'LIABILITY' && balance > 0;
+    
+    const absBalance = Math.abs(balance);
     if (absBalance < 0.01 && group.accounts.length === 0 && group.subGroups.length === 0) return null;
     
     const isOpen = openGroups[group.id] ?? true;
@@ -360,7 +302,7 @@ function BalanceSheetContent() {
             </div>
           </TableCell>
           <TableCell className="text-right font-mono">
-            {formatCurrency(absBalance)}
+            {formatCurrency(absBalance)} {isSupplierAdvance ? 'Dr' : ''}
           </TableCell>
         </TableRow>
         
