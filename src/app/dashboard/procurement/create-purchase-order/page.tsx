@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -59,7 +60,7 @@ import { cn } from '@/lib/utils';
 import { useRole } from '../../_components/role-provider';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useFirestore, useCollection, useDoc } from '@/firebase';
-import { collection, doc, addDoc, serverTimestamp, setDoc, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
+import { collection, doc, addDoc, serverTimestamp, setDoc, query, where, orderBy, limit, getDocs, updateDoc } from 'firebase/firestore';
 import { getNextDocNumber } from '@/lib/number-series';
 
 interface POItem {
@@ -163,7 +164,8 @@ export default function CreatePurchaseOrderPage() {
         const newItems = prevItems.map(item => {
             if (item.id === itemId) {
                 const updatedItem = { ...item, [field]: value };
-
+                let product: Product | undefined;
+                
                 if (field === 'productId') {
                     const product = products?.find(p => p.id === value);
                     if (product) {
@@ -174,7 +176,6 @@ export default function CreatePurchaseOrderPage() {
                 }
                 
                 updatedItem.amount = updatedItem.qty * updatedItem.rate;
-
                 return updatedItem;
             }
             return item;
