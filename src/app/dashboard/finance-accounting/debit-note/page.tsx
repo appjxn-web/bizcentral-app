@@ -19,6 +19,10 @@ import { getNextDocNumber } from '@/lib/number-series';
 import { format } from 'date-fns';
 import { Separator } from '@/components/ui/separator';
 
+const companyDetails = {
+  gstin: '08AAFCJ5369P1ZR', // Mock company GSTIN
+};
+
 const formatIndianCurrency = (num: number) => {
   return new Intl.NumberFormat('en-IN', {
     style: 'currency',
@@ -46,12 +50,86 @@ export default function DebitNotePage() {
     const [reason, setReason] = React.useState('');
     const [originalInvoiceId, setOriginalInvoiceId] = React.useState('');
     const [date, setDate] = React.useState(format(new Date(), 'yyyy-MM-dd'));
+    const [selectedInvoice, setSelectedInvoice] = React.useState<SalesInvoice | null>(null);
+    const [debitItems, setDebitItems] = React.useState<DebitItem[]>([]);
 
     const suppliers = parties?.filter(p => p.type === 'Supplier' || p.type === 'Vendor') || [];
 
+     const supplierInvoices = React.useMemo(() => {
+        if (!partyId || !salesInvoices) return [];
+        // This is a simplification. In a real app, you'd fetch Purchase Invoices.
+        // We're reusing Sales Invoices for demo purposes.
+        return salesInvoices.filter(inv => inv.customerId === partyId);
+    }, [partyId, salesInvoices]);
+
+    const isInterstate = React.useMemo(() => {
+        if (!selectedInvoice) return false;
+        const customer = parties?.find(p => p.id === selectedInvoice.customerId);
+        if (!customer?.gstin) return false;
+        return !companyDetails.gstin.startsWith(customer.gstin.substring(0, 2));
+    }, [selectedInvoice, parties]);
+
+    const handleInvoiceSelection = (invoiceId: string) => {
+        setOriginalInvoiceId(invoiceId);
+        if (invoiceId && invoiceId !== 'none') {
+            const invoice = salesInvoices?.find(inv => inv.invoiceNumber === invoiceId);
+            if (invoice) {
+                setSelectedInvoice(invoice);
+                setDebitItems(invoice.items.map(item => ({
+                    ...item,
+                    rate: item.rate || 0,
+                    adjustQty: 0,
+                    revisedRate: item.rate || 0,
+                })));
+            }
+        } else {
+            setSelectedInvoice(null);
+            setDebitItems([]);
+        }
+    };
+    
+    const handleItemChange = (index: number, field: 'adjustQty' | 'revisedRate', value: string) => {
+        const numericValue = Number(value);
+        if (isNaN(numericValue)) return;
+
+        setDebitItems(prev => 
+            prev.map((item, i) => 
+                i === index ? { ...item, [field]: numericValue } : item
+            )
+        );
+    };
+
+    const calculations = React.useMemo(() => {
+        const taxableAmount = debitItems.reduce((acc, item) => {
+            const priceDifference = item.revisedRate - (item.rate || 0);
+            const priceDifferenceDebit = priceDifference > 0 ? priceDifference * item.quantity : 0;
+            return acc + priceDifferenceDebit;
+        }, 0);
+        
+        const totalGst = debitItems.reduce((acc, item) => {
+            const priceDifference = item.revisedRate - (item.rate || 0);
+            const itemTaxableValue = priceDifference > 0 ? priceDifference * item.quantity : 0;
+            return acc + (itemTaxableValue * ((item.gstRate || 18) / 100));
+        }, 0);
+
+        const grandTotal = taxableAmount + totalGst;
+        const cgst = isInterstate ? 0 : totalGst / 2;
+        const sgst = isInterstate ? 0 : totalGst / 2;
+        const igst = isInterstate ? totalGst : 0;
+        
+        return { taxableAmount, totalGst, grandTotal, cgst, sgst, igst };
+    }, [debitItems, isInterstate]);
+
+
     const handleSave = async () => {
-        if (!partyId || !amount || !reason) {
+        if (!partyId || !reason) {
             toast({ variant: 'destructive', title: 'Missing information' });
+            return;
+        }
+
+        const finalAmount = selectedInvoice ? calculations.grandTotal : Number(amount);
+        if (finalAmount <= 0) {
+            toast({ variant: 'destructive', title: 'Invalid Amount', description: 'Debit amount must be greater than zero.' });
             return;
         }
         
@@ -67,10 +145,11 @@ export default function DebitNotePage() {
             partyName: parties?.find(p => p.id === partyId)?.name || 'Unknown',
             date,
             originalInvoiceId: originalInvoiceId === 'none' ? '' : originalInvoiceId,
-            amount: Number(amount),
+            amount: finalAmount,
             reason,
             status: 'Issued',
             createdAt: serverTimestamp(),
+            ...(selectedInvoice && { items: debitItems.filter(item => item.revisedRate > (item.rate || 0)) }),
         };
 
         await setDoc(doc(firestore, 'debitNotes', newNoteId), { ...newDebitNote, id: newNoteId });
@@ -80,6 +159,8 @@ export default function DebitNotePage() {
         setAmount('');
         setReason('');
         setOriginalInvoiceId('');
+        setSelectedInvoice(null);
+        setDebitItems([]);
     };
 
     return (
@@ -92,7 +173,7 @@ export default function DebitNotePage() {
             <Card>
                 <CardHeader>
                     <CardTitle>Create Debit Note</CardTitle>
-                    <CardDescription>Issue a debit note to a supplier, typically for purchase returns.</CardDescription>
+                    <CardDescription>Issue a debit note to a supplier, typically for purchase returns or price corrections.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                     <div className="grid md:grid-cols-2 gap-4">
@@ -110,18 +191,97 @@ export default function DebitNotePage() {
                             <Input id="date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
                         </div>
                          <div className="space-y-2">
-                            <Label htmlFor="amount">Amount</Label>
-                            <Input id="amount" type="number" placeholder="Enter amount to debit" value={amount} onChange={e => setAmount(e.target.value)} />
-                        </div>
-                        <div className="space-y-2">
                             <Label htmlFor="invoice-id">Original Invoice/Bill ID (Optional)</Label>
-                            <Input id="invoice-id" placeholder="e.g., BILL-001" value={originalInvoiceId} onChange={e => setOriginalInvoiceId(e.target.value)} />
+                            <Select value={originalInvoiceId} onValueChange={handleInvoiceSelection} disabled={!partyId}>
+                                <SelectTrigger id="invoice-id">
+                                    <SelectValue placeholder="Select an invoice to adjust" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                     <SelectItem value="none">None (Manual Entry)</SelectItem>
+                                    {supplierInvoices.map(inv => (
+                                        <SelectItem key={inv.id} value={inv.invoiceNumber}>
+                                            {inv.invoiceNumber} - ({format(new Date(inv.date), 'dd/MM/yy')}) - ₹{inv.grandTotal.toFixed(2)}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
                         </div>
-                         <div className="space-y-2 md:col-span-2">
+                         <div className="space-y-2">
                             <Label htmlFor="reason">Reason for Debit Note</Label>
-                            <Input id="reason" placeholder="e.g., Goods returned due to damage" value={reason} onChange={e => setReason(e.target.value)} />
+                            <Input id="reason" placeholder="e.g., Goods returned due to damage, price increase" value={reason} onChange={e => setReason(e.target.value)} />
                         </div>
+                         {!selectedInvoice && (
+                            <div className="space-y-2">
+                                <Label htmlFor="amount">Amount</Label>
+                                <Input id="amount" type="number" placeholder="Enter amount to debit" value={amount} onChange={e => setAmount(e.target.value)} />
+                            </div>
+                        )}
                     </div>
+                     {selectedInvoice && (
+                        <div className="pt-4 border-t">
+                            <h3 className="text-lg font-medium mb-2">Adjust Invoice Items</h3>
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead>Item</TableHead>
+                                        <TableHead className="text-center">Orig. Qty</TableHead>
+                                        <TableHead className="text-right">Orig. Rate</TableHead>
+                                        <TableHead className="w-32 text-right">Revised Rate</TableHead>
+                                        <TableHead className="text-right">Taxable Value</TableHead>
+                                        <TableHead className="text-right">Total</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {debitItems.map((item, index) => {
+                                        const priceDifference = item.revisedRate - (item.rate || 0);
+                                        const taxableValue = priceDifference > 0 ? priceDifference * item.quantity : 0;
+                                        const itemGst = taxableValue * ((item.gstRate || 18) / 100);
+                                        const total = taxableValue + itemGst;
+
+                                        return (
+                                        <TableRow key={item.productId}>
+                                            <TableCell>{item.name}</TableCell>
+                                            <TableCell className="text-center">{item.quantity}</TableCell>
+                                            <TableCell className="text-right">{(item.rate || 0).toFixed(2)}</TableCell>
+                                             <TableCell>
+                                                <Input 
+                                                    type="number" 
+                                                    value={item.revisedRate} 
+                                                    onChange={(e) => handleItemChange(index, 'revisedRate', e.target.value)}
+                                                    className="text-right"
+                                                />
+                                            </TableCell>
+                                            <TableCell className="text-right font-mono">{taxableValue.toFixed(2)}</TableCell>
+                                            <TableCell className="text-right font-mono font-semibold">{total.toFixed(2)}</TableCell>
+                                        </TableRow>
+                                    )})}
+                                </TableBody>
+                            </Table>
+                        </div>
+                    )}
+                    {selectedInvoice && (
+                        <div className="pt-4 border-t flex justify-end">
+                            <div className="space-y-2 w-full max-w-sm">
+                                <div className="flex justify-between">
+                                    <span>Subtotal</span>
+                                    <span className="font-mono">{calculations.taxableAmount.toFixed(2)}</span>
+                                </div>
+                                {isInterstate ? (
+                                    <div className="flex justify-between"><span>IGST</span><span className="font-mono">{calculations.igst.toFixed(2)}</span></div>
+                                ) : (
+                                    <>
+                                    <div className="flex justify-between"><span>CGST</span><span className="font-mono">{calculations.cgst.toFixed(2)}</span></div>
+                                    <div className="flex justify-between"><span>SGST</span><span className="font-mono">{calculations.sgst.toFixed(2)}</span></div>
+                                    </>
+                                )}
+                                <Separator />
+                                <div className="flex justify-between items-center text-xl font-bold">
+                                    <Label className="text-lg">Total Debit Amount</Label>
+                                    <span className="font-mono">{calculations.grandTotal.toFixed(2)}</span>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </CardContent>
             </Card>
 

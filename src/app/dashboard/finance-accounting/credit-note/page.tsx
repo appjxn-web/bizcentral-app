@@ -14,10 +14,14 @@ import { useToast } from '@/hooks/use-toast';
 import { PlusCircle, Save } from 'lucide-react';
 import type { Party, CreditNote, SalesInvoice, SalesInvoiceItem } from '@/lib/types';
 import { useFirestore, useCollection, useDoc } from '@/firebase';
-import { collection, addDoc, serverTimestamp, doc, setDoc } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, doc, setDoc, query, where } from 'firebase/firestore';
 import { getNextDocNumber } from '@/lib/number-series';
 import { format } from 'date-fns';
 import { Separator } from '@/components/ui/separator';
+
+const companyDetails = {
+  gstin: '08AAFCJ5369P1ZR', // Mock company GSTIN
+};
 
 interface CreditItem extends SalesInvoiceItem {
   returnQty: number;
@@ -45,6 +49,13 @@ export default function CreditNotePage() {
         if (!partyId || !salesInvoices) return [];
         return salesInvoices.filter(inv => inv.customerId === partyId);
     }, [partyId, salesInvoices]);
+
+    const isInterstate = React.useMemo(() => {
+        if (!selectedInvoice) return false;
+        const customer = parties?.find(p => p.id === selectedInvoice.customerId);
+        if (!customer?.gstin) return false;
+        return !companyDetails.gstin.startsWith(customer.gstin.substring(0, 2));
+    }, [selectedInvoice, parties]);
 
     const handleInvoiceSelection = (invoiceId: string) => {
         setOriginalInvoiceId(invoiceId);
@@ -77,16 +88,30 @@ export default function CreditNotePage() {
         );
     };
 
-    const totalCreditAmount = React.useMemo(() => {
-        return creditItems.reduce((acc, item) => {
-            const priceDifference = item.rate - item.revisedRate;
+    const calculations = React.useMemo(() => {
+        const taxableAmount = creditItems.reduce((acc, item) => {
+            const priceDifference = (item.rate || 0) - item.revisedRate;
             const priceDifferenceCredit = priceDifference > 0 ? priceDifference * (item.quantity - item.returnQty) : 0;
             const returnCredit = item.returnQty * item.revisedRate;
-            const taxableValue = priceDifferenceCredit + returnCredit;
-            const itemGst = taxableValue * ((item.gstRate || 18) / 100);
-            return acc + taxableValue + itemGst;
+            return acc + priceDifferenceCredit + returnCredit;
         }, 0);
-    }, [creditItems]);
+        
+        const totalGst = creditItems.reduce((acc, item) => {
+            const priceDifference = (item.rate || 0) - item.revisedRate;
+            const priceDifferenceCredit = priceDifference > 0 ? priceDifference * (item.quantity - item.returnQty) : 0;
+            const returnCredit = item.returnQty * item.revisedRate;
+            const itemTaxableValue = priceDifferenceCredit + returnCredit;
+            return acc + (itemTaxableValue * ((item.gstRate || 18) / 100));
+        }, 0);
+
+        const grandTotal = taxableAmount + totalGst;
+        const cgst = isInterstate ? 0 : totalGst / 2;
+        const sgst = isInterstate ? 0 : totalGst / 2;
+        const igst = isInterstate ? totalGst : 0;
+        
+        return { taxableAmount, totalGst, grandTotal, cgst, sgst, igst };
+    }, [creditItems, isInterstate]);
+
 
     const handleSave = async () => {
         if (!partyId || !reason) {
@@ -112,7 +137,7 @@ export default function CreditNotePage() {
             partyName: parties?.find(p => p.id === partyId)?.name || 'Unknown',
             date,
             originalInvoiceId: originalInvoiceId === 'none' ? '' : originalInvoiceId,
-            amount: totalCreditAmount,
+            amount: calculations.grandTotal,
             reason,
             status: 'Issued',
             createdAt: serverTimestamp(),
@@ -190,13 +215,12 @@ export default function CreditNotePage() {
                                         <TableHead className="w-24 text-center">Return Qty</TableHead>
                                         <TableHead className="w-32 text-right">Revised Rate</TableHead>
                                         <TableHead className="text-right">Taxable Value</TableHead>
-                                        <TableHead className="text-right">GST</TableHead>
                                         <TableHead className="text-right">Total</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
                                     {creditItems.map((item, index) => {
-                                        const priceDifference = item.rate - item.revisedRate;
+                                        const priceDifference = (item.rate || 0) - item.revisedRate;
                                         const priceDifferenceCredit = priceDifference > 0 ? priceDifference * (item.quantity - item.returnQty) : 0;
                                         const returnCredit = item.returnQty * item.revisedRate;
                                         const taxableValue = priceDifferenceCredit + returnCredit;
@@ -226,7 +250,6 @@ export default function CreditNotePage() {
                                                 />
                                             </TableCell>
                                             <TableCell className="text-right font-mono">{taxableValue.toFixed(2)}</TableCell>
-                                            <TableCell className="text-right font-mono">{itemGst.toFixed(2)}</TableCell>
                                             <TableCell className="text-right font-mono font-semibold">{total.toFixed(2)}</TableCell>
                                         </TableRow>
                                     )})}
@@ -236,9 +259,22 @@ export default function CreditNotePage() {
                     )}
                     <div className="pt-4 border-t flex justify-end">
                         <div className="space-y-2 w-full max-w-sm">
+                            <div className="flex justify-between">
+                                <span>Subtotal</span>
+                                <span className="font-mono">{calculations.taxableAmount.toFixed(2)}</span>
+                            </div>
+                            {isInterstate ? (
+                                <div className="flex justify-between"><span>IGST</span><span className="font-mono">{calculations.igst.toFixed(2)}</span></div>
+                            ) : (
+                                <>
+                                <div className="flex justify-between"><span>CGST</span><span className="font-mono">{calculations.cgst.toFixed(2)}</span></div>
+                                <div className="flex justify-between"><span>SGST</span><span className="font-mono">{calculations.sgst.toFixed(2)}</span></div>
+                                </>
+                            )}
+                            <Separator />
                             <div className="flex justify-between items-center text-xl font-bold">
-                                <Label className="text-lg">Total Credit Amount (incl. GST)</Label>
-                                <span className="font-mono">{totalCreditAmount.toFixed(2)}</span>
+                                <Label className="text-lg">Total Credit Amount</Label>
+                                <span className="font-mono">{calculations.grandTotal.toFixed(2)}</span>
                             </div>
                         </div>
                     </div>
@@ -277,4 +313,3 @@ export default function CreditNotePage() {
         </>
     );
 }
-
