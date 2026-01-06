@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -11,14 +12,14 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { PlusCircle, Save } from 'lucide-react';
-import type { Party, CreditNote, SalesInvoice } from '@/lib/types';
+import type { Party, CreditNote, SalesInvoice, SalesInvoiceItem } from '@/lib/types';
 import { useFirestore, useCollection, useDoc } from '@/firebase';
 import { collection, addDoc, serverTimestamp, doc, setDoc } from 'firebase/firestore';
 import { getNextDocNumber } from '@/lib/number-series';
 import { format } from 'date-fns';
 import { Separator } from '@/components/ui/separator';
 
-interface CreditItem extends SalesInvoice['items'][0] {
+interface CreditItem extends SalesInvoiceItem {
   returnQty: number;
   revisedRate: number;
 }
@@ -52,8 +53,8 @@ export default function CreditNotePage() {
                 setSelectedInvoice(invoice);
                 setCreditItems(invoice.items.map(item => ({
                     ...item,
-                    returnQty: item.quantity, // Default return quantity to original quantity
-                    revisedRate: item.rate, // Default revised rate to original rate
+                    returnQty: 0,
+                    revisedRate: item.rate,
                 })));
             }
         } else {
@@ -75,10 +76,17 @@ export default function CreditNotePage() {
 
     const totalCreditAmount = React.useMemo(() => {
         return creditItems.reduce((acc, item) => {
-            const originalValue = item.quantity * item.rate;
-            const revisedValue = (item.quantity - item.returnQty) * item.revisedRate;
-            const creditValue = item.returnQty * item.revisedRate;
-            return acc + creditValue;
+            // Price difference credit: (original rate - revised rate) * (original qty - returned qty)
+            const priceDifferenceCredit = (item.rate - item.revisedRate) * (item.quantity - item.returnQty);
+            // Return credit: returned qty * revised rate
+            const returnCredit = item.returnQty * item.revisedRate;
+            
+            const totalItemCredit = priceDifferenceCredit + returnCredit;
+            
+            // Add GST on top of the credit amount
+            const itemGst = totalItemCredit * (item.gstRate / 100);
+
+            return acc + totalItemCredit + itemGst;
         }, 0);
     }, [creditItems]);
 
@@ -211,8 +219,8 @@ export default function CreditNotePage() {
                     <div className="pt-4 border-t flex justify-end">
                         <div className="space-y-2 w-full max-w-sm">
                             <div className="flex justify-between items-center text-xl font-bold">
-                                <Label className="text-lg">Total Credit Amount</Label>
-                                <span className="font-mono">{formatIndianCurrency(totalCreditAmount)}</span>
+                                <Label className="text-lg">Total Credit Amount (incl. GST)</Label>
+                                <span className="font-mono">{totalCreditAmount.toFixed(2)}</span>
                             </div>
                         </div>
                     </div>
@@ -241,7 +249,7 @@ export default function CreditNotePage() {
                                     <TableCell className="font-mono">{note.creditNoteNumber}</TableCell>
                                     <TableCell>{note.partyName}</TableCell>
                                     <TableCell>{note.reason}</TableCell>
-                                    <TableCell className="text-right font-mono">{formatIndianCurrency(note.amount)}</TableCell>
+                                    <TableCell className="text-right font-mono">{note.amount.toFixed(2)}</TableCell>
                                 </TableRow>
                             ))}
                         </TableBody>

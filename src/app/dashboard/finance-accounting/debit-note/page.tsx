@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -11,7 +12,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { PlusCircle, Save } from 'lucide-react';
-import type { Party, DebitNote, SalesInvoice } from '@/lib/types';
+import type { Party, DebitNote, SalesInvoice, SalesInvoiceItem } from '@/lib/types';
 import { useFirestore, useCollection, useDoc } from '@/firebase';
 import { collection, addDoc, serverTimestamp, doc, setDoc } from 'firebase/firestore';
 import { getNextDocNumber } from '@/lib/number-series';
@@ -24,6 +25,11 @@ const formatIndianCurrency = (num: number) => {
     minimumFractionDigits: 2,
   }).format(num || 0);
 };
+
+interface DebitItem extends SalesInvoiceItem {
+  adjustQty: number;
+  revisedRate: number;
+}
 
 export default function DebitNotePage() {
     const { toast } = useToast();
