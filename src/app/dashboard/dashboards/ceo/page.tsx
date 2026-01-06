@@ -168,7 +168,9 @@ export default function CeoDashboardPage() {
     const receivablesGroup = coaGroups.find(g => g.name === 'Trade Receivables');
     const payablesGroup = coaGroups.find(g => g.name === 'Trade Payables');
 
+    // Receivables are assets (debit balance), so the raw sum is correct.
     const receivables = receivablesGroup ? getGroupBalance(receivablesGroup.id) : 0;
+    // Payables are liabilities (credit balance, negative in our system), so we take the absolute value.
     const payables = payablesGroup ? Math.abs(getGroupBalance(payablesGroup.id)) : 0;
 
     return { receivables, payables };
