@@ -22,12 +22,14 @@ import { Button } from '@/components/ui/button';
 import { CheckCircle, XCircle, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useCollection } from '@/firebase';
-import { collection, doc, updateDoc, query, orderBy } from 'firebase/firestore';
-import type { PaymentSubmission } from '@/lib/types';
+import { collection, doc, updateDoc, query, orderBy, writeBatch, addDoc, serverTimestamp } from 'firebase/firestore';
+import type { PaymentSubmission, UserProfile, CoaLedger } from '@/lib/types';
 import { format } from 'date-fns';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { errorEmitter } from '@/firebase/error-emitter';
+import { FirestorePermissionError } from '@/firebase/errors';
 
 function getStatusBadgeVariant(status: string) {
   switch (status) {
@@ -48,7 +50,7 @@ function PaymentTable({
   processingId,
 }: {
   submissions: PaymentSubmission[];
-  onUpdateStatus: (id: string, status: 'Approved' | 'Rejected') => void;
+  onUpdateStatus: (submission: PaymentSubmission, status: 'Approved' | 'Rejected') => void;
   processingId: string | null;
 }) {
   return (
@@ -70,7 +72,7 @@ function PaymentTable({
           submissions.map((submission) => (
             <TableRow key={submission.id}>
               <TableCell>{submission.customerName}</TableCell>
-              <TableCell>{format(submission.submittedAt.toDate(), 'dd/MM/yyyy')}</TableCell>
+              <TableCell>{submission.submittedAt ? format(submission.submittedAt.toDate(), 'dd/MM/yyyy') : 'N/A'}</TableCell>
               <TableCell>{submission.paymentMethod}</TableCell>
               <TableCell className="font-mono text-xs">{submission.transactionDetails}</TableCell>
               <TableCell>
@@ -92,14 +94,14 @@ function PaymentTable({
                     <Button
                       variant="destructive"
                       size="sm"
-                      onClick={() => onUpdateStatus(submission.id, 'Rejected')}
+                      onClick={() => onUpdateStatus(submission, 'Rejected')}
                       disabled={processingId === submission.id}
                     >
                       {processingId === submission.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />}
                     </Button>
                     <Button
                       size="sm"
-                      onClick={() => onUpdateStatus(submission.id, 'Approved')}
+                      onClick={() => onUpdateStatus(submission, 'Approved')}
                       disabled={processingId === submission.id}
                       className="bg-green-600 hover:bg-green-700"
                     >
@@ -132,25 +134,64 @@ export default function PaymentApprovalPage() {
     orderBy('submittedAt', 'desc')
   );
   const { data: allPayments, loading } = useCollection<PaymentSubmission>(allPaymentsQuery);
+  const { data: users } = useCollection<UserProfile>(collection(firestore, 'users'));
+  const { data: coaLedgers } = useCollection<CoaLedger>(collection(firestore, 'coa_ledgers'));
+  
   const [processingId, setProcessingId] = React.useState<string | null>(null);
 
-  const handleUpdateStatus = async (submissionId: string, newStatus: 'Approved' | 'Rejected') => {
-    setProcessingId(submissionId);
+  const handleUpdateStatus = async (submission: PaymentSubmission, newStatus: 'Approved' | 'Rejected') => {
+    setProcessingId(submission.id);
+    const batch = writeBatch(firestore);
+
+    const submissionRef = doc(firestore, 'paymentSubmissions', submission.id);
+    batch.update(submissionRef, { status: newStatus });
+
+    // If approved, create the journal voucher
+    if (newStatus === 'Approved') {
+        const customer = users?.find(u => u.id === submission.userId);
+        if (!customer?.coaLedgerId) {
+            toast({ variant: 'destructive', title: 'Accounting Error', description: `Could not find a ledger account for ${submission.customerName}.` });
+            setIsProcessing(null);
+            return;
+        }
+
+        // Placeholder for the bank account - assumes a primary bank account exists.
+        const bankAccount = coaLedgers?.find(l => l.name === 'Bank – Current Account');
+        if (!bankAccount) {
+            toast({ variant: 'destructive', title: 'Accounting Error', description: 'Default bank account "Bank – Current Account" not found.' });
+            setIsProcessing(null);
+            return;
+        }
+
+        const jvData = {
+            date: new Date().toISOString().split("T")[0],
+            narration: `Payment received from ${submission.customerName}. Ref: ${submission.transactionDetails}`,
+            voucherType: "Receipt Voucher",
+            entries: [
+                { accountId: bankAccount.id, debit: submission.amount, credit: 0 },
+                { accountId: customer.coaLedgerId, debit: 0, credit: submission.amount },
+            ],
+            createdAt: serverTimestamp(),
+        };
+
+        const jvRef = doc(collection(firestore, 'journalVouchers'));
+        batch.set(jvRef, jvData);
+    }
+    
     try {
-      const submissionRef = doc(firestore, 'paymentSubmissions', submissionId);
-      await updateDoc(submissionRef, { status: newStatus });
-      toast({
-        title: `Payment ${newStatus}`,
-        description: `The payment submission has been ${newStatus.toLowerCase()}.`,
-      });
+        await batch.commit();
+        toast({
+            title: `Payment ${newStatus}`,
+            description: `The payment submission has been ${newStatus.toLowerCase()}.`,
+        });
     } catch (error) {
-      console.error('Error updating payment status:', error);
-      toast({
-        variant: 'destructive',
-        title: 'Update Failed',
-      });
+        console.error('Error updating payment status:', error);
+        toast({
+            variant: 'destructive',
+            title: 'Update Failed',
+        });
     } finally {
-      setProcessingId(null);
+        setProcessingId(null);
     }
   };
   
