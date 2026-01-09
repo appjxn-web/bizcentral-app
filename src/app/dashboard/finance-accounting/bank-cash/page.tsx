@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -38,7 +39,7 @@ import {
   TabsList,
   TabsTrigger,
 } from '@/components/ui/tabs';
-import { PlusCircle, Repeat, MoreHorizontal, Edit, Save } from 'lucide-react';
+import { PlusCircle, Repeat, MoreHorizontal, Edit, Save, Check, ChevronsUpDown } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
@@ -51,7 +52,7 @@ import {
 import { format } from 'date-fns';
 import { useFirestore, useCollection, useUser, useDoc } from '@/firebase';
 import { collection, query, where, addDoc, serverTimestamp, writeBatch, doc, updateDoc, setDoc } from 'firebase/firestore';
-import type { CoaLedger, UserRole, JournalVoucher, CompanyInfo } from '@/lib/types';
+import type { CoaLedger, UserRole, JournalVoucher, CompanyInfo, UserProfile } from '@/lib/types';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
 import {
@@ -60,6 +61,10 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { cn } from '@/lib/utils';
+
 
 type TransferMode = 'Cash Withdrawal' | 'Cash Deposit' | 'Bank to Bank Transfer';
 
@@ -76,6 +81,8 @@ export default function BankAndCashPage() {
   );
   const { data: accounts, loading } = useCollection<CoaLedger>(bankAndCashQuery);
   const { data: journalVouchers } = useCollection<JournalVoucher>(collection(firestore, 'journalVouchers'));
+  const { data: users } = useCollection<UserProfile>(collection(firestore, 'users'));
+
 
   const companyInfoRef = doc(firestore, 'company', 'info');
   const { data: companyInfo } = useDoc<CompanyInfo>(companyInfoRef);
@@ -100,7 +107,9 @@ export default function BankAndCashPage() {
   const [cashAccountName, setCashAccountName] = React.useState('');
   const [cashOpeningBalance, setCashOpeningBalance] = React.useState('');
   const [accountLocation, setAccountLocation] = React.useState('');
-  const [linkedUserEmail, setLinkedUserEmail] = React.useState('');
+  const [linkedUserId, setLinkedUserId] = React.useState('');
+  const [isUserComboboxOpen, setIsUserComboboxOpen] = React.useState(false);
+
 
   // State for internal transfer
   const [transferMode, setTransferMode] = React.useState<TransferMode | ''>('');
@@ -146,7 +155,7 @@ export default function BankAndCashPage() {
 
   const resetForms = () => {
     setBankAccountHolder(''); setBankName(''); setBankBranch(''); setBankAccountNo(''); setBankIfsc(''); setBankOpeningBalance('');
-    setCashAccountName(''); setCashOpeningBalance(''); setAccountLocation(''); setLinkedUserEmail('');
+    setCashAccountName(''); setCashOpeningBalance(''); setAccountLocation(''); setLinkedUserId('');
     setAdCode(''); setUpiId('');
     setEditingAccount(null);
   };
@@ -173,7 +182,7 @@ export default function BankAndCashPage() {
             setCashAccountName(account.name);
             setCashOpeningBalance(account.openingBalance?.amount.toString() || '');
             setAccountLocation(account.tags?.[0] || '');
-            setLinkedUserEmail(account.tags?.[1] || '');
+            setLinkedUserId(account.tags?.[1] || '');
         }
     } else {
         resetForms();
@@ -233,7 +242,7 @@ export default function BankAndCashPage() {
                 asOf: editingAccount?.openingBalance?.asOf || new Date().toISOString()
             },
             status: 'ACTIVE',
-            tags: [accountLocation, linkedUserEmail].filter(Boolean)
+            tags: [accountLocation, linkedUserId].filter(Boolean)
         };
     }
     
@@ -326,6 +335,11 @@ export default function BankAndCashPage() {
     if (transferMode === 'Bank to Bank Transfer') return accounts.filter(acc => acc.type === 'BANK');
     return [];
   }, [transferMode, accounts]);
+
+  const linkableUsers = React.useMemo(() => {
+    if (!users) return [];
+    return users.filter(u => ['Employee', 'Partner'].some(role => u.role.includes(role)));
+  }, [users]);
 
 
   const handleRowClick = (accountId: string) => {
@@ -488,7 +502,41 @@ export default function BankAndCashPage() {
                             </div>
                             <div className="space-y-2">
                                 <Label htmlFor="link-user">Link to User</Label>
-                                <Input id="link-user" type="email" placeholder="Enter user's email" value={linkedUserEmail} onChange={e => setLinkedUserEmail(e.target.value)} />
+                                <Popover open={isUserComboboxOpen} onOpenChange={setIsUserComboboxOpen}>
+                                <PopoverTrigger asChild>
+                                    <Button
+                                        variant="outline"
+                                        role="combobox"
+                                        className="w-full justify-between"
+                                    >
+                                    {linkedUserId ? linkableUsers.find(u => u.id === linkedUserId)?.name : "Select employee or partner..."}
+                                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                    </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+                                    <Command>
+                                        <CommandInput placeholder="Search user..." />
+                                        <CommandList>
+                                            <CommandEmpty>No user found.</CommandEmpty>
+                                            <CommandGroup>
+                                            {linkableUsers.map((user) => (
+                                                <CommandItem
+                                                    key={user.id}
+                                                    value={user.name}
+                                                    onSelect={() => {
+                                                        setLinkedUserId(user.id);
+                                                        setIsUserComboboxOpen(false);
+                                                    }}
+                                                >
+                                                    <Check className={cn("mr-2 h-4 w-4", linkedUserId === user.id ? "opacity-100" : "opacity-0")} />
+                                                    {user.name} ({user.role})
+                                                </CommandItem>
+                                            ))}
+                                            </CommandGroup>
+                                        </CommandList>
+                                    </Command>
+                                </PopoverContent>
+                                </Popover>
                             </div>
                             <div className="space-y-2">
                                 <Label htmlFor="cash-opening-balance">Opening Balance</Label>
