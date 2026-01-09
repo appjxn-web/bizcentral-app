@@ -1,10 +1,10 @@
 
-
 'use client';
 
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
+import Link from 'next/link';
 import {
   MoreHorizontal,
   PlusCircle,
@@ -398,8 +398,8 @@ function OrderCard({ order, allSalesInvoices }: { order: Order, allSalesInvoices
                         <div className="space-y-4">
                             <h4 className="font-semibold">Pickup Details</h4>
                              <div className="p-3 rounded-md border bg-background">
-                                {order.assignedToUid && order.pickupPointId && order.pickupPointId !== 'company-main' ? (
-                                    <PartnerPickupDetails pickupPointId={order.pickupPointId} />
+                                {order.assignedToUid && order.pickupPointId !== 'company-main' ? (
+                                    <PartnerPickupDetails pickupPointId={order.pickupPointId!} />
                                 ) : (
                                     <CompanyPickupDetails />
                                 )}
@@ -580,7 +580,5 @@ export default function MyOrdersPage() {
 
     return <MyOrdersPageContent />;
 }
-
-  
 
     
