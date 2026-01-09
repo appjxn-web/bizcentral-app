@@ -468,10 +468,25 @@ function MyOrdersPageContent() {
             orderBy('date', 'desc')
         );
     }, [user, currentRole, firestore]);
+    
+    const invoicesQuery = React.useMemo(() => {
+        if (!user || !currentRole) return null;
+        const invoicesRef = collection(firestore, 'salesInvoices');
+
+        if (['Admin', 'CEO', 'Sales Manager'].includes(currentRole)) {
+            return query(invoicesRef);
+        }
+
+        if (['Partner', 'Franchisee', 'Sales Agent', 'Dealer'].includes(currentRole)) {
+            return query(invoicesRef, where('assignedToUid', '==', user.uid));
+        }
+        
+        return query(invoicesRef, where('customerId', '==', user.uid));
+    }, [user, currentRole, firestore]);
 
     const { data: orders, loading: ordersLoading } = useCollection<Order>(ordersQuery);
     const { data: workOrders, loading: workOrdersLoading } = useCollection<WorkOrder>(collection(firestore, 'workOrders'));
-    const { data: allSalesInvoices, loading: invoicesLoading } = useCollection<SalesInvoice>(collection(firestore, 'salesInvoices'));
+    const { data: allSalesInvoices, loading: invoicesLoading } = useCollection<SalesInvoice>(invoicesQuery);
 
 
     const getDynamicOrderStatus = (order: Order): OrderStatus => {
