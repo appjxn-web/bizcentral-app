@@ -32,8 +32,8 @@ import {
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { useUser, useFirestore, useCollection, useDoc } from '@/firebase';
-import { collection, query, where, doc, orderBy } from 'firebase/firestore';
-import type { Order, RegisteredProduct, ServiceRequest, Referral, UserProfile, PaymentSubmission } from '@/lib/types';
+import { collection, query, where, doc, orderBy, Timestamp } from 'firebase/firestore';
+import type { Order, RegisteredProduct, ServiceRequest, Referral, UserProfile, PaymentSubmission, JournalVoucher, SalesInvoice, CoaLedger } from '@/lib/types';
 import { MakePaymentDialog } from './_components/make-payment-dialog';
 
 
@@ -48,34 +48,40 @@ export default function CustomerDashboardPage() {
 
   const userDocRef = user ? doc(firestore, 'users', user.uid) : null;
   const { data: userProfile } = useDoc<UserProfile>(userDocRef);
+  const userLedgerId = userProfile?.coaLedgerId;
 
   const ordersQuery = user ? query(collection(firestore, 'orders'), where('userId', '==', user.uid), orderBy('date', 'desc')) : null;
   const productsQuery = user ? query(collection(firestore, 'registeredProducts'), where('customerId', '==', user.uid)) : null;
   const serviceRequestsQuery = user ? query(collection(firestore, 'serviceRequests'), where('customer.id', '==', user.uid)) : null;
   const referralsQuery = user ? query(collection(firestore, 'users', user.uid, 'referrals')) : null;
-  const paymentsQuery = user ? query(collection(firestore, 'paymentSubmissions'), where('userId', '==', user.uid)) : null;
-  
+
   const { data: orders } = useCollection<Order>(ordersQuery);
   const { data: products } = useCollection<RegisteredProduct>(productsQuery);
   const { data: serviceRequests } = useCollection<ServiceRequest>(serviceRequestsQuery);
   const { data: referrals } = useCollection<Referral>(referralsQuery);
-  const { data: payments } = useCollection<PaymentSubmission>(paymentsQuery);
+  
+  const userLedgerRef = userLedgerId ? doc(firestore, 'coa_ledgers', userLedgerId) : null;
+  const { data: userLedger } = useDoc<CoaLedger>(userLedgerRef);
+  
+  const { data: allJournalVouchers } = useCollection<JournalVoucher>(collection(firestore, 'journalVouchers'));
+  const { data: salesInvoices } = useCollection<SalesInvoice>(user ? query(collection(firestore, 'salesInvoices'), where('customerId', '==', user.uid)) : null);
+
   
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = React.useState(false);
 
 
   const kpis = React.useMemo(() => {
     const totalOrders = orders?.length || 0;
-    const activeOrders = orders?.filter(o => o.status === 'Pending' || o.status === 'Shipped').length || 0;
+    const activeOrders = orders?.filter(o => o.status === 'Ordered' || o.status === 'Shipped').length || 0;
     const productsOwned = products?.length || 0;
     const openServiceTickets = serviceRequests?.filter(sr => sr.status !== 'Completed' && sr.status !== 'Canceled').length || 0;
     
     const { totalEarnings } = (referrals || []).reduce((acc, r) => {
         if (r.status === 'Signed Up' || r.status === 'First Purchased' || r.status === 'Completed') {
-            acc.totalEarnings += r.earnings;
+            acc.totalEarnings += r.earnings || 0;
         }
         if (['First Purchased', 'Completed'].includes(r.status)) {
-            acc.totalEarnings += r.commission;
+            acc.totalEarnings += r.commission || 0;
         }
         return acc;
     }, { totalEarnings: 0 });
@@ -97,7 +103,7 @@ export default function CustomerDashboardPage() {
     const thisMonth = orders.filter(o => new Date(o.date).getMonth() === new Date().getMonth()).length || 0;
     const delivered = orders.filter(o => o.status === 'Delivered').length || 0;
     const inTransit = orders.filter(o => o.status === 'Shipped').length || 0;
-    const pending = orders.filter(o => o.status === 'Pending').length || 0;
+    const pending = orders.filter(o => o.status === 'Ordered').length || 0;
     const cancelled = orders.filter(o => o.status === 'Canceled').length || 0;
     
     const totalValue = orders
@@ -108,24 +114,57 @@ export default function CustomerDashboardPage() {
   }, [orders]);
 
   const paymentKpis = React.useMemo(() => {
-    // Correctly calculate total paid amount
-    const initialPayments = orders?.reduce((sum, o) => sum + (o.paymentReceived || 0), 0) || 0;
-    const subsequentPayments = payments?.filter(p => p.status === 'Approved').reduce((sum, p) => sum + p.amount, 0) || 0;
-    const paidAmount = initialPayments + subsequentPayments;
+    if (!userLedger || (!allJournalVouchers && !salesInvoices)) {
+        return { paidAmount: 0, outstandingBalance: orderKpis.totalValue, lastPaymentDate: null, lastInvoiceAmount: 0 };
+    }
 
+    const jvTransactions = (allJournalVouchers || [])
+        .filter(jv => jv.entries.some(e => e.accountId === userLedger.id))
+        .map(jv => {
+            const entry = jv.entries.find(e => e.accountId === userLedger.id)!;
+            return {
+                id: jv.id,
+                date: jv.date,
+                createdAt: jv.createdAt,
+                description: jv.narration,
+                debit: entry.debit || 0,
+                credit: entry.credit || 0,
+            };
+        });
+
+    const invoiceTransactions = (salesInvoices || []).map(inv => ({
+        id: inv.id,
+        date: inv.date,
+        createdAt: new Timestamp(new Date(inv.date).getTime() / 1000, 0),
+        description: `Sales Invoice #${inv.invoiceNumber}`,
+        debit: inv.grandTotal,
+        credit: 0
+    }));
+
+    const allTransactions = [...jvTransactions, ...invoiceTransactions].sort((a, b) => {
+        const dateA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.date);
+        const dateB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.date);
+        return dateA.getTime() - dateB.getTime();
+    });
+
+    const totalCredit = allTransactions.reduce((sum, tx) => sum + tx.credit, 0);
+    const paidAmount = totalCredit;
     const outstandingBalance = orderKpis.totalValue - paidAmount;
     
-    const lastPaymentDate = payments?.filter(p => p.status === 'Approved').sort((a, b) => new Date(b.submittedAt.toDate()).getTime() - new Date(a.submittedAt.toDate()).getTime())[0]?.submittedAt.toDate();
+    const lastPayment = jvTransactions
+        .filter(tx => tx.credit > 0)
+        .sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+    
     const lastInvoiceAmount = orders?.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0]?.grandTotal || 0;
     
     return {
       outstandingBalance,
       paidAmount,
-      creditNotes: 0, // Needs data from finance
-      lastPaymentDate,
+      creditNotes: 0,
+      lastPaymentDate: lastPayment ? new Date(lastPayment.date) : null,
       lastInvoiceAmount,
     };
-  }, [orderKpis.totalValue, payments, orders]);
+  }, [orderKpis.totalValue, userLedger, allJournalVouchers, salesInvoices, orders]);
   
   const alerts: any[] = [];
   if (paymentKpis.outstandingBalance > 0) {
@@ -280,7 +319,7 @@ export default function CustomerDashboardPage() {
             </div>
             <div className="text-sm space-y-2">
                 <div className="flex justify-between">
-                    <span className="text-muted-foreground">Advance Paid:</span>
+                    <span className="text-muted-foreground">Total Paid:</span>
                     <span>{formatCurrency(paymentKpis.paidAmount)}</span>
                 </div>
                 <div className="flex justify-between">
@@ -364,3 +403,4 @@ export default function CustomerDashboardPage() {
     </>
   );
 }
+
