@@ -412,15 +412,23 @@ function OrdersPageContent() {
         if (!user || !currentRole) return null;
         const ordersRef = collection(firestore, 'orders');
 
-        if (['Admin', 'CEO', 'Accounts Manager', 'Sales Manager'].includes(currentRole)) {
+        if (['Admin', 'CEO', 'Sales Manager'].includes(currentRole)) {
             return query(ordersRef, orderBy('date', 'desc'));
         }
 
         if (['Partner', 'Franchisee', 'Sales Agent', 'Dealer'].includes(currentRole)) {
-            return query(ordersRef, where('assignedToUid', '==', user.uid), orderBy('date', 'desc'));
+            return query(
+                ordersRef, 
+                where('assignedToUid', '==', user.uid), 
+                orderBy('date', 'desc')
+            );
         }
 
-        return query(ordersRef, where('userId', '==', user.uid), orderBy('date', 'desc'));
+        return query(
+            ordersRef, 
+            where('userId', '==', user.uid), 
+            orderBy('date', 'desc')
+        );
     }, [user, currentRole, firestore]);
     
     const { data: orders, loading: ordersLoading } = useCollection<Order>(ordersQuery);
@@ -615,3 +623,4 @@ export default function OrdersPage() {
 
     return <OrdersPageContent />;
 }
+

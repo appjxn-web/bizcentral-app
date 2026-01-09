@@ -1,4 +1,5 @@
 
+
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -6,7 +7,10 @@ service cloud.firestore {
     // --- HELPER FUNCTIONS ---
     function signedIn() { return request.auth != null; }
     
-    // RESTORED: Fetches role from the database document since claims aren't set yet.
+    // Server-side functions don't have auth objects, so we need to allow access
+    // based on the fact that they run with admin privileges. We can't check a role.
+    function isFunction() { return request.auth == null; }
+
     function getRole() {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
     }
@@ -29,11 +33,9 @@ service cloud.firestore {
 
     // --- USERS & ACCOUNT HISTORY ---
     match /users/{userId} {
-      // Allow user to create their own document if the ID matches their auth UID.
-      allow create: if signedIn() && request.auth.uid == userId;
+      allow create, update: if signedIn() && request.auth.uid == userId;
       allow get: if isOwner(userId) || isAdmin();
       allow list: if isAdmin() || isPartner() || isHrManager();
-      allow update: if isOwner(userId) || isAdmin();
       allow delete: if isAdmin();
       
       match /wallet/main {
@@ -41,9 +43,7 @@ service cloud.firestore {
       }
 
       match /referrals/{referralId} {
-        // Allow owner/admin to read/write.
         allow read, create: if isOwner(userId) || isAdmin();
-        // Allow a referred user to update their own referral status upon signup.
         allow update: if isOwner(userId) || isAdmin() || (signedIn() && resource.data.mobile == request.auth.token.phone_number);
       }
 
@@ -53,7 +53,6 @@ service cloud.firestore {
       }
       
       match /attendance/{attendanceId} {
-        // Allow users to create, read, and update their own attendance.
         allow get: if isOwner(userId);
         allow create, update, delete: if isOwner(userId);
         allow list: if isHrManager() || isOwner(userId);
@@ -66,11 +65,11 @@ service cloud.firestore {
 
     // --- GLOBAL ORDERS (Main Sales) ---
     match /orders/{orderId} {
-       // FIX: Use resource.data to support the OR query used in the Partner Dashboard
-       allow list: if signedIn() && (
+      allow list: if signedIn() && (
         isAdmin() || 
-        resource.data.userId == request.auth.uid || 
-        resource.data.assignedToUid == request.auth.uid
+        (request.query.keys().hasAll(['where', 'orderBy']) &&
+         ((request.query.where[0] == 'userId' && request.query.where[2] == request.auth.uid) ||
+          (request.query.where[0] == 'assignedToUid' && request.query.where[2] == request.auth.uid)))
       );
       
       allow get: if signedIn() && (
@@ -114,24 +113,42 @@ service cloud.firestore {
     }
 
     // --- FINANCE & ACCOUNTING ---
-    match /journalVouchers/{voucherId} {
-      allow list: if signedIn(); 
-      allow create: if signedIn(); // Temporary: Allow create for order flow until Function is stable
-      allow read, update, delete: if isAdmin();
+    match /salesInvoices/{invoiceId} {
+        allow get: if signedIn() && (
+          isAdmin() ||
+          resource.data.customerId == request.auth.uid
+        );
+        allow list: if signedIn() && (
+          isAdmin() ||
+          (request.query.keys().hasAll(['where', 'orderBy']) && request.query.where[0] == 'customerId' && request.query.where[2] == request.auth.uid)
+        );
+        allow create, update, delete: if isAdmin();
     }
-    match /coa_groups/{id} { allow read, list: if signedIn(); allow write: if isAdmin(); }
+    
+    match /creditNotes/{noteId} {
+      allow read, list, create, update, delete: if isAdmin();
+    }
+    
+    match /debitNotes/{noteId} {
+      allow read, list, create, update, delete: if isAdmin();
+    }
+
+    match /journalVouchers/{voucherId} {
+      allow read, list: if signedIn() || isFunction(); 
+      allow create: if signedIn() || isFunction();
+      allow update, delete: if isAdmin();
+    }
+    match /coa_groups/{id} { allow read, list: if signedIn() || isFunction(); allow write: if isAdmin(); }
     match /coa_ledgers/{id} { 
-      // Allow any signed-in user to create their own ledger during signup
       allow create: if signedIn();
-      allow read, list: if signedIn();
-      allow write: if signedIn();
+      allow read, list: if signedIn() || isFunction();
+      allow update, delete: if isAdmin();
     }
 
     // --- PARTIES ---
     match /parties/{partyId} {
-      // Allow party creation during signup for the corresponding user
-      allow create: if signedIn();
-      allow list, get: if signedIn();
+      allow create: if signedIn() && request.auth.uid == partyId;
+      allow list, get: if signedIn() || isFunction();
       allow write: if isAdmin();
     }
 
@@ -146,7 +163,7 @@ service cloud.firestore {
     match /registeredProducts/{productId} {
       allow read: if signedIn();
       allow write: if isAdmin();
-      allow create: if signedIn(); // Allow any signed in user to create
+      allow create: if signedIn();
     }
     
     match /sparesRequests/{requestId} { allow read, write: if signedIn(); }
@@ -157,7 +174,7 @@ service cloud.firestore {
     match /products/{id} { allow read, list: if true; allow write: if signedIn(); }
     match /productCategories/{id} { allow read, list: if true; allow write: if isAdmin(); }
     match /posts/{id} { allow read, list: if true; allow write: if signedIn(); }
-    match /company/{id} { allow read: if true; allow write: if isAdmin(); }
+    match /company/{id} { allow read: if true; allow write: if isAdmin() || isFunction(); }
     match /supportSettings/{id} { allow read: if true; allow write: if isAdmin(); }
     match /faqs/{id} { allow read: if true; }
     match /helpGuides/{id} { allow read: if true; }
