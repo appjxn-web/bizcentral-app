@@ -31,7 +31,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { PlusCircle, Trash2, Check, ChevronsUpDown, Send, Package, Wrench, PackageSearch, Loader2, ChevronRight, ChevronDown } from 'lucide-react';
+import { PlusCircle, Trash2, Check, ChevronsUpDown, Send, Package, Wrench, PackageSearch, Loader2, ChevronRight, ChevronDown, MoreHorizontal } from 'lucide-react';
 import type { User, Product, SparesRequest, StockTransferRequest, UserProfile } from '@/lib/types';
 import { useFirestore, useCollection, useUser, useDoc } from '@/firebase';
 import { collection, addDoc, serverTimestamp, query, where, orderBy, getDoc } from 'firebase/firestore';
@@ -42,10 +42,12 @@ import { useRole } from '../../_components/role-provider';
 import { format } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { writeBatch, doc } from 'firebase/firestore';
+import { writeBatch, doc, updateDoc } from 'firebase/firestore';
 import { getNextDocNumber } from '@/lib/number-series';
 import type { BillOfMaterial, WorkOrder, IssuedItem, CoaLedger } from '@/lib/types';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Dialog, DialogHeader, DialogTitle, DialogDescription, DialogContent, DialogFooter, DialogClose } from '@/components/ui/dialog';
+import { Textarea } from '@/components/ui/textarea';
 
 
 interface StockTransferItem {
@@ -423,6 +425,63 @@ function getStatusBadgeVariant(status: string) {
     return variants[status] || 'bg-gray-100';
 }
 
+function DispatchDialog({ request, open, onOpenChange, onDispatch }: { request: StockTransferRequest | null, open: boolean, onOpenChange: (open: boolean) => void, onDispatch: (id: string, details: any) => void }) {
+    const [vehicleNo, setVehicleNo] = React.useState('');
+    const [driverName, setDriverName] = React.useState('');
+    const [driverPhone, setDriverPhone] = React.useState('');
+    const [remarks, setRemarks] = React.useState('');
+
+    React.useEffect(() => {
+        if (!open) {
+            setVehicleNo('');
+            setDriverName('');
+            setDriverPhone('');
+            setRemarks('');
+        }
+    }, [open]);
+
+    const handleSubmit = () => {
+        if (!vehicleNo || !driverName || !driverPhone) {
+            alert('Please fill all dispatch details.');
+            return;
+        }
+        onDispatch(request!.id, { vehicleNo, driverName, driverPhone, remarks });
+    }
+
+    return (
+        <Dialog open={open} onOpenChange={onOpenChange}>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Dispatch Stock Transfer</DialogTitle>
+                    <DialogDescription>Enter logistics details for request to {request?.partnerName}.</DialogDescription>
+                </DialogHeader>
+                <div className="py-4 space-y-4">
+                    <div className="space-y-2">
+                        <Label htmlFor="vehicle-no">Vehicle Number</Label>
+                        <Input id="vehicle-no" value={vehicleNo} onChange={(e) => setVehicleNo(e.target.value)} />
+                    </div>
+                    <div className="space-y-2">
+                        <Label htmlFor="driver-name">Driver Name</Label>
+                        <Input id="driver-name" value={driverName} onChange={(e) => setDriverName(e.target.value)} />
+                    </div>
+                    <div className="space-y-2">
+                        <Label htmlFor="driver-phone">Driver Phone</Label>
+                        <Input id="driver-phone" type="tel" value={driverPhone} onChange={(e) => setDriverPhone(e.target.value)} />
+                    </div>
+                    <div className="space-y-2">
+                        <Label htmlFor="remarks">Remarks (Optional)</Label>
+                        <Textarea id="remarks" value={remarks} onChange={(e) => setRemarks(e.target.value)} />
+                    </div>
+                </div>
+                <DialogFooter>
+                    <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+                    <Button onClick={handleSubmit}>Confirm Dispatch</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
 function StockTransferTab() {
   const { toast } = useToast();
   const firestore = useFirestore();
@@ -435,6 +494,7 @@ function StockTransferTab() {
   const [items, setItems] = React.useState<StockTransferItem[]>([{ id: `item-${Date.now()}`, productId: '', productName: '', quantity: 1 }]);
   const [notes, setNotes] = React.useState('');
   const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const [dispatchingRequest, setDispatchingRequest] = React.useState<StockTransferRequest | null>(null);
 
   const handleAddItem = () => {
     setItems(prev => [...prev, { id: `item-${Date.now()}`, productId: '', productName: '', quantity: 1 }]);
@@ -482,7 +542,7 @@ function StockTransferTab() {
             createdAt: serverTimestamp(),
             notes,
         };
-        
+
         await addDoc(collection(firestore, 'stockTransferRequests'), requestData);
         toast({ title: 'Request Submitted', description: 'Stock transfer request has been sent for approval.' });
         
@@ -494,6 +554,22 @@ function StockTransferTab() {
         toast({ variant: 'destructive', title: 'Submission Failed' });
     } finally {
         setIsSubmitting(false);
+    }
+  };
+
+  const handleDispatchRequest = async (id: string, details: any) => {
+    try {
+      const requestRef = doc(firestore, 'stockTransferRequests', id);
+      await updateDoc(requestRef, {
+        status: 'Shipped',
+        shippedAt: serverTimestamp(),
+        shippingDetails: details,
+      });
+      toast({ title: 'Dispatch Confirmed', description: 'Request status updated to Shipped.' });
+      setDispatchingRequest(null);
+    } catch (e) {
+      console.error(e);
+      toast({ variant: 'destructive', title: 'Dispatch Failed' });
     }
   };
 
@@ -587,10 +663,11 @@ function StockTransferTab() {
                   <TableHead>Recipient</TableHead>
                   <TableHead>Items</TableHead>
                   <TableHead>Status</TableHead>
+                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               {requestsLoading ? (
-                <TableBody><TableRow><TableCell colSpan={6} className="h-24 text-center">Loading requests...</TableCell></TableRow></TableBody>
+                <TableBody><TableRow><TableCell colSpan={7} className="h-24 text-center">Loading requests...</TableCell></TableRow></TableBody>
               ) : userRequests && userRequests.length > 0 ? (
                 userRequests.map(req => (
                     <Collapsible asChild key={req.id} open={openRequestId === req.id} onOpenChange={(isOpen) => setOpenRequestId(isOpen ? req.id : null)}>
@@ -612,10 +689,17 @@ function StockTransferTab() {
                                 {req.status}
                             </Badge>
                             </TableCell>
+                            <TableCell className="text-right">
+                                {req.status === 'Approved' && (
+                                    <Button size="sm" onClick={() => setDispatchingRequest(req)}>
+                                        Dispatch
+                                    </Button>
+                                )}
+                            </TableCell>
                         </TableRow>
                         <CollapsibleContent asChild>
                             <TableRow>
-                                <TableCell colSpan={6} className="p-0">
+                                <TableCell colSpan={7} className="p-0">
                                     <div className="p-4 bg-muted/50">
                                         <h4 className="font-semibold text-sm mb-2">Requested Items:</h4>
                                         <Table>
@@ -638,7 +722,7 @@ function StockTransferTab() {
                 ))
               ) : (
                 <TableBody><TableRow>
-                  <TableCell colSpan={6} className="text-center h-24 text-muted-foreground">
+                  <TableCell colSpan={7} className="text-center h-24 text-muted-foreground">
                     No requests have been made yet.
                   </TableCell>
                 </TableRow></TableBody>
@@ -646,6 +730,12 @@ function StockTransferTab() {
             </Table>
           </CardContent>
         </Card>
+        <DispatchDialog
+            request={dispatchingRequest}
+            open={!!dispatchingRequest}
+            onOpenChange={() => setDispatchingRequest(null)}
+            onDispatch={handleDispatchRequest}
+        />
     </>
   );
 }
@@ -940,3 +1030,4 @@ export default function OutwardsPage() {
     </>
   );
 }
+```
