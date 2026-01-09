@@ -94,8 +94,7 @@ service cloud.firestore {
     match /paymentSubmissions/{submissionId} {
       allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
       allow read, update: if isAdmin();
-      // Allow user to list their own payment submissions
-      allow list: if isAdmin() || (signedIn() && request.query.where.userId == request.auth.uid);
+      allow list: if isAdmin() || (signedIn() && request.query.userId == request.auth.uid);
     }
     
     // --- DISTRIBUTED COUNTERS ---
@@ -132,8 +131,10 @@ service cloud.firestore {
         // List/Query rule: The query MUST filter by customerId OR assignedToUid
         allow read, list: if signedIn() && (
           isAdmin() ||
-          resource.data.customerId == request.auth.uid ||
-          resource.data.assignedToUid == request.auth.uid
+          (request.query.keys().hasAll(['where', 'orderBy']) &&
+           ((request.query.where[0] == 'customerId' && request.query.where[2] == request.auth.uid) ||
+            (request.query.where[0] == 'assignedToUid' && request.query.where[2] == request.auth.uid))) ||
+           (resource.data.customerId == request.auth.uid)
         );
         
         // Allow partners to CREATE invoices if they are the ones assigned
