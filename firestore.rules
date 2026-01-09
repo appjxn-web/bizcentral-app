@@ -74,15 +74,17 @@ service cloud.firestore {
 
     // --- GLOBAL ORDERS (Main Sales) ---
     match /orders/{orderId} {
-      // List and Get rules: Unified to check if the user is the Admin, 
-      // the Customer (userId), or the Assigned Partner (assignedToUid)
       allow read: if signedIn() && (
         isAdmin() || 
         resource.data.userId == request.auth.uid || 
         resource.data.assignedToUid == request.auth.uid
       );
       
-      allow list: if signedIn() && (isAdmin() || request.query.where.userId == request.auth.uid || request.query.where.assignedToUid == request.auth.uid);
+      allow list: if signedIn() && (
+        isAdmin() ||
+        request.query.where.userId == request.auth.uid ||
+        request.query.where.assignedToUid == request.auth.uid
+      );
 
       allow create: if signedIn() && (request.resource.data.userId == request.auth.uid || isAdmin() || isPartner());
       
@@ -134,7 +136,6 @@ service cloud.firestore {
 
     // --- FINANCE & ACCOUNTING ---
     match /salesInvoices/{invoiceId} {
-        // Individual document reads
         allow get: if signedIn() && (
           isAdmin() ||
           resource.data.customerId == request.auth.uid ||
@@ -143,9 +144,9 @@ service cloud.firestore {
 
         // List queries
         allow list: if signedIn() && (
-          isAdmin() ||
-          request.query.where.customerId == request.auth.uid ||
-          request.query.where.assignedToUid == request.auth.uid
+            isAdmin() ||
+            (request.query.keys().hasAny(['customerId', 'assignedToUid']) && 
+             (request.query.customerId == request.auth.uid || request.query.assignedToUid == request.auth.uid))
         );
         
         allow create: if isAdmin() || (isPartner() && request.resource.data.assignedToUid == request.auth.uid);
