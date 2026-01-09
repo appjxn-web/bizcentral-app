@@ -275,7 +275,7 @@ function CompanyPickupDetails() {
     );
 }
 
-function OrderRow({ order, onGenerateInvoice, onUpdateStatus, pickupPoints, dynamicStatus, allProducts, getOrderInHand, allSalesInvoices, onViewInvoice, onEdit }: { order: Order, onGenerateInvoice: (order: Order) => void, onUpdateStatus: (orderId: string, status: OrderStatus) => void, pickupPoints: PickupPoint[] | null, dynamicStatus: OrderStatus, allProducts: Product[] | null, getOrderInHand: (productId: string) => number, allSalesInvoices: SalesInvoice[] | null, onViewInvoice: (invoiceId: string) => void, onEdit: (orderId: string) => void }) {
+function OrderRow({ order, onGenerateInvoice, onUpdateStatus, pickupPoints, dynamicStatus, allProducts, getOrderInHand, allSalesInvoices, onViewInvoice, onEdit, currentRole }: { order: Order, onGenerateInvoice: (order: Order) => void, onUpdateStatus: (orderId: string, status: OrderStatus) => void, pickupPoints: PickupPoint[] | null, dynamicStatus: OrderStatus, allProducts: Product[] | null, getOrderInHand: (productId: string) => number, allSalesInvoices: SalesInvoice[] | null, onViewInvoice: (invoiceId: string) => void, onEdit: (orderId: string) => void, currentRole: UserRole }) {
   const [isOpen, setIsOpen] = React.useState(false);
   const router = useRouter();
   const orderStatuses: OrderStatus[] = ['Manufacturing', 'Ready for Dispatch', 'Awaiting Payment', 'Shipped', 'Delivered'];
@@ -283,7 +283,8 @@ function OrderRow({ order, onGenerateInvoice, onUpdateStatus, pickupPoints, dyna
   const existingInvoice = allSalesInvoices?.find(inv => inv.orderNumber === order.orderNumber);
 
   const pickupPointName = pickupPoints?.find(p => p.id === order.pickupPointId)?.name || 'N/A';
-  
+  const canPerformActions = currentRole === 'Admin' || currentRole === 'CEO' || currentRole === 'Sales Manager' || currentRole === 'Accounts Manager';
+
   return (
     <Collapsible asChild key={order.id} open={isOpen} onOpenChange={setIsOpen}>
       <TableBody>
@@ -308,11 +309,11 @@ function OrderRow({ order, onGenerateInvoice, onUpdateStatus, pickupPoints, dyna
           <TableCell className="text-right font-mono">{formatIndianCurrency(order.grandTotal)}</TableCell>
           <TableCell className="text-right">
               <div className="flex gap-2 justify-end">
-                {existingInvoice ? (
+                {canPerformActions && existingInvoice ? (
                     <Button variant="secondary" size="sm" onClick={() => onViewInvoice(existingInvoice.invoiceNumber)}>
                         View Invoice
                     </Button>
-                ) : (
+                ) : canPerformActions && (
                     <Button 
                         variant="outline" 
                         size="sm" 
@@ -322,26 +323,28 @@ function OrderRow({ order, onGenerateInvoice, onUpdateStatus, pickupPoints, dyna
                         Generate Invoice
                     </Button>
                 )}
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4"/></Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent>
-                    <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                     <DropdownMenuItem onClick={() => router.push(`/dashboard/sales/orders/view?id=${order.id}`)}>
-                        <Eye className="mr-2 h-4 w-4" /> View Order
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => onEdit(order.id)}>
-                        <Edit className="mr-2 h-4 w-4" /> Edit Order
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    {orderStatuses.map(status => (
-                      <DropdownMenuItem key={status} onClick={() => onUpdateStatus(order.id, status)}>
-                        {status}
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                {canPerformActions && (
+                    <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4"/></Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent>
+                        <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                        <DropdownMenuItem onClick={() => router.push(`/dashboard/sales/orders/view?id=${order.id}`)}>
+                            <Eye className="mr-2 h-4 w-4" /> View Order
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => onEdit(order.id)}>
+                            <Edit className="mr-2 h-4 w-4" /> Edit Order
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        {orderStatuses.map(status => (
+                        <DropdownMenuItem key={status} onClick={() => onUpdateStatus(order.id, status)}>
+                            {status}
+                        </DropdownMenuItem>
+                        ))}
+                    </DropdownMenuContent>
+                    </DropdownMenu>
+                )}
               </div>
           </TableCell>
         </TableRow>
@@ -458,12 +461,9 @@ function OrdersPageContent() {
             );
         }
     
-        return query(
-            invoicesRef, 
-            where('customerId', '==', user.uid),
-            orderBy('date', 'desc')
-        );
+        return query(invoicesRef, where('customerId', '==', user.uid));
     }, [user, currentRole, firestore]);
+
 
     const { data: orders, loading: ordersLoading } = useCollection<Order>(ordersQuery);
     const { data: workOrders, loading: workOrdersLoading } = useCollection<WorkOrder>(collection(firestore, 'workOrders'));
@@ -627,7 +627,20 @@ function OrdersPageContent() {
                 orders.map((order) => {
                   const dynamicStatus = getDynamicOrderStatus(order);
                   return (
-                    <OrderRow key={order.id} order={order} pickupPoints={pickupPoints} onGenerateInvoice={handleGenerateInvoice} onUpdateStatus={handleUpdateStatus} dynamicStatus={dynamicStatus} allProducts={allProducts} getOrderInHand={getOrderInHand} allSalesInvoices={allSalesInvoices || []} onViewInvoice={onViewInvoice} onEdit={handleEditOrder} />
+                    <OrderRow 
+                        key={order.id} 
+                        order={order} 
+                        pickupPoints={pickupPoints} 
+                        onGenerateInvoice={handleGenerateInvoice} 
+                        onUpdateStatus={handleUpdateStatus} 
+                        dynamicStatus={dynamicStatus} 
+                        allProducts={allProducts} 
+                        getOrderInHand={getOrderInHand} 
+                        allSalesInvoices={allSalesInvoices || []} 
+                        onViewInvoice={onViewInvoice} 
+                        onEdit={handleEditOrder}
+                        currentRole={currentRole}
+                    />
                   )
                 })
               ) : (
@@ -664,3 +677,6 @@ export default function OrdersPage() {
 
 
 
+
+
+    
