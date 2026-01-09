@@ -420,7 +420,7 @@ export const handleOrderUpdates = onDocumentUpdated("orders/{orderId}", async (e
         const userProfile = userProfileSnap.data() as UserProfile | undefined;
   
         if (userProfile?.referredBy) {
-          // Find the referral record in the referrer's sub-collection
+          const referrerWalletRef = db.doc(`users/${userProfile.referredBy}/wallet/main`);
           const referralsQuery = db.collection(`users/${userProfile.referredBy}/referrals`)
             .where('mobile', '==', userProfile.mobile)
             .where('status', '==', 'First Purchased')
@@ -432,17 +432,14 @@ export const handleOrderUpdates = onDocumentUpdated("orders/{orderId}", async (e
             const referralDoc = referralsSnapshot.docs[0];
             const referralData = referralDoc.data();
             
-            // This is their first purchase after sign-up
             if (referralData.status === 'First Purchased') {
               const firstPurchaseCommission = referralData.commission || 0;
               
               if (firstPurchaseCommission > 0) {
-                const referrerWalletRef = db.doc(`users/${userProfile.referredBy}/wallet/main`);
                 transaction.set(referrerWalletRef, { 
                   commissionPayable: admin.firestore.FieldValue.increment(firstPurchaseCommission) 
                 }, { merge: true });
                 
-                // Mark as completed so it's not processed again
                 transaction.update(referralDoc.ref, { status: 'Completed' });
               }
             }
@@ -551,3 +548,5 @@ export const onGoalUpdate = onDocumentCreated("goalUpdates/{updateId}", async ()
     
 
     
+
+      
