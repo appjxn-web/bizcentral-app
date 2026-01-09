@@ -1,4 +1,3 @@
-
 'use client';
 
 import * as React from 'react';
@@ -47,7 +46,7 @@ import { cn } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { format } from 'date-fns';
 import { useFirestore, useUser, useCollection, useDoc } from '@/firebase';
-import { collection, addDoc, serverTimestamp, doc, updateDoc, writeBatch, increment } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, doc, updateDoc, writeBatch, increment, query, where } from 'firebase/firestore';
 import type { Referral, UserProfile } from '@/lib/types';
 
 
@@ -74,9 +73,9 @@ export default function ReferralsPage() {
   const { toast } = useToast();
   const firestore = useFirestore();
   const { user } = useUser();
-  const { data: referralHistory, loading } = useCollection<Referral>(
-    user ? collection(firestore, 'users', user.uid, 'referrals') : null
-  );
+  
+  const referralsQuery = user ? query(collection(firestore, 'users', user.uid, 'referrals'), orderBy('createdAt', 'desc')) : null;
+  const { data: referralHistory, loading } = useCollection<Referral>(referralsQuery);
   
   const { data: companyInfo } = useDoc<{ referralAmount?: string, commissionPercent?: string }>(doc(firestore, 'company', 'info'));
   const { data: userProfile } = useDoc<UserProfile>(user ? doc(firestore, 'users', user.uid) : null);

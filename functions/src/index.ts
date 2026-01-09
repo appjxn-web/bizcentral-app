@@ -384,35 +384,54 @@ export const handleOrderUpdates = onDocumentUpdated("orders/{orderId}", async (e
     const after = event.data.after.data() as Order;
 
     // --- Commission Calculation on Delivery ---
-    if (before.status !== 'Delivered' && after.status === "Delivered" && after.assignedToUid) {
+    if (before.status !== 'Delivered' && after.status === "Delivered") {
         return db.runTransaction(async (transaction) => {
-            const partnerId = after.assignedToUid!;
-            const partnerRef = db.doc(`users/${partnerId}`);
-            const partnerSnap = await transaction.get(partnerRef);
-            const partnerData = partnerSnap.data() as UserProfile | undefined;
+            
+            // Partner Commission
+            if (after.assignedToUid) {
+                const partnerId = after.assignedToUid!;
+                const partnerRef = db.doc(`users/${partnerId}`);
+                const partnerSnap = await transaction.get(partnerRef);
+                const partnerData = partnerSnap.data() as UserProfile | undefined;
 
-            if (!partnerData || !partnerData.partnerMatrix) {
-                console.log(`No commission matrix for partner ${partnerId}.`);
-                return;
+                if (partnerData?.partnerMatrix) {
+                    let commissionTotal = 0;
+                    after.items.forEach(item => {
+                        const rule = partnerData.partnerMatrix?.find(r => r.category === item.category);
+                        if (rule) {
+                            const itemTotal = item.price * item.quantity;
+                            commissionTotal += itemTotal * (rule.commissionRate / 100);
+                        }
+                    });
+
+                    if (commissionTotal > 0) {
+                        const walletRef = db.doc(`users/${partnerId}/wallet/main`);
+                        transaction.set(walletRef, { 
+                            commissionPayable: admin.firestore.FieldValue.increment(commissionTotal) 
+                        }, { merge: true });
+                        transaction.update(event.data!.after.ref, { commission: commissionTotal });
+                    }
+                }
             }
 
-            let commissionTotal = 0;
-            after.items.forEach(item => {
-                const rule = partnerData.partnerMatrix?.find(r => r.category === item.category);
-                if (rule) {
-                    const itemTotal = item.price * item.quantity;
-                    commissionTotal += itemTotal * (rule.commissionRate / 100);
+            // Referral Commission
+            const userProfileRef = db.doc(`users/${after.userId}`);
+            const userProfileSnap = await transaction.get(userProfileRef);
+            const userProfile = userProfileSnap.data() as UserProfile | undefined;
+
+            if (userProfile?.referredBy) {
+                const referrerRef = db.doc(`users/${userProfile.referredBy}`);
+                const referralRefQuery = db.collection(`users/${userProfile.referredBy}/referrals`).where('mobile', '==', userProfile.mobile).limit(1);
+                const referralSnap = await transaction.get(referralRefQuery);
+
+                if (!referralSnap.empty) {
+                    const referralDoc = referralSnap.docs[0];
+                    if (referralDoc.data().status === 'Signed Up') {
+                         const firstPurchaseCommission = (referralDoc.data().commission / 100) * after.grandTotal;
+                         transaction.update(referralDoc.ref, { status: 'First Purchased', commission: firstPurchaseCommission });
+                         transaction.set(referrerRef, { wallet: { commissionPayable: admin.firestore.FieldValue.increment(firstPurchaseCommission) }}, { merge: true });
+                    }
                 }
-            });
-
-            if (commissionTotal > 0) {
-                const walletRef = db.doc(`users/${partnerId}/wallet/main`);
-                transaction.set(walletRef, { 
-                    commissionPayable: admin.firestore.FieldValue.increment(commissionTotal) 
-                }, { merge: true });
-
-                const orderRef = event.data!.after.ref;
-                transaction.update(orderRef, { commission: commissionTotal });
             }
         });
     }
@@ -507,6 +526,7 @@ export const onGoalUpdate = onDocumentCreated("goalUpdates/{updateId}", async ()
 
 
     
+
 
 
 

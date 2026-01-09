@@ -8,10 +8,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useUser, useFirestore, useCollection, useDoc } from '@/firebase';
 import { collection, query, where, doc, orderBy, addDoc, serverTimestamp } from 'firebase/firestore';
-import type { Order, UserProfile, PayoutRequest } from '@/lib/types';
+import type { Order, UserProfile, PayoutRequest, Referral } from '@/lib/types';
 import { format } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
-import { CircleDollarSign, TrendingUp, Loader2, Wallet, Send } from 'lucide-react';
+import { CircleDollarSign, TrendingUp, Loader2, Wallet, Send, Handshake } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 
@@ -46,6 +46,10 @@ export default function CommissionReportPage() {
   }, [targetUserId, firestore]);
   
   const { data: orders, loading: ordersLoading } = useCollection<Order>(ordersQuery);
+
+  const referralsQuery = targetUserId ? query(collection(firestore, 'users', targetUserId, 'referrals'), where('status', 'in', ['First Purchased', 'Completed'])) : null;
+  const { data: referrals, loading: referralsLoading } = useCollection<Referral>(referralsQuery);
+
 
   const commissionData = React.useMemo(() => {
     if (!orders) return [];
@@ -86,8 +90,10 @@ export default function CommissionReportPage() {
         .filter(i => i.orderStatus !== 'Delivered' && i.orderStatus !== 'Canceled')
         .reduce((acc, item) => acc + item.commissionAmount, 0);
 
-    return { totalEarned, pendingPayout };
-  }, [commissionData]);
+    const totalReferralEarnings = referrals?.reduce((acc, r) => acc + (r.earnings || 0) + (r.commission || 0), 0) || 0;
+
+    return { totalEarned, pendingPayout, totalReferralEarnings };
+  }, [commissionData, referrals]);
 
   const handleRequestPayout = async () => {
     if (!userProfile || !userProfile.commissionPayable || userProfile.commissionPayable <= 0) {
@@ -112,21 +118,31 @@ export default function CommissionReportPage() {
     }
   };
   
-  const loading = userProfileLoading || ordersLoading;
+  const loading = userProfileLoading || ordersLoading || referralsLoading;
 
   return (
     <>
       <PageHeader title={userProfile ? `Commission Report: ${userProfile.name}` : 'Commission Report'} />
       
-      <div className="grid gap-4 md:grid-cols-3 mb-6">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Commission Earned</CardTitle>
+            <CardTitle className="text-sm font-medium">Total Sales Commission</CardTitle>
             <TrendingUp className="h-4 w-4 text-green-500" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{formatCurrency(kpis.totalEarned)}</div>
             <p className="text-xs text-muted-foreground">From successfully delivered orders.</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Referral Earnings</CardTitle>
+            <Handshake className="h-4 w-4 text-blue-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{formatCurrency(kpis.totalReferralEarnings)}</div>
+            <p className="text-xs text-muted-foreground">From new customer signups and first purchases.</p>
           </CardContent>
         </Card>
         <Card>
@@ -217,7 +233,3 @@ export default function CommissionReportPage() {
     </>
   );
 }
-      
-    
-
-    
