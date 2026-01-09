@@ -32,7 +32,7 @@ import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { useUser, useFirestore, useCollection, useDoc } from '@/firebase';
 import { collection, query, where, doc } from 'firebase/firestore';
-import type { Order, RegisteredProduct, ServiceRequest, Referral, UserProfile } from '@/lib/types';
+import type { Order, RegisteredProduct, ServiceRequest, Referral, UserProfile, PaymentSubmission } from '@/lib/types';
 import { MakePaymentDialog } from './_components/make-payment-dialog';
 
 
@@ -52,11 +52,13 @@ export default function CustomerDashboardPage() {
   const productsQuery = user ? query(collection(firestore, 'registeredProducts'), where('customerId', '==', user.uid)) : null;
   const serviceRequestsQuery = user ? query(collection(firestore, 'serviceRequests'), where('customer.id', '==', user.uid)) : null;
   const referralsQuery = user ? query(collection(firestore, 'users', user.uid, 'referrals')) : null;
+  const paymentsQuery = user ? query(collection(firestore, 'paymentSubmissions'), where('userId', '==', user.uid), where('status', '==', 'Approved')) : null;
   
   const { data: orders } = useCollection<Order>(ordersQuery);
   const { data: products } = useCollection<RegisteredProduct>(productsQuery);
   const { data: serviceRequests } = useCollection<ServiceRequest>(serviceRequestsQuery);
   const { data: referrals } = useCollection<Referral>(referralsQuery);
+  const { data: payments } = useCollection<PaymentSubmission>(paymentsQuery);
   
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = React.useState(false);
 
@@ -96,24 +98,27 @@ export default function CustomerDashboardPage() {
     const inTransit = orders.filter(o => o.status === 'Shipped').length || 0;
     const pending = orders.filter(o => o.status === 'Pending').length || 0;
     const cancelled = orders.filter(o => o.status === 'Canceled').length || 0;
+    
     const totalValue = orders.reduce((sum, o) => sum + (o.grandTotal || 0), 0) || 0;
-    const paidAmount = orders.reduce((sum, o) => sum + (o.paymentReceived || 0), 0) || 0;
+    
+    const initialPayments = orders.reduce((sum, o) => sum + (o.paymentReceived || 0), 0) || 0;
+    const subsequentPayments = payments?.reduce((sum, p) => sum + p.amount, 0) || 0;
+    const paidAmount = initialPayments + subsequentPayments;
+
     const outstandingAmount = totalValue - paidAmount;
     
     return { thisMonth, delivered, inTransit, pending, cancelled, totalValue, paidAmount, outstandingAmount };
-  }, [orders]);
+  }, [orders, payments]);
 
   const paymentKpis = React.useMemo(() => {
     const outstandingBalance = orderKpis.outstandingAmount;
-    const advancePaid = orders?.reduce((sum, o) => sum + (o.paymentReceived || 0), 0) || 0; // Simplified
-    const creditNotes = 0; // Needs data from finance
     const lastPaymentDate = orders?.filter(o => o.paymentReceived).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0]?.date;
     const lastInvoiceAmount = orders?.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0]?.grandTotal || 0;
     
     return {
       outstandingBalance,
-      advancePaid,
-      creditNotes,
+      advancePaid: orderKpis.paidAmount, // This now includes all payments
+      creditNotes: 0, // Needs data from finance
       lastPaymentDate,
       lastInvoiceAmount,
     };
