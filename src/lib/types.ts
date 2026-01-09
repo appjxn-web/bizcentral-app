@@ -86,6 +86,25 @@ export interface Offer {
   redeem?: 'purchase' | 'cash' | 'both';
 };
 
+export interface StockTransferRequest {
+    id: string;
+    requestingUserId: string;
+    requestingUserName: string;
+    partnerId: string;
+    partnerName: string;
+    items: {
+        productId: string;
+        productName: string;
+        quantity: number;
+    }[];
+    status: 'Pending Approval' | 'Approved' | 'Rejected' | 'Shipped';
+    createdAt: Timestamp;
+    approvedAt?: Timestamp;
+    shippedAt?: Timestamp;
+    notes?: string;
+}
+
+
 export interface RefundRequest {
     id: string;
     orderId: string;

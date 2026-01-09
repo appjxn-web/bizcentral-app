@@ -1,4 +1,5 @@
 
+
 import type { CoaGroup, CoaLedger, CoaNature } from './types';
 
 // =================================================================================
@@ -120,6 +121,7 @@ export const defaultCoaLedgers: Omit<CoaLedger, 'id' | 'createdAt' | 'updatedAt'
   createLedger('L-1.1.3-2', 'Stock-in-Hand – Work-in-Progress', '1.1.3', 'ASSET'),
   createLedger('L-1.1.3-3', 'Stock-in-Hand – Finished Goods', '1.1.3', 'ASSET'),
   createLedger('L-1.1.3-4', 'Stock-in-Hand – Spares', '1.1.3', 'ASSET'),
+  createLedger('L-1.1.3-5', 'Stock with Partners', '1.1.3', 'ASSET'),
   
   createLedger('L-1.1.4-1', 'Input GST – CGST', '1.1.4', 'ASSET'),
   createLedger('L-1.1.4-2', 'Input GST – SGST', '1.1.4', 'ASSET'),

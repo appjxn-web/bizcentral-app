@@ -11,7 +11,7 @@ import {
 } from "firebase-functions/v2/firestore";
 import * as admin from "firebase-admin";
 import {getFirestore, FieldValue} from "firebase-admin/firestore";
-import type {Order, SalesInvoice, Party, Goal, UserProfile, CreditNote, DebitNote, RefundRequest, Product} from "./types";
+import type {Order, SalesInvoice, Party, Goal, UserProfile, CreditNote, DebitNote, RefundRequest, Product, StockTransferRequest} from "./types";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 
 if (admin.apps.length === 0) { admin.initializeApp(); }
@@ -357,6 +357,10 @@ export const onDebitNoteCreated = onDocumentCreated("debitNotes/{noteId}", async
     await jvRef.set(jvData);
 });
 
+export const onStockTransfer = onDocumentUpdated("stockTransferRequests/{requestId}", async (event) => {
+    // Placeholder for future implementation
+});
+
 // Quotation and other functions remain as standard...
 export const handleQuotationCreation = onDocumentCreated("quotations/{docId}", async (event) => {
     const snapshot = event.data;
@@ -554,6 +558,7 @@ export const onGoalUpdate = onDocumentCreated("goalUpdates/{updateId}", async ()
     
 
       
+
 
 
 

@@ -20,7 +20,6 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-  TableFooter,
 } from '@/components/ui/table';
 import { format } from 'date-fns';
 import { Send, Package, ChevronRight, ChevronDown, Wrench, PackageSearch } from 'lucide-react';
@@ -503,7 +502,10 @@ export default function OutwardsPage() {
 
             const product = allProducts.find(p => p.id === item.productId);
             const productLedger = coaLedgers.find(l => l.id === product?.coaAccountId);
-            if (!productLedger) throw new Error(`Inventory ledger for ${item.productName} not found.`);
+            if (!productLedger) {
+                console.warn(`Inventory ledger not found for product ${item.productName}. Skipping accounting entry for this item.`);
+                continue;
+            }
 
             const itemValue = item.issuedQty * item.rate;
             totalIssueValue += itemValue;
@@ -586,10 +588,11 @@ export default function OutwardsPage() {
       </div>
 
       <Tabs defaultValue="production">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="production">Production Requests</TabsTrigger>
           <TabsTrigger value="service">Service Requests</TabsTrigger>
           <TabsTrigger value="advance">Advance Spares</TabsTrigger>
+          <TabsTrigger value="transfer">Stock Transfer</TabsTrigger>
         </TabsList>
         <TabsContent value="production">
             <Card>
@@ -676,6 +679,19 @@ export default function OutwardsPage() {
                             <SparesRequestRow key={req.id} request={req} onIssueClick={handleOpenIssueDialog} allProducts={allProducts || []} />
                         ))}
                     </Table>
+                </CardContent>
+            </Card>
+        </TabsContent>
+        <TabsContent value="transfer">
+            <Card>
+                <CardHeader>
+                    <CardTitle>Stock Transfer to Partner</CardTitle>
+                    <CardDescription>Move inventory from the main warehouse to a partner location.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <div className="text-center text-muted-foreground p-8">
+                        Feature coming soon. This section will allow you to create and manage stock transfers to partners.
+                    </div>
                 </CardContent>
             </Card>
         </TabsContent>
