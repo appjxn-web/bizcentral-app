@@ -24,6 +24,9 @@ import {
   Receipt,
   Eye,
   Edit,
+  CircleDollarSign,
+  Send,
+  Printer,
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
@@ -420,7 +423,7 @@ function OrdersPageContent() {
         if (!user || !currentRole) return null;
         const ordersRef = collection(firestore, 'orders');
 
-        if (['Admin', 'CEO', 'Sales Manager'].includes(currentRole)) {
+        if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
             return query(ordersRef, orderBy('date', 'desc'));
         }
 
@@ -438,7 +441,7 @@ function OrdersPageContent() {
             orderBy('date', 'desc')
         );
     }, [user, currentRole, firestore]);
-
+    
     const invoicesQuery = React.useMemo(() => {
         if (!user || !currentRole) return null;
         const invoicesRef = collection(firestore, 'salesInvoices');
@@ -465,7 +468,6 @@ function OrdersPageContent() {
     const { data: orders, loading: ordersLoading } = useCollection<Order>(ordersQuery);
     const { data: workOrders, loading: workOrdersLoading } = useCollection<WorkOrder>(collection(firestore, 'workOrders'));
     const { data: allSalesInvoices, loading: invoicesLoading } = useCollection<SalesInvoice>(invoicesQuery);
-    const { data: settingsData } = useDoc<any>(doc(firestore, 'company', 'settings'));
     const { data: pickupPoints } = useCollection<PickupPoint>(collection(firestore, 'pickupPoints'));
     const { data: allProducts, loading: productsLoading } = useCollection<Product>(collection(firestore, 'products'));
     
@@ -659,5 +661,6 @@ export default function OrdersPage() {
     
 
   
+
 
 
