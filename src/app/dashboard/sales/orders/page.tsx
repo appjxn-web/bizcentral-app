@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -20,14 +21,17 @@ import {
   ListFilter,
   DollarSign,
   RefreshCcw,
+  Receipt,
   Eye,
   Edit,
 } from 'lucide-react';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 
 import { PageHeader } from '@/components/page-header';
 import { cn } from '@/lib/utils';
-import type { Order, OrderStatus, UserProfile, UserRole, WorkOrder, PickupPoint, SalesOrder, RefundRequest, Product, SalesInvoice } from '@/lib/types';
-import { Button } from '@/components/ui/button';
+import type { Order, OrderStatus, UserProfile, UserRole, WorkOrder, PickupPoint, SalesOrder, RefundRequest, Product, SalesInvoice, SalesInvoiceItem, Party, CompanyInfo } from '@/lib/types';
+import { Button, buttonVariants } from '@/components/ui/button';
 import {
   Card,
   CardContent,
@@ -427,7 +431,7 @@ function OrdersPageContent() {
                 orderBy('date', 'desc')
             );
         }
-        
+
         return query(
             ordersRef, 
             where('userId', '==', user.uid), 
@@ -655,3 +659,4 @@ export default function OrdersPage() {
     
 
   
+

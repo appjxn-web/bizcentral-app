@@ -64,12 +64,14 @@ service cloud.firestore {
 
     // --- GLOBAL ORDERS (Main Sales) ---
     match /orders/{orderId} {
+      // List/Query rule: The query MUST include a filter for either userId or assignedToUid
       allow list: if signedIn() && (
         isAdmin() || 
-        request.query.where.userId == request.auth.uid ||
-        request.query.where.assignedToUid == request.auth.uid
+        resource.data.userId == request.auth.uid || 
+        resource.data.assignedToUid == request.auth.uid
       );
       
+      // Rule for single documents (Get)
       allow get: if signedIn() && (
         isAdmin() || 
         resource.data.userId == request.auth.uid || 
@@ -78,7 +80,7 @@ service cloud.firestore {
 
       allow create: if signedIn() && (request.resource.data.userId == request.auth.uid || isAdmin());
       
-      // Allow partners to update status for orders assigned to them
+      // Partners can update (edit) orders assigned to them
       allow update: if isAdmin() || (isPartner() && resource.data.assignedToUid == request.auth.uid);
         
       allow delete: if isAdmin();
@@ -110,23 +112,19 @@ service cloud.firestore {
 
     // --- FINANCE & ACCOUNTING ---
     match /salesInvoices/{invoiceId} {
-        allow get: if signedIn() && (
+        // List/Query rule: The query MUST filter by customerId OR assignedToUid
+        allow read, list: if signedIn() && (
           isAdmin() ||
           resource.data.customerId == request.auth.uid ||
           resource.data.assignedToUid == request.auth.uid
         );
-        allow list: if signedIn() && (
-          isAdmin() ||
-          request.query.where.customerId == request.auth.uid ||
-          request.query.where.assignedToUid == request.auth.uid
-        );
         
-        // Allow Partners to create invoices for their assigned orders
+        // Allow partners to CREATE invoices if they are the ones assigned
         allow create: if isAdmin() || (isPartner() && request.resource.data.assignedToUid == request.auth.uid);
         
-        // Allow Partners to edit their own issued invoices
+        // Allow partners to UPDATE invoices they are assigned to
         allow update: if isAdmin() || (isPartner() && resource.data.assignedToUid == request.auth.uid);
-        
+
         allow delete: if isAdmin();
     }
     
