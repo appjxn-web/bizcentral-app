@@ -132,8 +132,7 @@ service cloud.firestore {
 
     // --- FINANCE & ACCOUNTING ---
     match /salesInvoices/{invoiceId} {
-        // FIXED: Removed the brittle request.query.where[0] logic.
-        // It now correctly checks the data fields directly.
+        // FIXED: Allow partners to read invoices assigned to them.
         allow read, list: if signedIn() && (
           isAdmin() ||
           resource.data.customerId == request.auth.uid ||
@@ -182,8 +181,7 @@ service cloud.firestore {
         allow read: if signedIn() && (
           isAdmin() || 
           isInventoryManager() || 
-          resource.data.requestingUserId == request.auth.uid ||
-          resource.data.partnerId == request.auth.uid
+          isPartner()
         );
         allow create: if signedIn() && (isAdmin() || isInventoryManager() || isPartner());
         allow update: if isAdmin();
