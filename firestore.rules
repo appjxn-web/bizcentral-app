@@ -65,12 +65,12 @@ service cloud.firestore {
 
     // --- GLOBAL ORDERS (Main Sales) ---
     match /orders/{orderId} {
-      // List/Query rule: The query MUST include a filter for either userId or assignedToUid
+      // List/Query rule: Allows the query if user is Admin OR if the 
+      // results are automatically filtered to documents they own.
       allow list: if signedIn() && (
         isAdmin() || 
-        (request.query.keys().hasAll(['where', 'orderBy']) &&
-         ((request.query.where[0] == 'userId' && request.query.where[2] == request.auth.uid) ||
-          (request.query.where[0] == 'assignedToUid' && request.query.where[2] == request.auth.uid)))
+        resource.data.userId == request.auth.uid || 
+        resource.data.assignedToUid == request.auth.uid
       );
       
       allow get: if signedIn() && (
@@ -81,7 +81,6 @@ service cloud.firestore {
 
       allow create: if signedIn() && (request.resource.data.userId == request.auth.uid || isAdmin());
       
-      // Allow customers to request cancellation, and admins to do anything
       allow update: if (
           (signedIn() && resource.data.userId == request.auth.uid && request.resource.data.status == 'Cancellation Requested') 
           || isAdmin()
@@ -92,9 +91,10 @@ service cloud.firestore {
     
     // --- PAYMENT SUBMISSIONS ---
     match /paymentSubmissions/{submissionId} {
+      // Allow customers to see their own submissions
+      allow read, list: if signedIn() && (isAdmin() || resource.data.userId == request.auth.uid);
       allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
-      allow read, update: if isAdmin();
-      allow list: if isAdmin() || (signedIn() && request.query.userId == request.auth.uid);
+      allow update: if isAdmin();
     }
     
     // --- DISTRIBUTED COUNTERS ---

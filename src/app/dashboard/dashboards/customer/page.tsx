@@ -31,7 +31,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { useUser, useFirestore, useCollection, useDoc } from '@/firebase';
-import { collection, query, where, doc } from 'firebase/firestore';
+import { collection, query, where, doc, orderBy } from 'firebase/firestore';
 import type { Order, RegisteredProduct, ServiceRequest, Referral, UserProfile, PaymentSubmission } from '@/lib/types';
 import { MakePaymentDialog } from './_components/make-payment-dialog';
 
@@ -48,11 +48,11 @@ export default function CustomerDashboardPage() {
   const userDocRef = user ? doc(firestore, 'users', user.uid) : null;
   const { data: userProfile } = useDoc<UserProfile>(userDocRef);
 
-  const ordersQuery = user ? query(collection(firestore, 'orders'), where('userId', '==', user.uid)) : null;
+  const ordersQuery = user ? query(collection(firestore, 'orders'), where('userId', '==', user.uid), orderBy('date', 'desc')) : null;
   const productsQuery = user ? query(collection(firestore, 'registeredProducts'), where('customerId', '==', user.uid)) : null;
   const serviceRequestsQuery = user ? query(collection(firestore, 'serviceRequests'), where('customer.id', '==', user.uid)) : null;
   const referralsQuery = user ? query(collection(firestore, 'users', user.uid, 'referrals')) : null;
-  const paymentsQuery = user ? query(collection(firestore, 'paymentSubmissions'), where('userId', '==', user.uid), where('status', '==', 'Approved')) : null;
+  const paymentsQuery = user ? query(collection(firestore, 'paymentSubmissions'), where('userId', '==', user.uid)) : null;
   
   const { data: orders } = useCollection<Order>(ordersQuery);
   const { data: products } = useCollection<RegisteredProduct>(productsQuery);
@@ -102,7 +102,7 @@ export default function CustomerDashboardPage() {
     const totalValue = orders.reduce((sum, o) => sum + (o.grandTotal || 0), 0) || 0;
     
     const initialPayments = orders.reduce((sum, o) => sum + (o.paymentReceived || 0), 0) || 0;
-    const subsequentPayments = payments?.reduce((sum, p) => sum + p.amount, 0) || 0;
+    const subsequentPayments = payments?.filter(p => p.status === 'Approved').reduce((sum, p) => sum + p.amount, 0) || 0;
     const paidAmount = initialPayments + subsequentPayments;
 
     const outstandingAmount = totalValue - paidAmount;
