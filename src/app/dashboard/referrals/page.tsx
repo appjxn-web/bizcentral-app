@@ -1,3 +1,4 @@
+
 'use client';
 
 import * as React from 'react';
@@ -46,7 +47,7 @@ import { cn } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { format } from 'date-fns';
 import { useFirestore, useUser, useCollection, useDoc } from '@/firebase';
-import { collection, addDoc, serverTimestamp, doc, updateDoc, writeBatch, increment, query, where } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, doc, updateDoc, writeBatch, increment, query, where, orderBy } from 'firebase/firestore';
 import type { Referral, UserProfile } from '@/lib/types';
 
 
@@ -373,7 +374,7 @@ Join the JXN App to explore machines, offers, referrals, and business tools desi
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">₹{totalEarnings.toFixed(2)}</div>
+            <div className="text-2xl font-bold">{formatCurrency(totalEarnings)}</div>
             <p className="text-xs text-muted-foreground">
               Includes all redeemed and available earnings.
             </p>
@@ -385,7 +386,7 @@ Join the JXN App to explore machines, offers, referrals, and business tools desi
             <CircleDollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent className="flex-grow">
-            <div className="text-2xl font-bold">₹{availableEarnings.toFixed(2)}</div>
+            <div className="text-2xl font-bold">{formatCurrency(availableEarnings)}</div>
             <p className="text-xs text-muted-foreground">
               From referrals who made a first purchase.
             </p>
