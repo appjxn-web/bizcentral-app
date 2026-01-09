@@ -17,6 +17,7 @@ import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { cn } from '@/lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { useRole } from '../../_components/role-provider';
 
 interface RequestItem {
   id: string;
@@ -29,6 +30,8 @@ export default function SparesRequestPage() {
   const { toast } = useToast();
   const firestore = useFirestore();
   const { user } = useUser();
+  const { currentRole } = useRole();
+
   const { data: productsData, loading: productsLoading } = useCollection<Product>(collection(firestore, 'products'));
   const { data: usersData, loading: usersLoading } = useCollection<User>(collection(firestore, 'users'));
   
@@ -36,8 +39,10 @@ export default function SparesRequestPage() {
   const [items, setItems] = React.useState<RequestItem[]>([{ id: `item-${Date.now()}`, productId: '', productName: '', quantity: 1 }]);
   const [openCombobox, setOpenCombobox] = React.useState(false);
 
+  const isPartner = currentRole === 'Partner';
+
   const engineers = React.useMemo(() => usersData?.filter(u => u.role === 'Employee' || u.role === 'Service Manager') || [], [usersData]);
-  const spares = React.useMemo(() => productsData?.filter(p => p.type === 'Components' || p.type === 'Consumables') || [], [productsData]);
+  const spares = React.useMemo(() => productsData?.filter(p => p.type === 'Components' || p.type === 'Consumables' || p.source === 'Bought') || [], [productsData]);
 
   const handleAddItem = () => {
     setItems(prev => [...prev, { id: `item-${Date.now()}`, productId: '', productName: '', quantity: 1 }]);
@@ -66,32 +71,30 @@ export default function SparesRequestPage() {
   };
   
   const handleSubmitRequest = async () => {
-    if (!selectedEngineerId || items.length === 0 || items.some(i => !i.productId || i.quantity <= 0)) {
-        toast({ variant: 'destructive', title: 'Missing Information', description: 'Please select an engineer and add at least one valid item.' });
-        return;
-    }
+    const targetId = isPartner ? user?.uid : selectedEngineerId;
+    const targetUser = isPartner ? user : engineers.find(e => e.id === targetId);
 
-    const engineer = engineers.find(e => e.id === selectedEngineerId);
-    if (!engineer || !user) {
-        toast({ variant: 'destructive', title: 'Invalid User', description: 'Could not find the selected engineer or your user profile.' });
+    if (!targetId || !targetUser || items.length === 0 || items.some(i => !i.productId || i.quantity <= 0)) {
+        toast({ variant: 'destructive', title: 'Missing Information', description: 'Please select a recipient and add at least one valid item.' });
         return;
     }
-    
-    const newRequest: Omit<SparesRequest, 'id'> = {
-        engineerId: selectedEngineerId,
-        engineerName: engineer.name,
-        requestDate: new Date().toISOString(),
-        items: items.map(({ id, ...rest }) => rest),
-        status: 'Approved', // Advance requests are auto-approved
-        type: 'Advance',
-        approvedBy: user.uid,
-        approvedAt: new Date().toISOString(),
-    };
     
     try {
-        await addDoc(collection(firestore, 'sparesRequests'), newRequest);
-        toast({ title: 'Success', description: 'Advance spares request has been submitted for issuance.' });
-        // Reset form
+        const requestData = {
+            requestingUserId: user?.uid,
+            requestingUserName: user?.displayName,
+            partnerId: targetId,
+            partnerName: targetUser?.name || 'Unknown',
+            items: items.map(({ id, ...rest }) => ({...rest, quantity: Number(rest.quantity)})),
+            status: 'Pending Approval',
+            createdAt: serverTimestamp(),
+            notes: isPartner ? 'Partner stock request' : 'Engineer advance spares request',
+        };
+
+        await addDoc(collection(firestore, 'stockTransferRequests'), requestData);
+
+        toast({ title: 'Success', description: 'Your stock request has been submitted for approval.' });
+        
         setSelectedEngineerId(null);
         setItems([{ id: `item-${Date.now()}`, productId: '', productName: '', quantity: 1 }]);
     } catch(error) {
@@ -102,47 +105,54 @@ export default function SparesRequestPage() {
 
   return (
     <>
-      <PageHeader title="Advance Spares Request">
-        <Button onClick={handleSubmitRequest}><Send className="mr-2 h-4 w-4"/> Submit for Issuance</Button>
+      <PageHeader title={isPartner ? "Request Stock" : "Advance Spares Request"}>
+        <Button onClick={handleSubmitRequest}><Send className="mr-2 h-4 w-4"/> Submit for Approval</Button>
       </PageHeader>
       
       <Card>
         <CardHeader>
-            <CardTitle>Create Spares Request</CardTitle>
-            <CardDescription>Request a set of spare parts in advance for an engineer to carry for on-site service calls.</CardDescription>
+            <CardTitle>{isPartner ? "Create Stock Request" : "Create Spares Request"}</CardTitle>
+            <CardDescription>
+                {isPartner 
+                    ? "Request stock to be transferred to your inventory from the main warehouse." 
+                    : "Request a set of spare parts in advance for an engineer to carry for on-site service calls."
+                }
+            </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-            <div className="max-w-sm space-y-2">
-                <Label>Engineer</Label>
-                 <Popover open={openCombobox} onOpenChange={setOpenCombobox}>
-                    <PopoverTrigger asChild>
-                    <Button variant="outline" role="combobox" className="w-full justify-between" disabled={usersLoading}>
-                        {selectedEngineerId ? engineers.find(e => e.id === selectedEngineerId)?.name : "Select an engineer..."}
-                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                    </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
-                    <Command>
-                        <CommandInput placeholder="Search engineer..." />
-                        <CommandList>
-                        <CommandEmpty>No engineer found.</CommandEmpty>
-                        <CommandGroup>
-                            {engineers.map((e) => (
-                            <CommandItem
-                                key={e.id}
-                                value={e.name}
-                                onSelect={() => { setSelectedEngineerId(e.id); setOpenCombobox(false); }}
-                            >
-                                <Check className={cn("mr-2 h-4 w-4", selectedEngineerId === e.id ? "opacity-100" : "opacity-0")} />
-                                {e.name}
-                            </CommandItem>
-                            ))}
-                        </CommandGroup>
-                        </CommandList>
-                    </Command>
-                    </PopoverContent>
-                </Popover>
-            </div>
+            {!isPartner && (
+              <div className="max-w-sm space-y-2">
+                  <Label>Engineer</Label>
+                  <Popover open={openCombobox} onOpenChange={setOpenCombobox}>
+                      <PopoverTrigger asChild>
+                      <Button variant="outline" role="combobox" className="w-full justify-between" disabled={usersLoading}>
+                          {selectedEngineerId ? engineers.find(e => e.id === selectedEngineerId)?.name : "Select an engineer..."}
+                          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                      </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+                      <Command>
+                          <CommandInput placeholder="Search engineer..." />
+                          <CommandList>
+                          <CommandEmpty>No engineer found.</CommandEmpty>
+                          <CommandGroup>
+                              {engineers.map((e) => (
+                              <CommandItem
+                                  key={e.id}
+                                  value={e.name}
+                                  onSelect={() => { setSelectedEngineerId(e.id); setOpenCombobox(false); }}
+                              >
+                                  <Check className={cn("mr-2 h-4 w-4", selectedEngineerId === e.id ? "opacity-100" : "opacity-0")} />
+                                  {e.name}
+                              </CommandItem>
+                              ))}
+                          </CommandGroup>
+                          </CommandList>
+                      </Command>
+                      </PopoverContent>
+                  </Popover>
+              </div>
+            )}
             
             <div>
                 <h3 className="text-lg font-medium mb-2">Requested Parts</h3>
@@ -185,6 +195,3 @@ export default function SparesRequestPage() {
     </>
   );
 }
-
-
-  

@@ -64,6 +64,8 @@ const permissions: Partial<Record<UserRole, string[]>> = {
     'sales-commission-report',
     'help',
     'profiles-settings',
+    'inventories-reports',
+    'inventories-spares-request'
   ],
   'CEO': [
     'command-center',
@@ -398,12 +400,12 @@ const permissions: Partial<Record<UserRole, string[]>> = {
     'inventories-inwards',
     'inventories-outwards',
     'inventories-reconciliation',
+    'inventories-spares-request',
     'help',
     'profiles-settings',
     'approvals',
     'create-post',
     'wishlist',
-    'inventories-spares-request'
   ],
   'Employee': [
     'notifications',
@@ -454,5 +456,3 @@ export function hasPermission(role: UserRole | null, navItemId: string): boolean
 
   return rolePermissions.includes(navItemId);
 }
-
-    

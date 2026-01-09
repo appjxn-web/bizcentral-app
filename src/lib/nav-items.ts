@@ -176,7 +176,7 @@ export const navItems: NavItem[] = [
       { id: 'inventories-inwards', href: '/dashboard/inventories-reports/inwards', icon: ArrowDownToLine, label: 'Inwards' },
       { id: 'inventories-outwards', href: '/dashboard/inventories-reports/outwards', icon: ArrowUpToLine, label: 'Outwards' },
       { id: 'inventories-reconciliation', href: '/dashboard/inventories-reports/stock-reconciliation', icon: CheckCheck, label: 'Stock Reconciliation' },
-      { id: 'inventories-spares-request', href: '/dashboard/inventories-reports/spares-request', icon: Wrench, label: 'Spares Request (Advance)' },
+      { id: 'inventories-spares-request', href: '/dashboard/inventories-reports/spares-request', icon: Wrench, label: 'Request Stock' },
     ]
   },
   {
@@ -238,5 +238,3 @@ export const navItems: NavItem[] = [
     ]
   }
 ];
-
-    
