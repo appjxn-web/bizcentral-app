@@ -40,6 +40,7 @@ const permissions: Partial<Record<UserRole, string[]>> = {
     'finance-chart-of-accounts',
     'sales',
     'sales-partners-management',
+    'finance-payouts'
   ],
   'Partner': [
     'dashboard',
@@ -101,6 +102,7 @@ const permissions: Partial<Record<UserRole, string[]>> = {
     'finance-trial-balance',
     'finance-gst',
     'finance-statutory-metrix',
+    'finance-payouts',
     'finance-reimbursement-process',
     'finance-transactions',
     'finance-day-book',
@@ -301,7 +303,7 @@ const permissions: Partial<Record<UserRole, string[]>> = {
     'finance-trial-balance',
     'finance-gst',
     'finance-day-book',
-    'finance-statutory-metrix',
+    'finance-payouts',
     'finance-reimbursement-process',
     'finance-transactions',
     'procurement',
@@ -452,3 +454,5 @@ export function hasPermission(role: UserRole | null, navItemId: string): boolean
 
   return rolePermissions.includes(navItemId);
 }
+
+    

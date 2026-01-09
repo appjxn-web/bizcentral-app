@@ -99,6 +99,18 @@ export interface RefundRequest {
     transactionDate?: string;
 }
 
+export interface PayoutRequest {
+  id: string;
+  partnerId: string;
+  partnerName: string;
+  amount: number;
+  requestDate: string;
+  status: 'Pending' | 'Paid' | 'Rejected';
+  transactionRef?: string;
+  transactionDate?: string;
+  paymentAccountId?: string;
+}
+
 
 export interface ProductCategory {
     id: string;
@@ -1150,3 +1162,5 @@ export interface SupportCallbackRequest {
   createdAt: Timestamp;
   createdByUid: string;
 }
+
+    

@@ -1,19 +1,19 @@
 
-
-      
 'use client';
 
 import * as React from 'react';
 import { useSearchParams } from 'next/navigation';
 import { PageHeader } from '@/components/page-header';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useUser, useFirestore, useCollection, useDoc } from '@/firebase';
-import { collection, query, where, doc, orderBy } from 'firebase/firestore';
-import type { Order, UserProfile } from '@/lib/types';
+import { collection, query, where, doc, orderBy, addDoc, serverTimestamp } from 'firebase/firestore';
+import type { Order, UserProfile, PayoutRequest } from '@/lib/types';
 import { format } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
-import { CircleDollarSign, TrendingUp, Loader2 } from 'lucide-react';
+import { CircleDollarSign, TrendingUp, Loader2, Wallet, Send } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { useToast } from '@/hooks/use-toast';
 
 const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-IN', { 
@@ -28,8 +28,9 @@ export default function CommissionReportPage() {
   const firestore = useFirestore();
   const searchParams = useSearchParams();
   const userId = searchParams.get('userId');
+  const { toast } = useToast();
+  const [isRequestingPayout, setIsRequestingPayout] = React.useState(false);
 
-  // Use the userId from URL if present (for admins), otherwise use the logged-in user's ID
   const targetUserId = userId || authUser?.uid;
 
   const userDocRef = targetUserId ? doc(firestore, 'users', targetUserId) : null;
@@ -62,7 +63,6 @@ export default function CommissionReportPage() {
             }, 0);
         }
 
-        // Use the commission stored on the order if it exists, otherwise use the calculated one
         const finalCommission = order.commission || calculatedCommission;
 
         return {
@@ -88,6 +88,29 @@ export default function CommissionReportPage() {
 
     return { totalEarned, pendingPayout };
   }, [commissionData]);
+
+  const handleRequestPayout = async () => {
+    if (!userProfile || !userProfile.commissionPayable || userProfile.commissionPayable <= 0) {
+      toast({ variant: 'destructive', title: 'No Commission Payable', description: 'You do not have any commission available for payout.' });
+      return;
+    }
+    setIsRequestingPayout(true);
+    try {
+      const payoutRequest: Omit<PayoutRequest, 'id'> = {
+        partnerId: userProfile.id,
+        partnerName: userProfile.name,
+        amount: userProfile.commissionPayable,
+        status: 'Pending',
+        requestDate: new Date().toISOString(),
+      };
+      await addDoc(collection(firestore, 'payoutRequests'), payoutRequest);
+      toast({ title: 'Payout Requested', description: `Your request for ${formatCurrency(userProfile.commissionPayable)} has been submitted for approval.` });
+    } catch (e) {
+      toast({ variant: 'destructive', title: 'Request Failed' });
+    } finally {
+      setIsRequestingPayout(false);
+    }
+  };
   
   const loading = userProfileLoading || ordersLoading;
 
@@ -95,7 +118,7 @@ export default function CommissionReportPage() {
     <>
       <PageHeader title={userProfile ? `Commission Report: ${userProfile.name}` : 'Commission Report'} />
       
-      <div className="grid gap-4 md:grid-cols-2 mb-6">
+      <div className="grid gap-4 md:grid-cols-3 mb-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Commission Earned</CardTitle>
@@ -115,6 +138,22 @@ export default function CommissionReportPage() {
             <div className="text-2xl font-bold">{formatCurrency(kpis.pendingPayout)}</div>
             <p className="text-xs text-muted-foreground">From orders currently in progress.</p>
           </CardContent>
+        </Card>
+        <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Commission Payable</CardTitle>
+              <Wallet className="h-4 w-4 text-primary" />
+            </CardHeader>
+            <CardContent>
+                <div className="text-2xl font-bold">{formatCurrency(userProfile?.commissionPayable || 0)}</div>
+                <p className="text-xs text-muted-foreground">Commission ready for withdrawal.</p>
+            </CardContent>
+            <CardFooter>
+                 <Button className="w-full" size="sm" onClick={handleRequestPayout} disabled={isRequestingPayout || !userProfile?.commissionPayable || userProfile.commissionPayable <= 0}>
+                    {isRequestingPayout ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+                    Request Payout
+                </Button>
+            </CardFooter>
         </Card>
       </div>
 
@@ -179,4 +218,6 @@ export default function CommissionReportPage() {
   );
 }
       
+    
+
     

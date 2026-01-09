@@ -147,7 +147,7 @@ export const navItems: NavItem[] = [
         { id: 'finance-debit-note', href: '/dashboard/finance-accounting/debit-note', icon: FilePlus, label: 'Debit Note' },
         { id: 'finance-gst', href: '/dashboard/finance-accounting/gst', icon: FileText, label: 'GST' },
         { id: 'finance-day-book', href: '/dashboard/finance-accounting/day-book', icon: BookOpen, label: 'Day Book' },
-        { id: 'finance-statutory-metrix', href: '/dashboard/finance-accounting/statutory-metrix', icon: PieChart, label: 'Statutory Metrix' },
+        { id: 'finance-payouts', href: '/dashboard/finance-accounting/payouts', icon: CircleDollarSign, label: 'Payouts' },
         { id: 'finance-reimbursement-process', href: '/dashboard/finance-accounting/reimbursement-process', icon: CircleDollarSign, label: 'Reimbursement Process' },
         { id: 'finance-balance-sheet', href: '/dashboard/finance-accounting/balance-sheet', icon: Scale, label: 'Balance Sheet'},
         { id: 'finance-profit-and-loss', href: '/dashboard/finance-accounting/profit-and-loss', icon: TrendingUp, label: 'Profit & Loss'},
@@ -238,3 +238,5 @@ export const navItems: NavItem[] = [
     ]
   }
 ];
+
+    
