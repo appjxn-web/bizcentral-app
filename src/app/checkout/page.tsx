@@ -1,3 +1,4 @@
+
 'use client';
 
 import * as React from 'react';
@@ -28,7 +29,8 @@ import { ArrowLeft, Info, Loader2, Building, User, CalendarClock } from 'lucide-
 import type { Product, Offer, UserRole, Party, CompanyInfo, Address, Order, OrderItem, CoaLedger, PickupPoint, UserProfile, SalesOrder } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useCollection, useUser, useDoc } from '@/firebase';
-import { collection, query, where, getDoc, getDocs, doc, addDoc, serverTimestamp, writeBatch, setDoc, orderBy, limit, getCountFromServer, getFunctions, httpsCallable } from 'firebase/functions';
+import { getFunctions, httpsCallable } from 'firebase/functions';
+import { collection, query, where, getDoc, getDocs, doc, addDoc, serverTimestamp, writeBatch, setDoc, orderBy, limit, getCountFromServer } from 'firebase/firestore';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { errorEmitter } from '@/firebase/error-emitter';
@@ -481,3 +483,6 @@ export default function CheckoutPage() {
     </div>
   );
 }
+
+
+  
