@@ -421,7 +421,6 @@ export const handleOrderUpdates = onDocumentUpdated("orders/{orderId}", async (e
             const userProfile = userProfileSnap.data() as UserProfile | undefined;
 
             if (userProfile?.referredBy) {
-                const referrerRef = db.doc(`users/${userProfile.referredBy}`);
                 const referralRefQuery = db.collection(`users/${userProfile.referredBy}/referrals`).where('mobile', '==', userProfile.mobile).limit(1);
                 const referralSnap = await transaction.get(referralRefQuery);
 
@@ -533,3 +532,6 @@ export const onGoalUpdate = onDocumentCreated("goalUpdates/{updateId}", async ()
 
 
 
+
+
+    
