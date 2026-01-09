@@ -93,37 +93,38 @@ export default function CustomerDashboardPage() {
   }, [orders, products, serviceRequests, referrals, userProfile]);
 
   const orderKpis = React.useMemo(() => {
-    if (!orders) return { thisMonth: 0, delivered: 0, inTransit: 0, pending: 0, cancelled: 0, totalValue: 0, paidAmount: 0, outstandingAmount: 0 };
+    if (!orders) return { thisMonth: 0, delivered: 0, inTransit: 0, pending: 0, cancelled: 0, totalValue: 0 };
     const thisMonth = orders.filter(o => new Date(o.date).getMonth() === new Date().getMonth()).length || 0;
     const delivered = orders.filter(o => o.status === 'Delivered').length || 0;
     const inTransit = orders.filter(o => o.status === 'Shipped').length || 0;
     const pending = orders.filter(o => o.status === 'Pending').length || 0;
     const cancelled = orders.filter(o => o.status === 'Canceled').length || 0;
     
-    const totalValue = orders.reduce((sum, o) => sum + (o.grandTotal || 0), 0) || 0;
-    
-    const initialPayments = orders.reduce((sum, o) => sum + (o.paymentReceived || 0), 0) || 0;
-    const subsequentPayments = payments?.filter(p => p.status === 'Approved').reduce((sum, p) => sum + p.amount, 0) || 0;
-    const paidAmount = initialPayments + subsequentPayments;
+    const totalValue = orders
+      .filter(o => o.status !== 'Canceled')
+      .reduce((sum, o) => sum + (o.grandTotal || 0), 0) || 0;
 
-    const outstandingAmount = totalValue - paidAmount;
-    
-    return { thisMonth, delivered, inTransit, pending, cancelled, totalValue, paidAmount, outstandingAmount };
-  }, [orders, payments]);
+    return { thisMonth, delivered, inTransit, pending, cancelled, totalValue };
+  }, [orders]);
 
   const paymentKpis = React.useMemo(() => {
-    const outstandingBalance = orderKpis.totalValue - orderKpis.paidAmount;
-    const lastPaymentDate = orders?.filter(o => o.paymentReceived).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0]?.date;
+    // Only sum up approved payments from the dedicated submissions collection.
+    const paidAmount = payments?.filter(p => p.status === 'Approved').reduce((sum, p) => sum + p.amount, 0) || 0;
+    
+    // Correctly calculate outstanding balance
+    const outstandingBalance = orderKpis.totalValue - paidAmount;
+    
+    const lastPaymentDate = payments?.filter(p => p.status === 'Approved').sort((a, b) => new Date(b.submittedAt.toDate()).getTime() - new Date(a.submittedAt.toDate()).getTime())[0]?.submittedAt.toDate();
     const lastInvoiceAmount = orders?.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0]?.grandTotal || 0;
     
     return {
       outstandingBalance,
-      advancePaid: orderKpis.paidAmount, // This now includes all payments
+      paidAmount, // Use the new, correct paid amount
       creditNotes: 0, // Needs data from finance
       lastPaymentDate,
       lastInvoiceAmount,
     };
-  }, [orderKpis]);
+  }, [orderKpis.totalValue, payments, orders]);
   
   const alerts: any[] = [];
   if (paymentKpis.outstandingBalance > 0) {
@@ -251,11 +252,11 @@ export default function CustomerDashboardPage() {
                 </div>
                 <div className="flex justify-between items-center text-sm p-2 rounded-md bg-muted/50">
                     <span className="text-muted-foreground flex items-center"><CircleDollarSign className="mr-2 h-4 w-4 text-green-500"/>Paid Amount</span>
-                    <span className="font-bold">{formatCurrency(orderKpis.paidAmount)}</span>
+                    <span className="font-bold">{formatCurrency(paymentKpis.paidAmount)}</span>
                 </div>
                 <div className="flex justify-between items-center text-sm p-2 rounded-md bg-muted/50">
                     <span className="text-muted-foreground flex items-center"><CircleDollarSign className="mr-2 h-4 w-4 text-red-500"/>Outstanding Amount</span>
-                    <span className="font-bold">{formatCurrency(orderKpis.outstandingAmount)}</span>
+                    <span className="font-bold">{formatCurrency(paymentKpis.outstandingBalance)}</span>
                 </div>
              </div>
           </CardContent>
@@ -279,7 +280,7 @@ export default function CustomerDashboardPage() {
             <div className="text-sm space-y-2">
                 <div className="flex justify-between">
                     <span className="text-muted-foreground">Advance Paid:</span>
-                    <span>{formatCurrency(paymentKpis.advancePaid)}</span>
+                    <span>{formatCurrency(paymentKpis.paidAmount)}</span>
                 </div>
                 <div className="flex justify-between">
                     <span className="text-muted-foreground">Credit Notes:</span>
