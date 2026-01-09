@@ -338,7 +338,7 @@ export default function BankAndCashPage() {
 
   const linkableUsers = React.useMemo(() => {
     if (!users) return [];
-    return users.filter(u => ['Employee', 'Partner'].some(role => u.role.includes(role)));
+    return users.filter(u => u.role === 'Employee' || u.role === 'Partner');
   }, [users]);
 
 
