@@ -108,7 +108,6 @@ export default function BankAndCashPage() {
   const [cashOpeningBalance, setCashOpeningBalance] = React.useState('');
   const [accountLocation, setAccountLocation] = React.useState('');
   const [linkedUserId, setLinkedUserId] = React.useState('');
-  const [isUserComboboxOpen, setIsUserComboboxOpen] = React.useState(false);
 
 
   // State for internal transfer
@@ -502,12 +501,12 @@ export default function BankAndCashPage() {
                             </div>
                             <div className="space-y-2">
                                 <Label htmlFor="link-user">Link to User</Label>
-                                <Select value={linkedUserId} onValueChange={setLinkedUserId}>
+                                <Select value={linkedUserId} onValueChange={(value) => setLinkedUserId(value === 'no-user-linked' ? '' : value)}>
                                     <SelectTrigger id="link-user">
                                         <SelectValue placeholder="Select employee or partner..." />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="">None</SelectItem>
+                                        <SelectItem value="no-user-linked">None</SelectItem>
                                         {linkableUsers.map((user) => (
                                             <SelectItem key={user.id} value={user.id}>
                                                 {user.name} ({user.role})
@@ -655,4 +654,3 @@ export default function BankAndCashPage() {
     </>
   );
 }
-
