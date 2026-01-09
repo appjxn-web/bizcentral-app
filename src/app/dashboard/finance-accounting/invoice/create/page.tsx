@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -659,7 +658,7 @@ export default function CreateInvoicePage() {
                 </div>
                 <div className="space-y-2">
                     <Label htmlFor="payment-details">Payment Details</Label>
-                    <Textarea id="payment-details" value={paymentDetails} onChange={e => setPaymentDetails(e.target.value)} placeholder="e.g., Transaction ID, Cheque No." rows={3} />
+                    <Textarea id="payment-details" value={paymentDetails} onChange={e => setPaymentDetails(e.target.value)} placeholder="e.g., Transaction ID, Cheque No." />
                 </div>
                  <Dialog open={isPaymentDialogOpen} onOpenChange={setIsPaymentDialogOpen}>
                     <DialogTrigger asChild>
@@ -759,3 +758,5 @@ export default function CreateInvoicePage() {
     </>
   );
 }
+
+  
