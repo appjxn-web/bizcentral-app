@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -33,7 +34,7 @@ import { useToast } from '@/hooks/use-toast';
 import { PlusCircle, Trash2, Check, ChevronsUpDown, Send, Package, Wrench, PackageSearch, Loader2, ChevronRight, ChevronDown } from 'lucide-react';
 import type { User, Product, SparesRequest, StockTransferRequest, UserProfile } from '@/lib/types';
 import { useFirestore, useCollection, useUser } from '@/firebase';
-import { collection, addDoc, serverTimestamp, query, where, orderBy } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, query, where, orderBy, getDoc } from 'firebase/firestore';
 import { cn } from '@/lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
@@ -468,9 +469,12 @@ function StockTransferTab() {
     setIsSubmitting(true);
     try {
         const partner = partners?.find(p => p.id === selectedPartnerId);
+        const requestingUserDoc = await getDoc(doc(firestore, 'users', user!.uid));
+        const requestingUser = requestingUserDoc.data() as UserProfile | undefined;
+        
         const requestData = {
             requestingUserId: user?.uid,
-            requestingUserName: user?.displayName,
+            requestingUserName: requestingUser?.businessName || user?.displayName,
             partnerId: selectedPartnerId,
             partnerName: (partner as UserProfile)?.businessName || partner?.name,
             items: items.map(({ id, ...rest }) => ({...rest, quantity: Number(rest.quantity)})),
@@ -936,3 +940,4 @@ export default function OutwardsPage() {
     </>
   );
 }
+```
