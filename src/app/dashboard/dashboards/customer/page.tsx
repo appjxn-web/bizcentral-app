@@ -288,7 +288,7 @@ export default function CustomerDashboardPage() {
                     <span className="font-bold">{formatCurrency(paymentKpis.paidAmount)}</span>
                 </div>
                 <div className="flex justify-between items-center text-sm p-2 rounded-md bg-muted/50">
-                    <span className="text-muted-foreground flex items-center"><CircleDollarSign className="mr-2 h-4 w-4 text-red-500"/>Outstanding Amount</span>
+                    <span className="text-muted-foreground flex items-center"><CircleDollarSign className="mr-2 h-4 w-4 text-red-500"/>Outstanding Balance including all orders</span>
                     <span className="font-bold">{formatCurrency(paymentKpis.outstandingBalance)}</span>
                 </div>
              </div>
@@ -310,7 +310,9 @@ export default function CustomerDashboardPage() {
                     <p className="text-sm text-red-800 dark:text-red-300">Outstanding Balance</p>
                     <p className="text-2xl font-bold text-red-600 dark:text-red-400">{formatCurrency(paymentKpis.outstandingBalance)}</p>
                 </div>
-                <Button size="sm" onClick={() => setIsPaymentDialogOpen(true)}>Make Payment</Button>
+                {paymentKpis.outstandingBalance > 0 && (
+                  <Button size="sm" onClick={() => setIsPaymentDialogOpen(true)}>Make Payment</Button>
+                )}
             </div>
             <div className="text-sm space-y-2">
                 <div className="flex justify-between">
@@ -452,6 +454,7 @@ export default function CustomerDashboardPage() {
     </>
   );
 }
+
 
 
 
