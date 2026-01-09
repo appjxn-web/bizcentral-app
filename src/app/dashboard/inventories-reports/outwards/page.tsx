@@ -22,11 +22,11 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { format } from 'date-fns';
-import { Send, Package, ChevronRight, ChevronDown, Wrench, PackageSearch } from 'lucide-react';
+import { Send, Package, ChevronRight, ChevronDown, Wrench, PackageSearch, Loader2, PlusCircle, Trash2, ChevronsUpDown, Check } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import type { WorkOrder, BillOfMaterial, Product, IssuedItem, User as UserType, CoaLedger, SparesRequest, BomItem } from '@/lib/types';
-import { useFirestore, useCollection } from '@/firebase';
-import { collection, query, where, doc, updateDoc, writeBatch, serverTimestamp, addDoc, increment } from 'firebase/firestore';
+import type { WorkOrder, BillOfMaterial, Product, IssuedItem, User as UserType, CoaLedger, SparesRequest, BomItem, PurchaseOrder, Party } from '@/lib/types';
+import { useFirestore, useCollection, useUser } from '@/firebase';
+import { collection, query, where, doc, updateDoc, writeBatch, serverTimestamp, addDoc, increment, getDoc, getDocs } from 'firebase/firestore';
 import { cn } from '@/lib/utils';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { useToast } from '@/hooks/use-toast';
@@ -45,6 +45,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+
+interface StockTransferItem {
+  id: string;
+  productId: string;
+  productName: string;
+  quantity: number;
+}
 
 
 interface IssueDialogProps {
@@ -405,6 +414,142 @@ function SparesRequestRow({ request, onIssueClick, allProducts }: { request: Spa
     )
 }
 
+function StockTransferTab() {
+  const { toast } = useToast();
+  const firestore = useFirestore();
+  const { user } = useUser();
+  const { data: partners } = useCollection<Party>(query(collection(firestore, 'parties'), where('type', '==', 'Partner')));
+  const { data: products } = useCollection<Product>(collection(firestore, 'products'));
+
+  const [selectedPartnerId, setSelectedPartnerId] = React.useState<string | null>(null);
+  const [items, setItems] = React.useState<StockTransferItem[]>([{ id: `item-${Date.now()}`, productId: '', productName: '', quantity: 1 }]);
+  const [notes, setNotes] = React.useState('');
+  const [isSubmitting, setIsSubmitting] = React.useState(false);
+
+  const handleAddItem = () => {
+    setItems(prev => [...prev, { id: `item-${Date.now()}`, productId: '', productName: '', quantity: 1 }]);
+  };
+
+  const handleRemoveItem = (id: string) => {
+    setItems(prev => prev.filter(item => item.id !== id));
+  };
+
+  const handleItemChange = (id: string, field: 'productId' | 'quantity', value: string) => {
+    setItems(prev =>
+      prev.map(item => {
+        if (item.id === id) {
+          const updatedItem = { ...item, [field]: value };
+          if (field === 'productId') {
+            const product = products?.find(p => p.id === value);
+            if (product) updatedItem.productName = product.name;
+          }
+          return updatedItem;
+        }
+        return item;
+      })
+    );
+  };
+  
+  const handleSubmit = async () => {
+    if (!selectedPartnerId || items.length === 0 || items.some(i => !i.productId || Number(i.quantity) <= 0)) {
+        toast({ variant: 'destructive', title: 'Missing Information' });
+        return;
+    }
+    
+    setIsSubmitting(true);
+    try {
+        const partner = partners?.find(p => p.id === selectedPartnerId);
+        const requestData = {
+            requestingUserId: user?.uid,
+            requestingUserName: user?.displayName,
+            partnerId: selectedPartnerId,
+            partnerName: partner?.name,
+            items: items.map(({ id, ...rest }) => ({...rest, quantity: Number(rest.quantity)})),
+            status: 'Pending Approval',
+            createdAt: serverTimestamp(),
+            notes,
+        };
+        
+        await addDoc(collection(firestore, 'stockTransferRequests'), requestData);
+        toast({ title: 'Request Submitted', description: 'Stock transfer request has been sent for approval.' });
+        
+        // Reset form
+        setSelectedPartnerId(null);
+        setItems([{ id: `item-${Date.now()}`, productId: '', productName: '', quantity: 1 }]);
+        setNotes('');
+    } catch(e) {
+        console.error("Failed to submit stock transfer request:", e);
+        toast({ variant: 'destructive', title: 'Submission Failed' });
+    } finally {
+        setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Create Stock Transfer</CardTitle>
+        <CardDescription>Request to move inventory from the main warehouse to a partner location.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        <div className="max-w-md space-y-2">
+            <Label>To Partner</Label>
+            <Select onValueChange={setSelectedPartnerId}>
+                <SelectTrigger><SelectValue placeholder="Select a partner..." /></SelectTrigger>
+                <SelectContent>
+                    {partners?.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+                </SelectContent>
+            </Select>
+        </div>
+        <div>
+            <Label>Items to Transfer</Label>
+            <div className="border rounded-md mt-2">
+                <Table>
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead className="w-[60%]">Product</TableHead>
+                            <TableHead>Quantity</TableHead>
+                            <TableHead className="w-[50px]"><span className="sr-only">Remove</span></TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {items.map(item => (
+                            <TableRow key={item.id}>
+                                <TableCell>
+                                     <Select value={item.productId} onValueChange={(value) => handleItemChange(item.id, 'productId', value)}>
+                                        <SelectTrigger><SelectValue placeholder="Select product..." /></SelectTrigger>
+                                        <SelectContent>
+                                            {products?.map(p => <SelectItem key={p.id} value={p.id}>{p.name} (Stock: {p.openingStock})</SelectItem>)}
+                                        </SelectContent>
+                                    </Select>
+                                </TableCell>
+                                <TableCell>
+                                    <Input type="number" value={item.quantity} onChange={(e) => handleItemChange(item.id, 'quantity', e.target.value)} />
+                                </TableCell>
+                                <TableCell>
+                                    <Button variant="ghost" size="icon" onClick={() => handleRemoveItem(item.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                                </TableCell>
+                            </TableRow>
+                        ))}
+                    </TableBody>
+                </Table>
+                 <Button variant="outline" size="sm" onClick={handleAddItem} className="m-2">
+                    <PlusCircle className="mr-2 h-4 w-4" /> Add Item
+                </Button>
+            </div>
+        </div>
+        <div className="space-y-2">
+            <Label>Notes (Optional)</Label>
+            <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Add any notes for the approver..." />
+        </div>
+        <Button onClick={handleSubmit} disabled={isSubmitting}>
+            {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Submit for Approval
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
 
 export default function OutwardsPage() {
   const { toast } = useToast();
@@ -683,17 +828,7 @@ export default function OutwardsPage() {
             </Card>
         </TabsContent>
         <TabsContent value="transfer">
-            <Card>
-                <CardHeader>
-                    <CardTitle>Stock Transfer to Partner</CardTitle>
-                    <CardDescription>Move inventory from the main warehouse to a partner location.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                    <div className="text-center text-muted-foreground p-8">
-                        Feature coming soon. This section will allow you to create and manage stock transfers to partners.
-                    </div>
-                </CardContent>
-            </Card>
+            <StockTransferTab />
         </TabsContent>
       </Tabs>
       
