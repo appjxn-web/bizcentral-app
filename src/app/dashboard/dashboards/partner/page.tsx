@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -26,7 +27,7 @@ import {
 } from 'lucide-react';
 import { OverviewChart } from '@/components/dashboard/overview-chart';
 import { useUser, useDoc, useFirestore, useCollection } from '@/firebase';
-import type { UserProfile, Order, Lead, ServiceRequest, RegisteredProduct, Offer } from '@/lib/types';
+import type { UserProfile, Order, Lead, ServiceRequest, RegisteredProduct, Offer, UserWallet } from '@/lib/types';
 import { collection, doc, query, where, orderBy } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
@@ -41,6 +42,9 @@ export default function PartnerDashboardPage() {
 
   const userDocRef = user ? doc(firestore, 'users', user.uid) : null;
   const { data: userProfile } = useDoc<UserProfile>(userDocRef);
+
+  const walletDocRef = user ? doc(firestore, 'users', user.uid, 'wallet', 'main') : null;
+  const { data: walletData } = useDoc<UserWallet>(walletDocRef);
   
   const ordersQuery = React.useMemo(() => {
     if (!user || !firestore) return null;
@@ -70,9 +74,9 @@ export default function PartnerDashboardPage() {
         activeCustomers: 0,
         totalLeads: 0,
         totalSales: 0,
-        partnerCommission: 0,
-        pendingCommission: userProfile?.commissionPayable || 0,
-        walletBalance: userProfile?.walletBalance || 0,
+        franchiseCommission: 0,
+        pendingCommission: walletData?.commissionPayable || 0,
+        walletBalance: walletData?.balance || 0,
         openServiceTickets: serviceRequests?.filter(sr => sr.status !== 'Completed' && sr.status !== 'Canceled').length || 0,
         productsUnderWarranty: registeredProducts?.filter(p => p.status === 'Active').length || 0,
         activeOffers: offers?.filter(o => o.status === 'Active').length || 0,
@@ -97,9 +101,9 @@ export default function PartnerDashboardPage() {
         }, 0);
     };
 
-    const partnerCommission = deliveredOrders.reduce((acc, order) => acc + calculateCommission(order), 0);
+    const franchiseCommission = deliveredOrders.reduce((acc, order) => acc + calculateCommission(order), 0);
     
-    const pendingCommission = orders
+    const pendingCommissionOrders = orders
         .filter(o => o.status !== 'Delivered' && o.status !== 'Canceled')
         .reduce((acc, order) => acc + calculateCommission(order), 0);
 
@@ -107,14 +111,14 @@ export default function PartnerDashboardPage() {
       activeCustomers,
       totalLeads: leads.length,
       totalSales,
-      partnerCommission,
-      pendingCommission: (userProfile.commissionPayable || 0) + pendingCommission,
-      walletBalance: userProfile.walletBalance || 0,
+      franchiseCommission,
+      pendingCommission: (walletData?.commissionPayable || 0) + pendingCommissionOrders,
+      walletBalance: walletData?.balance || 0,
       openServiceTickets: serviceRequests?.filter(sr => sr.status !== 'Completed' && sr.status !== 'Canceled').length || 0,
       productsUnderWarranty: registeredProducts?.filter(p => p.status === 'Active').length || 0,
       activeOffers: offers?.filter(o => o.status === 'Active').length || 0,
     };
-  }, [orders, userProfile, leads, serviceRequests, registeredProducts, offers]);
+  }, [orders, userProfile, leads, serviceRequests, registeredProducts, offers, walletData]);
 
   const alerts = React.useMemo(() => {
     if (!orders) return [];
@@ -170,7 +174,7 @@ export default function PartnerDashboardPage() {
             <Wallet className="h-4 w-4 text-green-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-600">{formatCurrency(kpis.partnerCommission)}</div>
+            <div className="text-2xl font-bold text-green-600">{formatCurrency(kpis.franchiseCommission)}</div>
             <p className="text-xs text-muted-foreground">Total commission earned</p>
           </CardContent>
         </Card>
@@ -230,7 +234,7 @@ export default function PartnerDashboardPage() {
             <CardContent className="space-y-3">
                 <div className="flex justify-between items-center p-3 rounded-md bg-green-50 dark:bg-green-900/30">
                     <span className="font-semibold">Total Commission Earned</span>
-                    <span className="font-mono font-bold text-green-600">{formatCurrency(kpis.partnerCommission)}</span>
+                    <span className="font-mono font-bold text-green-600">{formatCurrency(kpis.franchiseCommission)}</span>
                 </div>
                  <div className="flex justify-between items-center p-3 rounded-md bg-yellow-50 dark:bg-yellow-900/30">
                     <span className="font-semibold">Pending Commission</span>

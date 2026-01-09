@@ -297,7 +297,7 @@ export interface Order {
   assignedToUid: string | null;
   paymentDetails?: string;
   commission?: number;
-  payoutStatus?: 'Awaiting Delivery' | 'Payable' | 'Paid';
+  payoutStatus?: 'Awaiting Delivery' | 'Payable' | 'Paid' | 'No Commission';
   pickupPoint?: {
     name: string;
     type: 'Factory' | 'Partner';
