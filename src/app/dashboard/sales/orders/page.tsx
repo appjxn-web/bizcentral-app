@@ -428,7 +428,7 @@ function OrdersPageContent() {
                 orderBy('date', 'desc')
             );
         }
-
+        
         return query(
             ordersRef, 
             where('userId', '==', user.uid), 
@@ -439,8 +439,8 @@ function OrdersPageContent() {
     const invoicesQuery = React.useMemo(() => {
         if (!user || !currentRole) return null;
         const invoicesRef = collection(firestore, 'salesInvoices');
-
-        if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
+    
+        if (['Admin', 'CEO', 'Accounts Manager', 'Sales Manager'].includes(currentRole)) {
             return query(invoicesRef);
         }
     
