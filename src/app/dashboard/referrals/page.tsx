@@ -70,6 +70,14 @@ function getStatusBadgeVariant(status: string) {
   }
 }
 
+const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-IN', { 
+        style: 'currency', 
+        currency: 'INR', 
+        minimumFractionDigits: 2 
+    }).format(amount || 0);
+};
+
 export default function ReferralsPage() {
   const { toast } = useToast();
   const firestore = useFirestore();
@@ -98,7 +106,7 @@ export default function ReferralsPage() {
     setStatusFilters(prev =>
       prev.includes(status)
         ? prev.filter(s => s !== status)
-        : [...prev, s]
+        : [...prev, status]
     );
   };
 
@@ -454,3 +462,5 @@ Join the JXN App to explore machines, offers, referrals, and business tools desi
     </>
   );
 }
+
+    
