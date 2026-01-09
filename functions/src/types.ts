@@ -67,6 +67,8 @@ export interface UserProfile {
     category: string;
     commissionRate: number;
   }[];
+  referredBy?: string;
+  mobile?: string;
 }
 
 export interface Product {
