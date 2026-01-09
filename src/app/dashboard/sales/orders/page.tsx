@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -65,7 +64,7 @@ import {
 import Image from 'next/image';
 import { Separator } from '@/components/ui/separator';
 import { useFirestore, useCollection, useUser, useDoc } from '@/firebase';
-import { collection, query, orderBy, doc, where, or, updateDoc, writeBatch, limit, getDocs } from 'firebase/firestore';
+import { collection, query, orderBy, doc, where, or, updateDoc, writeBatch } from 'firebase/firestore';
 import { OrderStatusTracker } from '../../my-orders/_components/order-status';
 import {
   Dialog,
@@ -305,44 +304,39 @@ function OrderRow({ order, onGenerateInvoice, onUpdateStatus, pickupPoints, dyna
           <TableCell>{order.expectedDeliveryDate ? format(new Date(order.expectedDeliveryDate), 'dd/MM/yyyy') : 'N/A'}</TableCell>
           <TableCell className="text-right font-mono">{formatIndianCurrency(order.grandTotal)}</TableCell>
           <TableCell className="text-right">
-              <div className="flex gap-2 justify-end">
-                {existingInvoice ? (
-                    <Button variant="secondary" size="sm" onClick={() => onViewInvoice(existingInvoice.invoiceNumber)}>
-                        View Invoice
-                    </Button>
-                ) : canGenerateInvoice && (
-                    <Button 
-                        variant="outline" 
-                        size="sm" 
-                        disabled={!['Awaiting Payment', 'Ready for Dispatch', 'Shipped', 'Delivered'].includes(dynamicStatus)}
-                        onClick={() => onGenerateInvoice(order)}
-                    >
-                        Generate Invoice
-                    </Button>
-                )}
-                {canPerformActions && (
-                    <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4"/></Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent>
-                        <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                        <DropdownMenuItem onClick={() => router.push(`/dashboard/sales/orders/view?id=${order.id}`)}>
-                            <Eye className="mr-2 h-4 w-4" /> View Order
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => onEdit(order.id)}>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4"/></Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>
+                    <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                    <DropdownMenuItem onClick={() => router.push(`/dashboard/sales/orders/view?id=${order.id}`)}>
+                        <Eye className="mr-2 h-4 w-4" /> View Order
+                    </DropdownMenuItem>
+                    {canPerformActions && (
+                         <DropdownMenuItem onClick={() => onEdit(order.id)}>
                             <Edit className="mr-2 h-4 w-4" /> Edit Order
                         </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        {orderStatuses.map(status => (
-                        <DropdownMenuItem key={status} onClick={() => onUpdateStatus(order.id, status)}>
-                            {status}
+                    )}
+                    {existingInvoice ? (
+                        <DropdownMenuItem onClick={() => onViewInvoice(existingInvoice.invoiceNumber)}>
+                           <Receipt className="mr-2 h-4 w-4" /> View Invoice
                         </DropdownMenuItem>
-                        ))}
-                    </DropdownMenuContent>
-                    </DropdownMenu>
-                )}
-              </div>
+                    ) : canGenerateInvoice && ['Awaiting Payment', 'Ready for Dispatch', 'Shipped', 'Delivered'].includes(dynamicStatus) && (
+                        <DropdownMenuItem onClick={() => onGenerateInvoice(order)}>
+                           <Receipt className="mr-2 h-4 w-4" /> Generate Invoice
+                        </DropdownMenuItem>
+                    )}
+                    
+                    {canPerformActions && <DropdownMenuSeparator />}
+                    
+                    {canPerformActions && orderStatuses.map(status => (
+                        <DropdownMenuItem key={status} onClick={() => onUpdateStatus(order.id, status)}>
+                            Set to: {status}
+                        </DropdownMenuItem>
+                    ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
           </TableCell>
         </TableRow>
         <CollapsibleContent asChild>
@@ -457,6 +451,7 @@ function OrdersPageContent() {
         return query(invoicesRef, where('customerId', '==', user.uid));
     }, [user, currentRole, firestore]);
 
+
     const { data: orders, loading: ordersLoading } = useCollection<Order>(ordersQuery);
     const { data: workOrders, loading: workOrdersLoading } = useCollection<WorkOrder>(collection(firestore, 'workOrders'));
     const { data: allSalesInvoices, loading: invoicesLoading } = useCollection<SalesInvoice>(invoicesQuery);
@@ -509,7 +504,7 @@ function OrdersPageContent() {
             assignedToUid: order.assignedToUid,
         };
         localStorage.setItem('invoiceDataToCreate', JSON.stringify(dataToPass));
-        router.push('/dashboard/finance-accounting/invoice/create');
+        router.push('/dashboard/sales/create-invoice');
     };
     
     const handleUpdateStatus = async (orderId: string, status: OrderStatus) => {
@@ -619,20 +614,7 @@ function OrdersPageContent() {
                 orders.map((order) => {
                   const dynamicStatus = getDynamicOrderStatus(order);
                   return (
-                    <OrderRow 
-                        key={order.id} 
-                        order={order} 
-                        pickupPoints={pickupPoints} 
-                        onGenerateInvoice={handleGenerateInvoice} 
-                        onUpdateStatus={handleUpdateStatus} 
-                        dynamicStatus={dynamicStatus} 
-                        allProducts={allProducts} 
-                        getOrderInHand={getOrderInHand} 
-                        allSalesInvoices={allSalesInvoices || []} 
-                        onViewInvoice={onViewInvoice} 
-                        onEdit={handleEditOrder}
-                        currentRole={currentRole}
-                    />
+                    <OrderRow key={order.id} order={order} pickupPoints={pickupPoints} onGenerateInvoice={handleGenerateInvoice} onUpdateStatus={handleUpdateStatus} dynamicStatus={dynamicStatus} allProducts={allProducts} getOrderInHand={getOrderInHand} allSalesInvoices={allSalesInvoices || []} onViewInvoice={onViewInvoice} onEdit={handleEditOrder} currentRole={currentRole} />
                   )
                 })
               ) : (
