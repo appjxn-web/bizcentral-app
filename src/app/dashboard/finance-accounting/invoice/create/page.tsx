@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -123,6 +124,7 @@ export default function CreateInvoicePage() {
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = React.useState(false);
   const [salesOrderNumber, setSalesOrderNumber] = React.useState('');
   const [orderDocumentId, setOrderDocumentId] = React.useState<string | null>(null);
+  const [assignedToUid, setAssignedToUid] = React.useState<string | null>(null);
   
   const { data: allProducts, loading: productsLoading } = useCollection<Product>(query(collection(firestore, 'products'), where('saleable', '==', true)));
   const { data: allSalesInvoices } = useCollection<SalesInvoice>(collection(firestore, 'salesInvoices'));
@@ -178,6 +180,7 @@ export default function CreateInvoicePage() {
           const data = JSON.parse(rawData);
           setSelectedPartyId(data.customerId);
           setOrderDocumentId(data.id); // Set the document ID
+          setAssignedToUid(data.assignedToUid); // Set the partner ID
 
           const mappedItems = data.items.map((item: any, i: number) => {
               const product = allProducts.find(p => p.id === item.productId);
@@ -369,11 +372,13 @@ export default function CreateInvoicePage() {
           cgst: calculations.cgst,
           sgst: calculations.sgst,
           igst: calculations.igst,
+          taxableAmount: calculations.taxableAmount,
           grandTotal: calculations.grandTotal,
           amountPaid: bookingAmount,
           balanceDue: calculations.grandTotal - bookingAmount,
           status: 'Unpaid',
-          appliedCoupons: appliedCoupons
+          appliedCoupons: appliedCoupons,
+          assignedToUid: assignedToUid,
       };
       
       if (isEditMode && invoiceIdToEdit) {
@@ -422,6 +427,7 @@ export default function CreateInvoicePage() {
     const newLedgerRef = await addDoc(collection(firestore, 'coa_ledgers'), newLedgerData);
     await updateDoc(doc(firestore, 'parties', party.id), { coaLedgerId: newLedgerRef.id });
 
+    // This is a simplification. In a real app, you'd refetch or get the created doc.
     return { id: newLedgerRef.id, ...newLedgerData } as CoaLedger;
   };
 
@@ -752,3 +758,4 @@ export default function CreateInvoicePage() {
     </>
   );
 }
+
