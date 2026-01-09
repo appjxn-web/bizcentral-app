@@ -68,7 +68,7 @@ export default function CustomerDashboardPage() {
   
   const userLedgerId = userProfile?.coaLedgerId;
   
-  const jvQuery = userLedgerId ? query(collection(firestore, 'journalVouchers'), where('entries', 'array-contains-any', [{accountId: userLedgerId}])) : null;
+  const jvQuery = userLedgerId ? query(collection(firestore, 'journalVouchers')) : null;
   const { data: journalVouchers, loading: jvLoading } = useCollection<JournalVoucher>(jvQuery);
   
   const { data: salesInvoices, loading: invoicesLoading } = useCollection<SalesInvoice>(user ? query(collection(firestore, 'salesInvoices'), where('customerId', '==', user.uid)) : null);
@@ -125,6 +125,7 @@ export default function CustomerDashboardPage() {
     const totalOrderValue = orderKpis.totalValue;
 
     const totalCredit = (journalVouchers || [])
+      .filter(jv => jv.entries.some(e => e.accountId === userLedgerId))
       .flatMap(jv => jv.entries)
       .filter(e => e.accountId === userLedgerId && e.credit && e.credit > 0)
       .reduce((sum, entry) => sum + (entry.credit || 0), 0);
@@ -289,18 +290,18 @@ export default function CustomerDashboardPage() {
                     <span className="font-bold">{formatCurrency(orderKpis.totalValue)}</span>
                 </div>
                 <div className="flex justify-between items-center text-sm p-2 rounded-md bg-muted/50">
-                    <span className="text-muted-foreground flex items-center"><CircleDollarSign className="mr-2 h-4 w-4 text-green-500"/>Paid Amount</span>
+                    <span className="text-muted-foreground flex items-center"><CircleDollarSign className="mr-2 h-4 w-4 text-green-500"/>=total credit</span>
                     <span className="font-bold">{formatCurrency(paymentKpis.paidAmount)}</span>
                 </div>
                 <div className="flex justify-between items-center text-sm p-2 rounded-md bg-muted/50">
-                    <span className="text-muted-foreground flex items-center"><CircleDollarSign className="mr-2 h-4 w-4 text-red-500"/>Outstanding Balance</span>
+                    <span className="text-muted-foreground flex items-center">Outstanding Balance including all orders</span>
                     <span className="font-bold">{formatCurrency(paymentKpis.outstandingBalance)}</span>
                 </div>
              </div>
           </CardContent>
            <CardFooter>
                 <Button variant="outline" asChild className="w-full">
-                  <Link href="/dashboard/my-orders">View All Orders <ArrowRight className="ml-2 h-4 w-4 /></Link>
+                  <Link href="/dashboard/my-orders">View All Orders <ArrowRight className="ml-2 h-4 w-4" /></Link>
                 </Button>
            </CardFooter>
         </Card>
@@ -463,4 +464,3 @@ export default function CustomerDashboardPage() {
     </>
   );
 }
-
