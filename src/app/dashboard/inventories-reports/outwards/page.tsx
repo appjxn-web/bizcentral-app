@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -30,7 +31,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { PlusCircle, Trash2, Check, ChevronsUpDown, Send, Package, Wrench, PackageSearch, Loader2, ChevronRight, ChevronDown, MoreHorizontal } from 'lucide-react';
+import { PlusCircle, Trash2, Check, ChevronsUpDown, Send, Package, Wrench, PackageSearch, Loader2, ChevronRight, ChevronDown, MoreHorizontal, Eye } from 'lucide-react';
 import type { User, Product, SparesRequest, StockTransferRequest, UserProfile } from '@/lib/types';
 import { useFirestore, useCollection, useUser, useDoc } from '@/firebase';
 import { collection, addDoc, serverTimestamp, query, where, orderBy, getDoc } from 'firebase/firestore';
@@ -414,7 +415,7 @@ function SparesRequestRow({ request, onIssueClick, allProducts }: { request: Spa
     )
 }
 
-function getStatusBadgeVariant(status: string) {
+function getStockTransferStatusBadgeVariant(status: string) {
     const variants: Record<string, string> = {
       'Pending Approval': 'bg-yellow-100 text-yellow-800',
       'Approved': 'bg-blue-100 text-blue-800',
@@ -488,6 +489,7 @@ function StockTransferTab() {
   const { data: partners } = useCollection<Party>(query(collection(firestore, 'parties'), where('type', '==', 'Partner')));
   const { data: products } = useCollection<Product>(collection(firestore, 'products'));
   const [openRequestId, setOpenRequestId] = React.useState<string | null>(null);
+  const router = useRouter();
 
   const [selectedPartnerId, setSelectedPartnerId] = React.useState<string | null>(null);
   const [items, setItems] = React.useState<StockTransferItem[]>([{ id: `item-${Date.now()}`, productId: '', productName: '', quantity: 1 }]);
@@ -684,16 +686,26 @@ function StockTransferTab() {
                             <TableCell>{req.partnerName}</TableCell>
                             <TableCell>{req.items.length}</TableCell>
                             <TableCell>
-                            <Badge variant="outline" className={cn(getStatusBadgeVariant(req.status))}>
+                            <Badge variant="outline" className={cn(getStockTransferStatusBadgeVariant(req.status))}>
                                 {req.status}
                             </Badge>
                             </TableCell>
                             <TableCell className="text-right">
-                                {req.status === 'Approved' && (
-                                    <Button size="sm" onClick={() => setDispatchingRequest(req)}>
-                                        Dispatch
-                                    </Button>
-                                )}
+                               <DropdownMenu>
+                                    <DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4"/></Button></DropdownMenuTrigger>
+                                    <DropdownMenuContent>
+                                        <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                                        {req.status === 'Approved' && (
+                                            <DropdownMenuItem onClick={() => setDispatchingRequest(req)}>Dispatch</DropdownMenuItem>
+                                        )}
+                                        {req.status === 'Shipped' && (
+                                            <DropdownMenuItem onClick={() => router.push(`/dashboard/inventories-reports/outwards/gate-pass?id=${req.id}`)}>
+                                                View/Print Gate Pass
+                                            </DropdownMenuItem>
+                                        )}
+                                        <DropdownMenuItem disabled>Cancel</DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                </DropdownMenu>
                             </TableCell>
                         </TableRow>
                         <CollapsibleContent asChild>
@@ -1029,3 +1041,4 @@ export default function OutwardsPage() {
     </>
   );
 }
+
