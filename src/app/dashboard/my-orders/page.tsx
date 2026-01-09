@@ -21,11 +21,12 @@ import {
   ListFilter,
   DollarSign,
   RefreshCcw,
+  Receipt,
 } from 'lucide-react';
 
 import { PageHeader } from '@/components/page-header';
 import { cn } from '@/lib/utils';
-import type { Order, OrderStatus, UserProfile, UserRole, WorkOrder, PickupPoint, SalesOrder, RefundRequest } from '@/lib/types';
+import type { Order, OrderStatus, UserProfile, UserRole, WorkOrder, PickupPoint, SalesOrder, RefundRequest, SalesInvoice } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -35,14 +36,6 @@ import {
   CardTitle,
   CardFooter,
 } from '@/components/ui/card';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -61,7 +54,7 @@ import {
 import Image from 'next/image';
 import { Separator } from '@/components/ui/separator';
 import { useFirestore, useCollection, useUser, useDoc } from '@/firebase';
-import { collection, query, orderBy, doc, where, or, updateDoc, writeBatch, limit } from 'firebase/firestore';
+import { collection, query, orderBy, doc, where, or, updateDoc, writeBatch } from 'firebase/firestore';
 import { OrderStatusTracker } from './_components/order-status';
 import {
   Dialog,
@@ -259,8 +252,9 @@ function CompanyPickupDetails({ point }: { point?: Order['pickupPoint'] }) {
     );
 }
 
-function OrderCard({ order }: { order: Order }) {
+function OrderCard({ order, allSalesInvoices }: { order: Order, allSalesInvoices: SalesInvoice[] | null }) {
     const { user } = useUser();
+    const router = useRouter();
     const [isOpen, setIsOpen] = React.useState(false);
     const firestore = useFirestore();
     const { data: companyInfo } = useDoc(doc(firestore, 'company', 'info'));
@@ -274,6 +268,7 @@ function OrderCard({ order }: { order: Order }) {
     const { data: refundRequests } = useCollection<RefundRequest>(refundQuery);
     const refundRequest = refundRequests?.[0];
 
+    const existingInvoice = allSalesInvoices?.find(inv => inv.orderNumber === order.orderNumber);
 
     const canCancel = order.status === 'Ordered' || order.status === 'Manufacturing';
     
@@ -403,7 +398,7 @@ function OrderCard({ order }: { order: Order }) {
                         <div className="space-y-4">
                             <h4 className="font-semibold">Pickup Details</h4>
                              <div className="p-3 rounded-md border bg-background">
-                                {order.pickupPointId !== 'company-main' && order.pickupPointId ? (
+                                {order.assignedToUid && order.pickupPointId && order.pickupPointId !== 'company-main' ? (
                                     <PartnerPickupDetails pickupPointId={order.pickupPointId} />
                                 ) : (
                                     <CompanyPickupDetails />
@@ -418,6 +413,14 @@ function OrderCard({ order }: { order: Order }) {
                                         <XCircle className="mr-2 h-4 w-4" />
                                         Request Cancellation
                                     </Button>
+                                )}
+                                {existingInvoice && (
+                                  <Button variant="outline" size="sm" asChild>
+                                    <Link href={`/dashboard/sales/invoice/view?id=${existingInvoice.invoiceNumber}`}>
+                                      <Receipt className="mr-2 h-4 w-4" />
+                                      View Invoice
+                                    </Link>
+                                  </Button>
                                 )}
                             </div>
                         </div>
@@ -468,6 +471,8 @@ function MyOrdersPageContent() {
 
     const { data: orders, loading: ordersLoading } = useCollection<Order>(ordersQuery);
     const { data: workOrders, loading: workOrdersLoading } = useCollection<WorkOrder>(collection(firestore, 'workOrders'));
+    const { data: allSalesInvoices, loading: invoicesLoading } = useCollection<SalesInvoice>(collection(firestore, 'salesInvoices'));
+
 
     const getDynamicOrderStatus = (order: Order): OrderStatus => {
         if (order.status !== 'Ordered') {
@@ -546,7 +551,7 @@ function MyOrdersPageContent() {
        <div className="space-y-4">
         {orders && orders.length > 0 ? (
             orders.map((order) => (
-                <OrderCard key={order.id} order={order} />
+                <OrderCard key={order.id} order={order} allSalesInvoices={allSalesInvoices} />
             ))
         ) : (
             <Card>
@@ -577,3 +582,5 @@ export default function MyOrdersPage() {
 }
 
   
+
+    
