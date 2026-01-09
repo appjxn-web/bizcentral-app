@@ -66,8 +66,8 @@ service cloud.firestore {
     match /orders/{orderId} {
       allow list: if signedIn() && (
         isAdmin() || 
-        request.query.where.userId == request.auth.uid ||
-        request.query.where.assignedToUid == request.auth.uid
+        (request.query.keys().hasAll(['where', 'orderBy']) &&
+         ((request.query.where.userId == request.auth.uid) || (request.query.where.assignedToUid == request.auth.uid)))
       );
       
       allow get: if signedIn() && (
