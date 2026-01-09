@@ -68,6 +68,7 @@ export default function CustomerDashboardPage() {
   const { data: posts, loading: postsLoading } = useCollection<PostRequest>(postsQuery);
   
   const userLedgerId = userProfile?.coaLedgerId;
+  
   const jvQuery = userLedgerId ? query(collection(firestore, 'journalVouchers'), where('entries', 'array-contains-any', [{accountId: userLedgerId}])) : null;
   const { data: journalVouchers, loading: jvLoading } = useCollection<JournalVoucher>(jvQuery);
   
@@ -124,6 +125,7 @@ export default function CustomerDashboardPage() {
   const paymentKpis = React.useMemo(() => {
     const totalOrderValue = orderKpis.totalValue;
 
+    // Calculate total credit from journal vouchers for the user's ledger
     const totalCredit = (journalVouchers || [])
       .flatMap(jv => jv.entries)
       .filter(e => e.accountId === userLedgerId && e.credit && e.credit > 0)
@@ -149,7 +151,7 @@ export default function CustomerDashboardPage() {
   
   const alerts: any[] = [];
   if (paymentKpis.outstandingBalance > 0) {
-    alerts.push({ id: 1, text: 'You have an outstanding balance.', action: '/dashboard/my-account', icon: CircleDollarSign });
+    alerts.push({ id: 1, text: `You have an outstanding balance.`, action: '/dashboard/my-account', icon: CircleDollarSign });
   }
   if (kpis.openServiceTickets > 0) {
     alerts.push({ id: 2, text: `You have ${kpis.openServiceTickets} open service tickets.`, action: '/dashboard/service-warranty/service-management', icon: Wrench });
@@ -300,7 +302,7 @@ export default function CustomerDashboardPage() {
           </CardContent>
            <CardFooter>
                 <Button variant="outline" asChild className="w-full">
-                  <Link href="/dashboard/my-orders">View All Orders <ArrowRight className="ml-2 h-4 w-4" /></Link>
+                  <Link href="/dashboard/my-orders">View All Orders <ArrowRight className="ml-2 h-4 w-4 /></Link>
                 </Button>
            </CardFooter>
         </Card>
@@ -463,6 +465,7 @@ export default function CustomerDashboardPage() {
     </>
   );
 }
+
 
 
 
