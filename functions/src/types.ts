@@ -57,6 +57,7 @@ export interface Order {
   balance: number;
   commission?: number;
   assignedToUid?: string;
+  payoutStatus?: 'Awaiting Delivery' | 'Payable' | 'Paid' | 'No Commission';
 }
 
 
@@ -70,6 +71,8 @@ export interface UserProfile {
   }[];
   referredBy?: string;
   mobile?: string;
+  walletBalance?: number;
+  commissionPayable?: number;
 }
 
 export interface Product {
