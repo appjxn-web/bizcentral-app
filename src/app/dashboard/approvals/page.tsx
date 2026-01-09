@@ -20,6 +20,8 @@ import {
   Ban,
   Wallet,
   ArrowRightLeft,
+  ChevronRight,
+  ChevronDown,
 } from 'lucide-react';
 import { PageHeader } from '@/components/page-header';
 import {
@@ -62,6 +64,7 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import type { PurchaseRequest, ReimbursementRequest, PostRequest, Order, CoaLedger, OrderStatus, SalesOrder, RefundRequest, SalaryAdvanceRequest, StockTransferRequest } from '@/lib/types';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 
 
 type PurchaseRequestStatus = 'Pending' | 'Approved' | 'Rejected' | 'Ordered';
@@ -126,6 +129,7 @@ export default function ApprovalsPage() {
   const { data: cancellationRequests } = useCollection<Order>(cancellationRequestsQuery);
 
   const [selectedMedia, setSelectedMedia] = React.useState<{ url: string; type: 'image' | 'video'; alt: string} | null>(null);
+  const [openRequestId, setOpenRequestId] = React.useState<string | null>(null);
 
   const pendingPurchaseCount = purchaseRequests?.filter(r => r.status === 'Pending').length || 0;
   const pendingReimbursementCount = reimbursementRequests?.filter(r => r.status === 'Pending Approval').length || 0;
@@ -444,6 +448,7 @@ export default function ApprovalsPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-8"></TableHead>
                     <TableHead>Requesting Partner</TableHead>
                     <TableHead>Date</TableHead>
                     <TableHead>Items</TableHead>
@@ -451,34 +456,63 @@ export default function ApprovalsPage() {
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
-                <TableBody>
-                  {stockTransferRequests?.map(req => (
-                    <TableRow key={req.id}>
-                      <TableCell>{req.partnerName}</TableCell>
-                      <TableCell>{req.createdAt ? format(new Date(req.createdAt.toDate()), 'dd/MM/yyyy') : 'N/A'}</TableCell>
-                      <TableCell>{req.items.length}</TableCell>
-                      <TableCell><Badge variant="outline" className={cn(getStatusBadgeVariant(req.status))}>{req.status}</Badge></TableCell>
-                      <TableCell className="text-right">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button size="icon" variant="ghost" disabled={req.status !== 'Pending Approval'}>
-                              <MoreHorizontal className="h-4 w-4" />
+                {stockTransferRequests?.map(req => (
+                  <Collapsible asChild key={req.id} open={openRequestId === req.id} onOpenChange={() => setOpenRequestId(prev => prev === req.id ? null : req.id)}>
+                    <TableBody>
+                      <TableRow>
+                        <TableCell>
+                          <CollapsibleTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-8 w-8">
+                                <ChevronRight className={cn("h-4 w-4 transition-transform", openRequestId === req.id && "rotate-90")} />
                             </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                            <DropdownMenuItem onClick={() => handleStockTransferUpdate(req.id, 'Approved')}>
-                              <CheckCircle className="mr-2 h-4 w-4" /> Approve
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleStockTransferUpdate(req.id, 'Rejected')} className="text-red-500">
-                              <XCircle className="mr-2 h-4 w-4" /> Reject
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
+                          </CollapsibleTrigger>
+                        </TableCell>
+                        <TableCell>{req.partnerName}</TableCell>
+                        <TableCell>{req.createdAt ? format(new Date(req.createdAt.toDate()), 'dd/MM/yyyy') : 'N/A'}</TableCell>
+                        <TableCell>{req.items.length}</TableCell>
+                        <TableCell><Badge variant="outline" className={cn(getStatusBadgeVariant(req.status))}>{req.status}</Badge></TableCell>
+                        <TableCell className="text-right">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button size="icon" variant="ghost" disabled={req.status !== 'Pending Approval'}>
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                              <DropdownMenuItem onClick={() => handleStockTransferUpdate(req.id, 'Approved')}>
+                                <CheckCircle className="mr-2 h-4 w-4" /> Approve
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleStockTransferUpdate(req.id, 'Rejected')} className="text-red-500">
+                                <XCircle className="mr-2 h-4 w-4" /> Reject
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+                      </TableRow>
+                      <CollapsibleContent asChild>
+                          <TableRow>
+                            <TableCell colSpan={6} className="p-0">
+                               <div className="p-4 bg-muted/50">
+                                  <h4 className="font-semibold text-sm mb-2">Requested Items:</h4>
+                                  <Table>
+                                    <TableHeader><TableRow><TableHead>Product</TableHead><TableHead className="text-right">Quantity</TableHead></TableRow></TableHeader>
+                                    <TableBody>
+                                      {req.items.map(item => (
+                                        <TableRow key={item.productId}>
+                                          <TableCell>{item.productName}</TableCell>
+                                          <TableCell className="text-right font-mono">{item.quantity}</TableCell>
+                                        </TableRow>
+                                      ))}
+                                    </TableBody>
+                                  </Table>
+                               </div>
+                            </TableCell>
+                          </TableRow>
+                      </CollapsibleContent>
+                    </TableBody>
+                  </Collapsible>
+                ))}
               </Table>
             </CardContent>
           </Card>
@@ -648,4 +682,3 @@ export default function ApprovalsPage() {
     </>
   );
 }
-
