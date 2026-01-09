@@ -67,7 +67,7 @@ export default function CustomerDashboardPage() {
   const { data: offers, loading: offersLoading } = useCollection<Offer>(offersQuery);
   const { data: posts, loading: postsLoading } = useCollection<PostRequest>(postsQuery);
   
-  const paymentsQuery = user ? query(collection(firestore, 'paymentSubmissions'), where('userId', '==', user.uid)) : null;
+  const paymentsQuery = user ? query(collection(firestore, 'paymentSubmissions'), where('userId', '==', user.uid), where('status', '==', 'Approved')) : null;
   const { data: paymentSubmissions, loading: paymentsLoading } = useCollection<PaymentSubmission>(paymentsQuery);
   
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = React.useState(false);
@@ -121,11 +121,11 @@ export default function CustomerDashboardPage() {
   const paymentKpis = React.useMemo(() => {
     const totalOrderValue = orderKpis.totalValue;
 
-    const paidAmount = (orders || [])
+    const paidFromOrders = (orders || [])
         .filter(o => o.status !== 'Canceled')
         .reduce((sum, o) => sum + (o.paymentReceived || 0), 0);
         
-    const outstandingBalance = totalOrderValue - paidAmount;
+    const outstandingBalance = totalOrderValue - paidFromOrders;
     
     const lastPayment = (orders || [])
         .filter(o => o.paymentReceived && o.paymentReceived > 0)
@@ -135,7 +135,7 @@ export default function CustomerDashboardPage() {
     
     return {
       outstandingBalance,
-      paidAmount,
+      paidAmount: paidFromOrders,
       creditNotes: 0, // Placeholder
       lastPaymentDate: lastPayment ? new Date(lastPayment.date) : null,
       lastInvoiceAmount,
@@ -307,7 +307,7 @@ export default function CustomerDashboardPage() {
           <CardContent className="space-y-4">
             <div className="flex items-center justify-between p-3 bg-red-50 dark:bg-red-900/30 rounded-lg">
                 <div>
-                    <p className="text-sm text-red-800 dark:text-red-300">Outstanding Balance</p>
+                    <p className="text-sm text-red-800 dark:text-red-300">Outstanding Balance including all orders</p>
                     <p className="text-2xl font-bold text-red-600 dark:text-red-400">{formatCurrency(paymentKpis.outstandingBalance)}</p>
                 </div>
                 {paymentKpis.outstandingBalance > 0 && (
@@ -454,6 +454,7 @@ export default function CustomerDashboardPage() {
     </>
   );
 }
+
 
 
 
