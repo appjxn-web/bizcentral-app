@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -125,7 +124,6 @@ export default function CustomerDashboardPage() {
   const paymentKpis = React.useMemo(() => {
     const totalOrderValue = orderKpis.totalValue;
 
-    // Calculate total credit from journal vouchers for the user's ledger
     const totalCredit = (journalVouchers || [])
       .flatMap(jv => jv.entries)
       .filter(e => e.accountId === userLedgerId && e.credit && e.credit > 0)
@@ -295,7 +293,7 @@ export default function CustomerDashboardPage() {
                     <span className="font-bold">{formatCurrency(paymentKpis.paidAmount)}</span>
                 </div>
                 <div className="flex justify-between items-center text-sm p-2 rounded-md bg-muted/50">
-                    <span className="text-muted-foreground flex items-center"><CircleDollarSign className="mr-2 h-4 w-4 text-red-500"/>Outstanding Balance including all orders</span>
+                    <span className="text-muted-foreground flex items-center"><CircleDollarSign className="mr-2 h-4 w-4 text-red-500"/>Outstanding Balance</span>
                     <span className="font-bold">{formatCurrency(paymentKpis.outstandingBalance)}</span>
                 </div>
              </div>
@@ -465,11 +463,4 @@ export default function CustomerDashboardPage() {
     </>
   );
 }
-
-
-
-
-
-
-
 
