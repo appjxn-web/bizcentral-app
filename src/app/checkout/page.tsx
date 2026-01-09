@@ -31,7 +31,6 @@ import type { Product, Offer, UserRole, Party, CompanyInfo, Address, Order, Orde
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useCollection, useUser, useDoc } from '@/firebase';
 import { collection, query, where, getDoc, getDocs, doc, addDoc, serverTimestamp, writeBatch, setDoc, orderBy, limit, getCountFromServer } from 'firebase/firestore';
-import { getFunctions, httpsCallable } from 'firebase/functions';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { errorEmitter } from '@/firebase/error-emitter';
@@ -244,8 +243,6 @@ export default function CheckoutPage() {
     }
     
     setIsPlacingOrder(true);
-
-    const selectedPickup = pickupPoints?.find(p => p.id === selectedPickupPointId);
     
     const orderItems: OrderItem[] = cartItems.map(item => ({
         productId: item.id,
@@ -260,7 +257,7 @@ export default function CheckoutPage() {
         customerName: userProfile.name || user.displayName || 'Guest',
         customerEmail: user.email || 'N/A',
         date: new Date().toISOString(),
-        status: 'Ordered',
+        status: 'Awaiting Payment Confirmation', // New status
         items: orderItems,
         subtotal,
         discount,
@@ -272,35 +269,24 @@ export default function CheckoutPage() {
         balance: grandTotal - advanceAmount,
         commission: 0,
         pickupPointId: selectedPickupPointId,
-        assignedToUid: selectedPickup?.ownerUid || null,
+        assignedToUid: pickupPoints?.find(p => p.id === selectedPickupPointId)?.ownerUid || null,
         paymentDetails: `UPI Transaction ID: ${upiTransactionId}`,
         createdAt: new Date().toISOString(),
     };
     
     try {
-        const functions = getFunctions();
-        const verifyAndCreateOrder = httpsCallable(functions, 'verifyUpiPaymentAndCreateOrder');
-        
-        const result = await verifyAndCreateOrder({
-            order: newOrderPayload,
-            upiTransactionId: upiTransactionId,
-        });
+        const orderRef = doc(collection(firestore, 'orders'));
+        await setDoc(orderRef, newOrderPayload);
 
-        const data = result.data as { success: boolean; message: string; orderId?: string };
-
-        if (data.success) {
-            toast({ title: 'Order Placed!', description: `Your order #${data.orderId} has been successfully booked.` });
-            localStorage.removeItem('cart');
-            localStorage.removeItem('appliedCoupons');
-            window.dispatchEvent(new CustomEvent('cartUpdated'));
-            router.push('/checkout/success');
-        } else {
-            throw new Error(data.message || 'Verification failed.');
-        }
+        toast({ title: 'Order Placed!', description: `Your order is awaiting payment confirmation.` });
+        localStorage.removeItem('cart');
+        localStorage.removeItem('appliedCoupons');
+        window.dispatchEvent(new CustomEvent('cartUpdated'));
+        router.push('/checkout/success');
 
     } catch (serverError: any) {
         console.error(serverError);
-        toast({ variant: 'destructive', title: 'Order Failed', description: serverError.message || 'Could not place your order. Please check the transaction ID and try again.' });
+        toast({ variant: 'destructive', title: 'Order Failed', description: serverError.message || 'Could not place your order.' });
     } finally {
         setIsPlacingOrder(false);
     }
@@ -480,7 +466,7 @@ export default function CheckoutPage() {
                     </div>
                         <Button size="lg" className="w-full" onClick={handlePlaceOrder} disabled={isPlacingOrder}>
                             {isPlacingOrder ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                            Verify & Place Order
+                            Confirm Payment & Book Order
                         </Button>
                 </CardFooter>
             ) : (
