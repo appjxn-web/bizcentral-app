@@ -67,12 +67,15 @@ export default function CustomerDashboardPage() {
   const { data: offers, loading: offersLoading } = useCollection<Offer>(offersQuery);
   const { data: posts, loading: postsLoading } = useCollection<PostRequest>(postsQuery);
   
-  const paymentsQuery = user ? query(collection(firestore, 'paymentSubmissions'), where('userId', '==', user.uid), where('status', '==', 'Approved')) : null;
-  const { data: paymentSubmissions, loading: paymentsLoading } = useCollection<PaymentSubmission>(paymentsQuery);
+  const userLedgerId = userProfile?.coaLedgerId;
+  const jvQuery = userLedgerId ? query(collection(firestore, 'journalVouchers'), where('entries', 'array-contains-any', [{accountId: userLedgerId}])) : null;
+  const { data: journalVouchers, loading: jvLoading } = useCollection<JournalVoucher>(jvQuery);
   
+  const { data: salesInvoices, loading: invoicesLoading } = useCollection<SalesInvoice>(user ? query(collection(firestore, 'salesInvoices'), where('customerId', '==', user.uid)) : null);
+
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = React.useState(false);
 
-  const loading = ordersLoading || productsLoading || serviceRequestsLoading || referralsLoading || offersLoading || postsLoading || paymentsLoading;
+  const loading = ordersLoading || productsLoading || serviceRequestsLoading || referralsLoading || offersLoading || postsLoading || jvLoading || invoicesLoading;
 
 
   const kpis = React.useMemo(() => {
@@ -121,26 +124,28 @@ export default function CustomerDashboardPage() {
   const paymentKpis = React.useMemo(() => {
     const totalOrderValue = orderKpis.totalValue;
 
-    const paidFromOrders = (orders || [])
-        .filter(o => o.status !== 'Canceled')
-        .reduce((sum, o) => sum + (o.paymentReceived || 0), 0);
-        
-    const outstandingBalance = totalOrderValue - paidFromOrders;
+    const totalCredit = (journalVouchers || [])
+      .flatMap(jv => jv.entries)
+      .filter(e => e.accountId === userLedgerId && e.credit && e.credit > 0)
+      .reduce((sum, entry) => sum + (entry.credit || 0), 0);
+
+    const paidAmount = totalCredit;
+    const outstandingBalance = totalOrderValue - paidAmount;
     
     const lastPayment = (orders || [])
         .filter(o => o.paymentReceived && o.paymentReceived > 0)
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
     
-    const lastInvoiceAmount = orders?.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0]?.grandTotal || 0;
+    const lastInvoiceAmount = salesInvoices?.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0]?.grandTotal || 0;
     
     return {
       outstandingBalance,
-      paidAmount: paidFromOrders,
+      paidAmount,
       creditNotes: 0, // Placeholder
       lastPaymentDate: lastPayment ? new Date(lastPayment.date) : null,
       lastInvoiceAmount,
     };
-  }, [orderKpis.totalValue, orders]);
+  }, [orderKpis.totalValue, orders, journalVouchers, userLedgerId, salesInvoices]);
   
   const alerts: any[] = [];
   if (paymentKpis.outstandingBalance > 0) {
@@ -348,6 +353,10 @@ export default function CustomerDashboardPage() {
             </CardHeader>
             <CardContent className="space-y-3">
                 <div className="flex justify-between items-center text-sm p-2 rounded-md bg-muted/50">
+                    <span className="text-muted-foreground">Total Products Owned</span>
+                    <span className="font-bold">{kpis.productsOwned}</span>
+                </div>
+                <div className="flex justify-between items-center text-sm p-2 rounded-md bg-muted/50">
                     <span className="text-muted-foreground">Products with Active Warranty</span>
                     <span className="font-bold">{productKpis.activeWarranty}</span>
                 </div>
@@ -454,6 +463,7 @@ export default function CustomerDashboardPage() {
     </>
   );
 }
+
 
 
 
