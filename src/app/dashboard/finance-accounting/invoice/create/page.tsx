@@ -279,6 +279,9 @@ export default function CreateInvoicePage() {
   }, [items, isInterstate, overallDiscount]);
   
   const maxAllowedDiscount = React.useMemo(() => {
+    if (appliedCoupons && appliedCoupons.length > 0) {
+        return 100; // Allow any discount if a coupon was applied
+    }
     if (!items.length) return getMaxDiscount(currentRole, '');
     
     const maxDiscounts = items.map(item => {
@@ -287,7 +290,7 @@ export default function CreateInvoicePage() {
     });
 
     return Math.min(...maxDiscounts);
-  }, [items, currentRole, saleableProducts]);
+  }, [items, currentRole, saleableProducts, appliedCoupons]);
 
   const isSaveDisabled = React.useMemo(() => {
     return overallDiscount > maxAllowedDiscount;
@@ -707,7 +710,7 @@ export default function CreateInvoicePage() {
                   <Label htmlFor="overall-discount" className="text-sm">Discount (%)</Label>
                   <div className="w-24">
                       <Input id="overall-discount" type="number" value={overallDiscount} onChange={(e) => setOverallDiscount(Number(e.target.value))} className="text-right" placeholder="%" />
-                      <p className="text-xs text-muted-foreground mt-1">Max: {maxAllowedDiscount}%</p>
+                      {appliedCoupons.length === 0 && <p className="text-xs text-muted-foreground mt-1">Max: {maxAllowedDiscount}%</p>}
                   </div>
               </div>
                <div className="flex justify-between text-green-600">
@@ -761,4 +764,5 @@ export default function CreateInvoicePage() {
 }
 
   
+
 
