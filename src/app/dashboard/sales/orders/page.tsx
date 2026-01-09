@@ -5,6 +5,7 @@
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
+import Link from 'next/link';
 import {
   MoreHorizontal,
   PlusCircle,
@@ -24,25 +25,27 @@ import {
   Receipt,
   Eye,
   Edit,
-  CircleDollarSign,
-  Send,
-  Printer,
 } from 'lucide-react';
-import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
 
 import { PageHeader } from '@/components/page-header';
 import { cn } from '@/lib/utils';
-import type { Order, OrderStatus, UserProfile, UserRole, WorkOrder, PickupPoint, SalesOrder, RefundRequest, SalesInvoice, SalesInvoiceItem, Party, CompanyInfo } from '@/lib/types';
-import { Button, buttonVariants } from '@/components/ui/button';
+import type { Order, OrderStatus, UserProfile, UserRole, WorkOrder, PickupPoint, SalesOrder, RefundRequest, SalesInvoice } from '@/lib/types';
+import { Button } from '@/components/ui/button';
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-  CardFooter,
 } from '@/components/ui/card';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -391,7 +394,7 @@ function OrderRow({ order, onGenerateInvoice, onUpdateStatus, pickupPoints, dyna
                           <div className="space-y-4">
                               <h4 className="font-semibold">Pickup Details</h4>
                               <div className="p-3 rounded-md border bg-background">
-                                  {order.assignedToUid ? (
+                                  {order.assignedToUid && order.pickupPointId !== 'company-main' ? (
                                       <PartnerPickupDetails userId={order.assignedToUid} />
                                   ) : (
                                       <CompanyPickupDetails />
