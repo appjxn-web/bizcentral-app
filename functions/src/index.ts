@@ -357,7 +357,7 @@ export const onDebitNoteCreated = onDocumentCreated("debitNotes/{noteId}", async
     await jvRef.set(jvData);
 });
 
-export const onStockTransfer = onDocumentUpdated("stockTransferRequests/{requestId}", async (event) => {
+export const onStockTransfer = onDocumentUpdated("stockTransferRequests/{requestId}", (event: FirestoreEvent<Change<DocumentSnapshot> | undefined, {requestId: string}>) => {
     // Placeholder for future implementation
 });
 
@@ -558,6 +558,7 @@ export const onGoalUpdate = onDocumentCreated("goalUpdates/{updateId}", async ()
     
 
       
+
 
 
 

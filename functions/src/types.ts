@@ -199,4 +199,22 @@ export interface Party {
     // other party fields
 }
 
+export interface StockTransferRequest {
+  id: string;
+  requestingUserId: string;
+  requestingUserName: string;
+  partnerId: string;
+  partnerName: string;
+  items: {
+      productId: string;
+      productName: string;
+      quantity: number;
+  }[];
+  status: 'Pending Approval' | 'Approved' | 'Rejected' | 'Shipped';
+  createdAt: any; // Using `any` for Timestamp compatibility
+  approvedAt?: any;
+  shippedAt?: any;
+  notes?: string;
+}
+
     
