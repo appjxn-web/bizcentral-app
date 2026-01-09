@@ -397,7 +397,7 @@ export const handleOrderUpdates = onDocumentUpdated("orders/{orderId}", async (e
                 const partnerSnap = await transaction.get(partnerRef);
                 const partnerData = partnerSnap.data() as UserProfile | undefined;
                 
-                if (partnerData?.partnerMatrix) {
+                if (partnerData && partnerData.partnerMatrix) {
                     let commissionTotal = after.commission || 0;
                     if (!commissionTotal) { // Recalculate if not already on the order
                         commissionTotal = after.items.reduce((acc, item) => {
@@ -554,5 +554,6 @@ export const onGoalUpdate = onDocumentCreated("goalUpdates/{updateId}", async ()
     
 
       
+
 
 
