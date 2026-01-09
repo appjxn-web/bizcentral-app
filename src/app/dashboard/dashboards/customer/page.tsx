@@ -60,23 +60,19 @@ export default function CustomerDashboardPage() {
   const offersQuery = query(collection(firestore, 'offers'), where('status', '==', 'Active'), where('targetRoles', 'array-contains', 'Customer'));
   const postsQuery = user ? query(collection(firestore, 'posts'), where('authorId', '==', user.uid)) : null;
 
-  const { data: orders } = useCollection<Order>(ordersQuery);
-  const { data: products } = useCollection<RegisteredProduct>(productsQuery);
-  const { data: serviceRequests } = useCollection<ServiceRequest>(serviceRequestsQuery);
-  const { data: referrals } = useCollection<Referral>(referralsQuery);
-  const { data: offers } = useCollection<Offer>(offersQuery);
-  const { data: posts } = useCollection<PostRequest>(postsQuery);
+  const { data: orders, loading: ordersLoading } = useCollection<Order>(ordersQuery);
+  const { data: products, loading: productsLoading } = useCollection<RegisteredProduct>(productsQuery);
+  const { data: serviceRequests, loading: serviceRequestsLoading } = useCollection<ServiceRequest>(serviceRequestsQuery);
+  const { data: referrals, loading: referralsLoading } = useCollection<Referral>(referralsQuery);
+  const { data: offers, loading: offersLoading } = useCollection<Offer>(offersQuery);
+  const { data: posts, loading: postsLoading } = useCollection<PostRequest>(postsQuery);
   
-  const { data: allJournalVouchers } = useCollection<JournalVoucher>(collection(firestore, 'journalVouchers'));
-  
-  const salesInvoicesQuery = user ? query(
-      collection(firestore, 'salesInvoices'),
-      where('customerId', '==', user.uid)
-  ) : null;
-  const { data: salesInvoices } = useCollection<SalesInvoice>(salesInvoicesQuery);
-
+  const paymentsQuery = user ? query(collection(firestore, 'paymentSubmissions'), where('userId', '==', user.uid)) : null;
+  const { data: paymentSubmissions, loading: paymentsLoading } = useCollection<PaymentSubmission>(paymentsQuery);
   
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = React.useState(false);
+
+  const loading = ordersLoading || productsLoading || serviceRequestsLoading || referralsLoading || offersLoading || postsLoading || paymentsLoading;
 
 
   const kpis = React.useMemo(() => {
@@ -125,25 +121,14 @@ export default function CustomerDashboardPage() {
   const paymentKpis = React.useMemo(() => {
     const totalOrderValue = orderKpis.totalValue;
 
-    if (!userProfile?.coaLedgerId || (!allJournalVouchers && !salesInvoices)) {
-        return { paidAmount: 0, outstandingBalance: totalOrderValue, lastPaymentDate: null, lastInvoiceAmount: 0 };
-    }
+    const paidAmount = (orders || [])
+        .filter(o => o.status !== 'Canceled')
+        .reduce((sum, o) => sum + (o.paymentReceived || 0), 0);
+        
+    const outstandingBalance = totalOrderValue - paidAmount;
     
-    const userLedgerId = userProfile.coaLedgerId;
-
-    const jvCredits = (allJournalVouchers || [])
-      .flatMap(jv => jv.entries)
-      .filter(e => e.accountId === userLedgerId && (e.credit || 0) > 0)
-      .reduce((sum, e) => sum + (e.credit || 0), 0);
-      
-    const invoiceDebits = (salesInvoices || [])
-      .reduce((sum, inv) => sum + inv.grandTotal, 0);
-
-    const paidAmount = jvCredits;
-    const outstandingBalance = invoiceDebits - paidAmount;
-    
-    const lastPayment = (allJournalVouchers || [])
-        .filter(jv => jv.entries.some(e => e.accountId === userLedgerId && (e.credit || 0) > 0))
+    const lastPayment = (orders || [])
+        .filter(o => o.paymentReceived && o.paymentReceived > 0)
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
     
     const lastInvoiceAmount = orders?.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0]?.grandTotal || 0;
@@ -155,7 +140,7 @@ export default function CustomerDashboardPage() {
       lastPaymentDate: lastPayment ? new Date(lastPayment.date) : null,
       lastInvoiceAmount,
     };
-  }, [orderKpis.totalValue, userProfile, allJournalVouchers, salesInvoices, orders]);
+  }, [orderKpis.totalValue, orders]);
   
   const alerts: any[] = [];
   if (paymentKpis.outstandingBalance > 0) {
@@ -467,5 +452,6 @@ export default function CustomerDashboardPage() {
     </>
   );
 }
+
 
 
