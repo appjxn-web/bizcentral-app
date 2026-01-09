@@ -42,7 +42,14 @@ export default function SparesRequestPage() {
   const isPartner = currentRole === 'Partner';
 
   const engineers = React.useMemo(() => usersData?.filter(u => u.role === 'Employee' || u.role === 'Service Manager') || [], [usersData]);
-  const spares = React.useMemo(() => productsData?.filter(p => p.type === 'Components' || p.type === 'Consumables' || p.source === 'Bought') || [], [productsData]);
+  
+  const availableProducts = React.useMemo(() => {
+    if (!productsData) return [];
+    if (isPartner) {
+        return productsData.filter(p => p.saleable);
+    }
+    return productsData.filter(p => p.type === 'Components' || p.type === 'Consumables' || p.source === 'Bought');
+  }, [productsData, isPartner]);
 
   const handleAddItem = () => {
     setItems(prev => [...prev, { id: `item-${Date.now()}`, productId: '', productName: '', quantity: 1 }]);
@@ -58,7 +65,7 @@ export default function SparesRequestPage() {
         if (item.id === id) {
           const updatedItem = { ...item, [field]: value };
           if (field === 'productId') {
-            const product = spares.find(p => p.id === value);
+            const product = availableProducts.find(p => p.id === value);
             if (product) {
               updatedItem.productName = product.name;
             }
@@ -84,7 +91,7 @@ export default function SparesRequestPage() {
             requestingUserId: user?.uid,
             requestingUserName: user?.displayName,
             partnerId: targetId,
-            partnerName: targetUser?.name || 'Unknown',
+            partnerName: (targetUser as any).name || 'Unknown',
             items: items.map(({ id, ...rest }) => ({...rest, quantity: Number(rest.quantity)})),
             status: 'Pending Approval',
             createdAt: serverTimestamp(),
@@ -169,7 +176,7 @@ export default function SparesRequestPage() {
                                     <Select value={item.productId} onValueChange={(value) => handleItemChange(item.id, 'productId', value)}>
                                         <SelectTrigger><SelectValue placeholder="Select a spare part" /></SelectTrigger>
                                         <SelectContent>
-                                            {spares.map(p => <SelectItem key={p.id} value={p.id}>{p.name} (Stock: {p.openingStock})</SelectItem>)}
+                                            {availableProducts.map(p => <SelectItem key={p.id} value={p.id}>{p.name} (Stock: {p.openingStock})</SelectItem>)}
                                         </SelectContent>
                                     </Select>
                                 </TableCell>
