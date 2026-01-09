@@ -1,5 +1,4 @@
 
-
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -65,15 +64,9 @@ service cloud.firestore {
 
     // --- GLOBAL ORDERS (Main Sales) ---
     match /orders/{orderId} {
-      // List/Query rule: Allows the query if user is Admin OR if the 
-      // results are automatically filtered to documents they own.
-      allow list: if signedIn() && (
-        isAdmin() || 
-        resource.data.userId == request.auth.uid || 
-        resource.data.assignedToUid == request.auth.uid
-      );
-      
-      allow get: if signedIn() && (
+      // List and Get rules: Unified to check if the user is the Admin, 
+      // the Customer (userId), or the Assigned Partner (assignedToUid)
+      allow read, list: if signedIn() && (
         isAdmin() || 
         resource.data.userId == request.auth.uid || 
         resource.data.assignedToUid == request.auth.uid
@@ -81,9 +74,10 @@ service cloud.firestore {
 
       allow create: if signedIn() && (request.resource.data.userId == request.auth.uid || isAdmin());
       
-      allow update: if (
-          (signedIn() && resource.data.userId == request.auth.uid && request.resource.data.status == 'Cancellation Requested') 
-          || isAdmin()
+      allow update: if isAdmin() || (
+          signedIn() && 
+          resource.data.userId == request.auth.uid && 
+          request.resource.data.status == 'Cancellation Requested'
         );
         
       allow delete: if isAdmin();
@@ -91,7 +85,7 @@ service cloud.firestore {
     
     // --- PAYMENT SUBMISSIONS ---
     match /paymentSubmissions/{submissionId} {
-      // Allow customers to see their own submissions
+      // FIXED: Allow users to see their own submissions (both single read and list query)
       allow read, list: if signedIn() && (isAdmin() || resource.data.userId == request.auth.uid);
       allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
       allow update: if isAdmin();
@@ -128,21 +122,16 @@ service cloud.firestore {
 
     // --- FINANCE & ACCOUNTING ---
     match /salesInvoices/{invoiceId} {
-        // List/Query rule: The query MUST filter by customerId OR assignedToUid
+        // FIXED: Removed the brittle request.query.where[0] logic.
+        // It now correctly checks the data fields directly.
         allow read, list: if signedIn() && (
           isAdmin() ||
-          (request.query.keys().hasAll(['where', 'orderBy']) &&
-           ((request.query.where[0] == 'customerId' && request.query.where[2] == request.auth.uid) ||
-            (request.query.where[0] == 'assignedToUid' && request.query.where[2] == request.auth.uid))) ||
-           (resource.data.customerId == request.auth.uid)
+          resource.data.customerId == request.auth.uid ||
+          resource.data.assignedToUid == request.auth.uid
         );
         
-        // Allow partners to CREATE invoices if they are the ones assigned
         allow create: if isAdmin() || (isPartner() && request.resource.data.assignedToUid == request.auth.uid);
-        
-        // Allow partners to UPDATE invoices they are assigned to
         allow update: if isAdmin() || (isPartner() && resource.data.assignedToUid == request.auth.uid);
-
         allow delete: if isAdmin();
     }
     
@@ -228,5 +217,3 @@ service cloud.firestore {
     }
   }
 }
-
-    
