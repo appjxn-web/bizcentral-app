@@ -348,7 +348,7 @@ export default function ShopPageClient() {
                     <CardHeader className="p-0">
                       <div className="relative w-full h-64">
                         <Image
-                          src={product.imageUrl}
+                          src={product.imageUrl || 'https://picsum.photos/seed/1/600/400'}
                           alt={product.name}
                           fill
                           className="object-cover rounded-t-lg"
@@ -494,7 +494,7 @@ export default function ShopPageClient() {
                               <CardHeader className="p-0">
                                 <div className="relative w-full h-48">
                                   <Image
-                                    src={product.imageUrl}
+                                    src={product.imageUrl || 'https://picsum.photos/seed/2/400/300'}
                                     alt={product.name}
                                     fill
                                     className="object-cover rounded-t-lg"
