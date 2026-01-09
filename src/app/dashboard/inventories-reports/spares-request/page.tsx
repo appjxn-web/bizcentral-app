@@ -99,7 +99,7 @@ export default function SparesRequestPage() {
     const targetId = isPartner ? user?.uid : selectedEngineerId;
     const targetUser = isPartner ? user : engineers.find(e => e.id === targetId);
 
-    if (!targetId || !targetUser || items.length === 0 || items.some(i => !i.productId || i.quantity <= 0)) {
+    if (!targetId || !targetUser || items.length === 0 || items.some(i => !i.productId || Number(i.quantity) <= 0)) {
         toast({ variant: 'destructive', title: 'Missing Information', description: 'Please select a recipient and add at least one valid item.' });
         return;
     }
@@ -238,7 +238,7 @@ export default function SparesRequestPage() {
               ) : userRequests && userRequests.length > 0 ? (
                 userRequests.map(req => (
                   <TableRow key={req.id}>
-                    <TableCell>{format(req.createdAt.toDate(), 'dd/MM/yyyy')}</TableCell>
+                    <TableCell>{req.createdAt ? format(req.createdAt.toDate(), 'dd/MM/yyyy') : 'Pending'}</TableCell>
                     <TableCell>{req.partnerName}</TableCell>
                     <TableCell>{req.items.length}</TableCell>
                     <TableCell>
