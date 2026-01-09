@@ -502,41 +502,19 @@ export default function BankAndCashPage() {
                             </div>
                             <div className="space-y-2">
                                 <Label htmlFor="link-user">Link to User</Label>
-                                <Popover open={isUserComboboxOpen} onOpenChange={setIsUserComboboxOpen}>
-                                <PopoverTrigger asChild>
-                                    <Button
-                                        variant="outline"
-                                        role="combobox"
-                                        className="w-full justify-between"
-                                    >
-                                    {linkedUserId ? linkableUsers.find(u => u.id === linkedUserId)?.name : "Select employee or partner..."}
-                                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                                    </Button>
-                                </PopoverTrigger>
-                                <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
-                                    <Command>
-                                        <CommandInput placeholder="Search user..." />
-                                        <CommandList>
-                                            <CommandEmpty>No user found.</CommandEmpty>
-                                            <CommandGroup>
-                                            {linkableUsers.map((user) => (
-                                                <CommandItem
-                                                    key={user.id}
-                                                    value={user.name}
-                                                    onSelect={() => {
-                                                        setLinkedUserId(user.id);
-                                                        setIsUserComboboxOpen(false);
-                                                    }}
-                                                >
-                                                    <Check className={cn("mr-2 h-4 w-4", linkedUserId === user.id ? "opacity-100" : "opacity-0")} />
-                                                    {user.name} ({user.role})
-                                                </CommandItem>
-                                            ))}
-                                            </CommandGroup>
-                                        </CommandList>
-                                    </Command>
-                                </PopoverContent>
-                                </Popover>
+                                <Select value={linkedUserId} onValueChange={setLinkedUserId}>
+                                    <SelectTrigger id="link-user">
+                                        <SelectValue placeholder="Select employee or partner..." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="">None</SelectItem>
+                                        {linkableUsers.map((user) => (
+                                            <SelectItem key={user.id} value={user.id}>
+                                                {user.name} ({user.role})
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
                             </div>
                             <div className="space-y-2">
                                 <Label htmlFor="cash-opening-balance">Opening Balance</Label>
@@ -677,3 +655,4 @@ export default function BankAndCashPage() {
     </>
   );
 }
+
