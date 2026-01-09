@@ -563,9 +563,48 @@ function InvoicePage() {
     const router = useRouter();
     const firestore = useFirestore();
     const { toast } = useToast();
-    const { data: orders, loading: ordersLoading } = useCollection<Order>(query(collection(firestore, 'orders'), orderBy('date', 'desc')));
+    const { user } = useUser();
+    const { currentRole } = useRole();
+    
+    const ordersQuery = React.useMemo(() => {
+        if (!user || !currentRole) return null;
+        const ordersRef = collection(firestore, 'orders');
+
+        if (['Admin', 'CEO', 'Sales Manager'].includes(currentRole)) {
+            return query(ordersRef, orderBy('date', 'desc'));
+        }
+
+        if (['Partner', 'Franchisee', 'Sales Agent', 'Dealer'].includes(currentRole)) {
+            return query(
+                ordersRef, 
+                where('assignedToUid', '==', user.uid), 
+                orderBy('date', 'desc')
+            );
+        }
+
+        return query(
+            ordersRef, 
+            where('userId', '==', user.uid), 
+            orderBy('date', 'desc')
+        );
+    }, [user, currentRole, firestore]);
+
+    const invoicesQuery = React.useMemo(() => {
+        if (!user || !currentRole) return null;
+        const invoicesRef = collection(firestore, 'salesInvoices');
+        if (['Admin', 'CEO', 'Accounts Manager'].includes(currentRole)) {
+            return query(invoicesRef, orderBy('date', 'desc'));
+        }
+         if (['Partner', 'Franchisee', 'Sales Agent', 'Dealer'].includes(currentRole)) {
+            return query(invoicesRef, where('assignedToUid', '==', user.uid), orderBy('date', 'desc'));
+        }
+        return query(invoicesRef, where('customerId', '==', user.uid), orderBy('date', 'desc'));
+
+    }, [user, currentRole, firestore]);
+
+    const { data: orders, loading: ordersLoading } = useCollection<Order>(ordersQuery);
     const { data: workOrders, loading: workOrdersLoading } = useCollection<WorkOrder>(collection(firestore, 'workOrders'));
-    const { data: allSalesInvoices, loading: invoicesLoading } = useCollection<SalesInvoice>(query(collection(firestore, 'salesInvoices'), orderBy('date', 'desc')));
+    const { data: allSalesInvoices, loading: invoicesLoading } = useCollection<SalesInvoice>(invoicesQuery);
     const { data: settingsData } = useDoc<any>(doc(firestore, 'company', 'settings'));
     const { data: pickupPoints } = useCollection<PickupPoint>(collection(firestore, 'pickupPoints'));
     const { data: allProducts, loading: productsLoading } = useCollection<Product>(collection(firestore, 'products'));
@@ -693,7 +732,7 @@ function InvoicePage() {
     };
 
     const onViewInvoice = (invoiceId: string) => {
-        router.push(`/dashboard/finance-accounting/invoice/view?id=${invoiceId}`);
+        router.push(`/dashboard/sales/invoice/view?id=${invoiceId}`);
     };
 
     const handleEditOrder = (orderId: string) => {

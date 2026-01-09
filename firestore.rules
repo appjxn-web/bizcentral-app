@@ -66,8 +66,8 @@ service cloud.firestore {
     match /orders/{orderId} {
       allow list: if signedIn() && (
         isAdmin() || 
-        (request.query.keys().hasAll(['where', 'orderBy']) &&
-         ((request.query.where.userId == request.auth.uid) || (request.query.where.assignedToUid == request.auth.uid)))
+        (isPartner() && request.query.where[0] == 'assignedToUid' && request.query.where[2] == request.auth.uid) ||
+        (request.query.where[0] == 'userId' && request.query.where[2] == request.auth.uid)
       );
       
       allow get: if signedIn() && (
@@ -114,11 +114,13 @@ service cloud.firestore {
     match /salesInvoices/{invoiceId} {
         allow get: if signedIn() && (
           isAdmin() ||
-          resource.data.customerId == request.auth.uid
+          resource.data.customerId == request.auth.uid ||
+          (isPartner() && resource.data.assignedToUid == request.auth.uid)
         );
         allow list: if signedIn() && (
           isAdmin() ||
-          request.query.where.customerId == request.auth.uid
+          (request.query.keys().hasAny(['where']) && request.query.where[0] == 'customerId' && request.query.where[2] == request.auth.uid) ||
+          (request.query.keys().hasAny(['where']) && request.query.where[0] == 'assignedToUid' && request.query.where[2] == request.auth.uid)
         );
         allow create, update, delete: if isAdmin();
     }
