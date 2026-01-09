@@ -37,6 +37,7 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
+  CardFooter,
 } from '@/components/ui/card';
 import {
   Table,
@@ -270,7 +271,7 @@ function CompanyPickupDetails() {
     );
 }
 
-function OrderRow({ order, onGenerateInvoice, onUpdateStatus, pickupPoints, dynamicStatus, allProducts, getOrderInHand, allSalesInvoices, onViewInvoice, onEdit, currentRole }: { order: Order, onGenerateInvoice: (order: Order) => void, onUpdateStatus: (orderId: string, status: OrderStatus) => void, pickupPoints: PickupPoint[] | null, dynamicStatus: OrderStatus, allProducts: Product[] | null, getOrderInHand: (productId: string) => number, allSalesInvoices: SalesInvoice[] | null, onViewInvoice: (invoiceId: string) => void, onEdit: (orderId: string) => void, currentRole: UserRole }) {
+function OrderRow({ order, onGenerateInvoice, onUpdateStatus, pickupPoints, dynamicStatus, allProducts, getOrderInHand, allSalesInvoices, onViewInvoice, onEdit, currentRole }: { order: Order, onGenerateInvoice: (order: Order) => void, onUpdateStatus: (orderId: string, status: OrderStatus) => void, pickupPoints: PickupPoint[] | null, dynamicStatus: OrderStatus, allProducts: any[] | null, getOrderInHand: (productId: string) => number, allSalesInvoices: SalesInvoice[] | null, onViewInvoice: (invoiceId: string) => void, onEdit: (orderId: string) => void, currentRole: UserRole }) {
   const [isOpen, setIsOpen] = React.useState(false);
   const router = useRouter();
   const orderStatuses: OrderStatus[] = ['Manufacturing', 'Ready for Dispatch', 'Awaiting Payment', 'Shipped', 'Delivered'];
@@ -440,32 +441,27 @@ function OrdersPageContent() {
             orderBy('date', 'desc')
         );
     }, [user, currentRole, firestore]);
-    
+
     const invoicesQuery = React.useMemo(() => {
         if (!user || !currentRole) return null;
         const invoicesRef = collection(firestore, 'salesInvoices');
     
-        if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
-            return query(invoicesRef, orderBy('date', 'desc'));
+        if (['Admin', 'CEO', 'Accounts Manager', 'Sales Manager'].includes(currentRole)) {
+            return query(invoicesRef);
         }
     
         if (['Partner', 'Franchisee', 'Sales Agent', 'Dealer'].includes(currentRole)) {
-            return query(
-                invoicesRef, 
-                where('assignedToUid', '==', user.uid),
-                orderBy('date', 'desc')
-            );
+            return query(invoicesRef, where('assignedToUid', '==', user.uid));
         }
     
         return query(invoicesRef, where('customerId', '==', user.uid));
     }, [user, currentRole, firestore]);
 
-
     const { data: orders, loading: ordersLoading } = useCollection<Order>(ordersQuery);
     const { data: workOrders, loading: workOrdersLoading } = useCollection<WorkOrder>(collection(firestore, 'workOrders'));
     const { data: allSalesInvoices, loading: invoicesLoading } = useCollection<SalesInvoice>(invoicesQuery);
     const { data: pickupPoints } = useCollection<PickupPoint>(collection(firestore, 'pickupPoints'));
-    const { data: allProducts, loading: productsLoading } = useCollection<Product>(collection(firestore, 'products'));
+    const { data: allProducts, loading: productsLoading } = useCollection<any>(collection(firestore, 'products'));
     
     const getDynamicOrderStatus = (order: Order): OrderStatus => {
         if (order.status !== 'Ordered') {

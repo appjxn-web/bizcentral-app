@@ -422,7 +422,7 @@ function CompanyPickupDetails() {
     );
 }
 
-function OrderRow({ order, onGenerateInvoice, onUpdateStatus, pickupPoints, dynamicStatus, allProducts, getOrderInHand, allSalesInvoices, onViewInvoice, onEdit }: { order: Order, onGenerateInvoice: (order: Order) => void, onUpdateStatus: (orderId: string, status: OrderStatus) => void, pickupPoints: PickupPoint[] | null, dynamicStatus: OrderStatus, allProducts: Product[] | null, getOrderInHand: (productId: string) => number, allSalesInvoices: SalesInvoice[] | null, onViewInvoice: (invoiceId: string) => void, onEdit: (orderId: string) => void }) {
+function OrderRow({ order, onGenerateInvoice, onUpdateStatus, pickupPoints, dynamicStatus, allProducts, getOrderInHand, allSalesInvoices, onViewInvoice, onEdit }: { order: Order, onGenerateInvoice: (order: Order) => void, onUpdateStatus: (orderId: string, status: OrderStatus) => void, pickupPoints: PickupPoint[] | null, dynamicStatus: OrderStatus, allProducts: any[] | null, getOrderInHand: (productId: string) => number, allSalesInvoices: SalesInvoice[] | null, onViewInvoice: (invoiceId: string) => void, onEdit: (orderId: string) => void }) {
   const [isOpen, setIsOpen] = React.useState(false);
   const router = useRouter();
   const orderStatuses: OrderStatus[] = ['Manufacturing', 'Ready for Dispatch', 'Awaiting Payment', 'Shipped', 'Delivered'];
@@ -542,7 +542,7 @@ function OrderRow({ order, onGenerateInvoice, onUpdateStatus, pickupPoints, dyna
                           <div className="space-y-4">
                               <h4 className="font-semibold">Pickup Details</h4>
                               <div className="p-3 rounded-md border bg-background">
-                                  {order.assignedToUid ? (
+                                  {order.assignedToUid && order.pickupPointId !== 'company-main' ? (
                                       <PartnerPickupDetails userId={order.assignedToUid} />
                                   ) : (
                                       <CompanyPickupDetails />
@@ -817,7 +817,7 @@ function InvoicePage() {
                 orders.map((order) => {
                   const dynamicStatus = getDynamicOrderStatus(order);
                   return (
-                    <OrderRow key={order.id} order={order} pickupPoints={pickupPoints} onGenerateInvoice={handleGenerateInvoice} onUpdateStatus={handleUpdateStatus} dynamicStatus={dynamicStatus} allProducts={allProducts} getOrderInHand={getOrderInHand} allSalesInvoices={allSalesInvoices || []} onViewInvoice={onViewInvoice} onEdit={handleEditOrder} />
+                    <OrderRow key={order.id} order={order} pickupPoints={pickupPoints} onGenerateInvoice={handleGenerateInvoice} onUpdateStatus={handleUpdateStatus} dynamicStatus={dynamicStatus} allProducts={allProducts} getOrderInHand={getOrderInHand} allSalesInvoices={allSalesInvoices || []} onViewInvoice={onViewInvoice} onEdit={handleEditOrder} currentRole={currentRole} />
                   )
                 })
               ) : (
