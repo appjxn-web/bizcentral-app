@@ -290,7 +290,7 @@ export default function CustomerDashboardPage() {
                     <span className="font-bold">{formatCurrency(orderKpis.totalValue)}</span>
                 </div>
                 <div className="flex justify-between items-center text-sm p-2 rounded-md bg-muted/50">
-                    <span className="text-muted-foreground flex items-center"><CircleDollarSign className="mr-2 h-4 w-4 text-green-500"/>=total credit</span>
+                    <span className="text-muted-foreground flex items-center"><CircleDollarSign className="mr-2 h-4 w-4 text-green-500"/>Total paid</span>
                     <span className="font-bold">{formatCurrency(paymentKpis.paidAmount)}</span>
                 </div>
                 <div className="flex justify-between items-center text-sm p-2 rounded-md bg-muted/50">
