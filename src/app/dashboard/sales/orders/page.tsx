@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -435,7 +434,7 @@ function OrdersPageContent() {
             orderBy('date', 'desc')
         );
     }, [user, currentRole, firestore]);
-
+    
     const invoicesQuery = React.useMemo(() => {
         if (!user || !currentRole) return null;
         const invoicesRef = collection(firestore, 'salesInvoices');
@@ -450,6 +449,7 @@ function OrdersPageContent() {
     
         return query(invoicesRef, where('customerId', '==', user.uid));
     }, [user, currentRole, firestore]);
+
 
     const { data: orders, loading: ordersLoading } = useCollection<Order>(ordersQuery);
     const { data: workOrders, loading: workOrdersLoading } = useCollection<WorkOrder>(collection(firestore, 'workOrders'));
@@ -645,3 +645,4 @@ export default function OrdersPage() {
     return <OrdersPageContent />;
 }
 
+    

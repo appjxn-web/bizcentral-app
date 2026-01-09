@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -321,7 +320,7 @@ export default function CreateInvoicePage() {
                 let product: Product | undefined;
                 
                 if (field === 'productId') {
-                    const product = allProducts?.find(p => p.id === value);
+                    const product = saleableProducts.find(p => p.id === value);
                     if (product) {
                         updatedItem.name = product.name;
                         updatedItem.hsn = product.hsn || product.id.slice(0,4).toUpperCase();
@@ -400,7 +399,7 @@ export default function CreateInvoicePage() {
   };
 
   const getOrCreatePartyLedger = async (party: Party): Promise<CoaLedger> => {
-    if (!coaLedgers) throw new Error("Chart of Accounts not loaded.");
+    if (!coaLedgers) throw new Error("COA not loaded.");
 
     if (party.coaLedgerId) {
         const existingLedger = coaLedgers.find(l => l.id === party.coaLedgerId);
@@ -759,3 +758,4 @@ export default function CreateInvoicePage() {
   );
 }
 
+    
