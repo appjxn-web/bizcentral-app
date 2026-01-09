@@ -1,17 +1,37 @@
 
+
 'use client';
 
 import * as React from 'react';
 import { PageHeader } from '@/components/page-header';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { PlusCircle, Save, Trash2, Check, ChevronsUpDown, Send } from 'lucide-react';
-import type { User, Product, SparesRequest, StockTransferRequest } from '@/lib/types';
+import type { User, Product, SparesRequest, StockTransferRequest, UserProfile } from '@/lib/types';
 import { useFirestore, useCollection, useUser } from '@/firebase';
 import { collection, addDoc, serverTimestamp, query, where, orderBy } from 'firebase/firestore';
 import { cn } from '@/lib/utils';
@@ -112,7 +132,7 @@ export default function SparesRequestPage() {
   
   const handleSubmitRequest = async () => {
     const targetId = isPartner ? user?.uid : selectedEngineerId;
-    const targetUser = isPartner ? user : engineers.find(e => e.id === targetId);
+    const targetUser = isPartner ? usersData?.find(u => u.id === user?.uid) : engineers.find(e => e.id === targetId);
 
     if (!targetId || !targetUser || items.length === 0 || items.some(i => !i.productId || Number(i.quantity) <= 0)) {
         toast({ variant: 'destructive', title: 'Missing Information', description: 'Please select a recipient and add at least one valid item.' });
@@ -120,11 +140,13 @@ export default function SparesRequestPage() {
     }
     
     try {
+        const partnerName = (targetUser as UserProfile)?.businessName || targetUser.name || 'Unknown';
+        
         const requestData = {
             requestingUserId: user?.uid,
             requestingUserName: user?.displayName,
             partnerId: targetId,
-            partnerName: (targetUser as any).name || 'Unknown',
+            partnerName: partnerName,
             items: items.map(({ id, ...rest }) => ({...rest, quantity: Number(rest.quantity)})),
             status: 'Pending Approval',
             createdAt: serverTimestamp(),
@@ -198,15 +220,15 @@ export default function SparesRequestPage() {
                 <h3 className="text-lg font-medium mb-2">Requested Parts</h3>
                 <Table>
                     <TableHeader><TableRow>
-                        <TableHead className="w-[50%]">Part / Spare</TableHead>
-                        <TableHead className="w-[30%]">Quantity</TableHead>
-                        <TableHead className="w-[20%]"></TableHead>
+                        <TableHead className="w-[60%]">Part / Spare</TableHead>
+                        <TableHead>Quantity</TableHead>
+                        <TableHead className="w-[50px]"><span className="sr-only">Remove</span></TableHead>
                     </TableRow></TableHeader>
                     <TableBody>
                         {items.map((item, index) => (
                             <TableRow key={item.id}>
                                 <TableCell>
-                                    <Select value={item.productId} onValueChange={(value) => handleItemChange(item.id, 'productId', value)}>
+                                     <Select value={item.productId} onValueChange={(value) => handleItemChange(item.id, 'productId', value)}>
                                         <SelectTrigger><SelectValue placeholder="Select a spare part" /></SelectTrigger>
                                         <SelectContent>
                                             {availableProducts.map(p => <SelectItem key={p.id} value={p.id}>{p.name} (Stock: {p.openingStock})</SelectItem>)}
@@ -217,15 +239,13 @@ export default function SparesRequestPage() {
                                     <Input type="number" value={item.quantity} onChange={(e) => handleItemChange(item.id, 'quantity', e.target.value)} />
                                 </TableCell>
                                 <TableCell>
-                                    <Button variant="ghost" size="icon" onClick={() => handleRemoveItem(item.id)}>
-                                        <Trash2 className="h-4 w-4 text-destructive" />
-                                    </Button>
+                                    <Button variant="ghost" size="icon" onClick={() => handleRemoveItem(item.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                                 </TableCell>
                             </TableRow>
                         ))}
                     </TableBody>
                 </Table>
-                <Button variant="outline" size="sm" onClick={handleAddItem} className="mt-4 w-full">
+                 <Button variant="outline" size="sm" onClick={handleAddItem} className="mt-4 w-full">
                     <PlusCircle className="mr-2 h-4 w-4" /> Add Part
                 </Button>
             </div>
@@ -277,3 +297,4 @@ export default function SparesRequestPage() {
     </>
   );
 }
+
