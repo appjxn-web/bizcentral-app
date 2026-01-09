@@ -116,6 +116,9 @@ export const navItems: NavItem[] = [
         { id: 'sales-lead', href: '/dashboard/sales/lead', icon: Target, label: 'Lead' },
         { id: 'sales-quotation', href: '/dashboard/sales/quotation', icon: FileText, label: 'Quotation' },
         { id: 'sales-orders', href: '/dashboard/sales/orders', icon: Package, label: 'Orders' },
+        { id: 'sales-invoice', href: '/dashboard/sales/invoice', icon: FileText, label: 'Invoice' },
+        { id: 'sales-credit-note', href: '/dashboard/sales/credit-note', icon: FileMinus, label: 'Credit Note' },
+        { id: 'sales-debit-note', href: '/dashboard/sales/debit-note', icon: FilePlus, label: 'Debit Note' },
         { id: 'sales-commission-report', href: '/dashboard/sales/commission-report', icon: PieChart, label: 'Commission Report' },
     ]
   },
@@ -142,9 +145,6 @@ export const navItems: NavItem[] = [
         { id: 'finance-party-statement', href: '/dashboard/finance-accounting/party-statement', icon: BookUser, label: 'Party / Ledger Statement' },
         { id: 'finance-payment-approval', href: '/dashboard/finance-accounting/payment-approval', icon: CheckCheck, label: 'Payment Approval' },
         { id: 'finance-bank-cash', href: '/dashboard/finance-accounting/bank-cash', icon: Banknote, label: 'Bank & Cash' },
-        { id: 'finance-invoice', href: '/dashboard/finance-accounting/invoice', icon: FileText, label: 'Invoice' },
-        { id: 'finance-credit-note', href: '/dashboard/finance-accounting/credit-note', icon: FileMinus, label: 'Credit Note' },
-        { id: 'finance-debit-note', href: '/dashboard/finance-accounting/debit-note', icon: FilePlus, label: 'Debit Note' },
         { id: 'finance-gst', href: '/dashboard/finance-accounting/gst', icon: FileText, label: 'GST' },
         { id: 'finance-day-book', href: '/dashboard/finance-accounting/day-book', icon: BookOpen, label: 'Day Book' },
         { id: 'finance-payouts', href: '/dashboard/finance-accounting/payouts', icon: CircleDollarSign, label: 'Payouts' },
@@ -223,7 +223,6 @@ export const navItems: NavItem[] = [
       { id: 'dashboard-customer', href: '/dashboard/dashboards/customer', icon: User, label: 'Customer', role: 'Customer' },
     ]
   },
-  { id: 'sales-partners-management', href: '/dashboard/sales/partners-management', icon: Handshake, label: 'Partners Management' },
   {
     id: 'company-settings',
     label: 'Company & Settings',
