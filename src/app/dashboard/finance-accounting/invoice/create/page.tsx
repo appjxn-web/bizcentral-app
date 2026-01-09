@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -113,6 +114,7 @@ export default function CreateInvoicePage() {
   const searchParams = useSearchParams();
   const { currentRole } = useRole();
   const firestore = useFirestore();
+  const { user: authUser } = useUser();
   
   const [selectedPartyId, setSelectedPartyId] = React.useState<string | null>(null);
   const [invoiceDate, setInvoiceDate] = React.useState(format(new Date(), 'yyyy-MM-dd'));
@@ -757,5 +759,3 @@ export default function CreateInvoicePage() {
     </>
   );
 }
-
-    
