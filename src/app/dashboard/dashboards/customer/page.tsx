@@ -108,10 +108,11 @@ export default function CustomerDashboardPage() {
   }, [orders]);
 
   const paymentKpis = React.useMemo(() => {
-    // Only sum up approved payments from the dedicated submissions collection.
-    const paidAmount = payments?.filter(p => p.status === 'Approved').reduce((sum, p) => sum + p.amount, 0) || 0;
-    
-    // Correctly calculate outstanding balance
+    // Correctly calculate total paid amount
+    const initialPayments = orders?.reduce((sum, o) => sum + (o.paymentReceived || 0), 0) || 0;
+    const subsequentPayments = payments?.filter(p => p.status === 'Approved').reduce((sum, p) => sum + p.amount, 0) || 0;
+    const paidAmount = initialPayments + subsequentPayments;
+
     const outstandingBalance = orderKpis.totalValue - paidAmount;
     
     const lastPaymentDate = payments?.filter(p => p.status === 'Approved').sort((a, b) => new Date(b.submittedAt.toDate()).getTime() - new Date(a.submittedAt.toDate()).getTime())[0]?.submittedAt.toDate();
@@ -119,7 +120,7 @@ export default function CustomerDashboardPage() {
     
     return {
       outstandingBalance,
-      paidAmount, // Use the new, correct paid amount
+      paidAmount,
       creditNotes: 0, // Needs data from finance
       lastPaymentDate,
       lastInvoiceAmount,
