@@ -28,12 +28,16 @@ import {
   CircleDollarSign,
   ArrowRight,
   Bell,
+  Heart,
+  Tag,
+  ThumbsUp,
+  MessageSquare,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { useUser, useFirestore, useCollection, useDoc } from '@/firebase';
-import { collection, query, where, doc, orderBy, Timestamp } from 'firebase/firestore';
-import type { Order, RegisteredProduct, ServiceRequest, Referral, UserProfile, PaymentSubmission, JournalVoucher, SalesInvoice, CoaLedger } from '@/lib/types';
+import { collection, query, where, doc, orderBy, Timestamp, getDocs } from 'firebase/firestore';
+import type { Order, RegisteredProduct, ServiceRequest, Referral, UserProfile, PaymentSubmission, JournalVoucher, SalesInvoice, CoaLedger, Offer, PostRequest } from '@/lib/types';
 import { MakePaymentDialog } from './_components/make-payment-dialog';
 
 
@@ -48,23 +52,28 @@ export default function CustomerDashboardPage() {
 
   const userDocRef = user ? doc(firestore, 'users', user.uid) : null;
   const { data: userProfile } = useDoc<UserProfile>(userDocRef);
-  const userLedgerId = userProfile?.coaLedgerId;
 
   const ordersQuery = user ? query(collection(firestore, 'orders'), where('userId', '==', user.uid), orderBy('date', 'desc')) : null;
-  const productsQuery = user ? query(collection(firestore, 'registeredProducts'), where('customerId', '==', user.uid)) : null;
+  const productsQuery = user ? query(collection(firestore, 'users', user.uid, 'registeredProducts')) : null;
   const serviceRequestsQuery = user ? query(collection(firestore, 'serviceRequests'), where('customer.id', '==', user.uid)) : null;
   const referralsQuery = user ? query(collection(firestore, 'users', user.uid, 'referrals')) : null;
+  const offersQuery = query(collection(firestore, 'offers'), where('status', '==', 'Active'), where('targetRoles', 'array-contains', 'Customer'));
+  const postsQuery = user ? query(collection(firestore, 'posts'), where('authorId', '==', user.uid)) : null;
 
   const { data: orders } = useCollection<Order>(ordersQuery);
   const { data: products } = useCollection<RegisteredProduct>(productsQuery);
   const { data: serviceRequests } = useCollection<ServiceRequest>(serviceRequestsQuery);
   const { data: referrals } = useCollection<Referral>(referralsQuery);
-  
-  const userLedgerRef = userLedgerId ? doc(firestore, 'coa_ledgers', userLedgerId) : null;
-  const { data: userLedger } = useDoc<CoaLedger>(userLedgerRef);
+  const { data: offers } = useCollection<Offer>(offersQuery);
+  const { data: posts } = useCollection<PostRequest>(postsQuery);
   
   const { data: allJournalVouchers } = useCollection<JournalVoucher>(collection(firestore, 'journalVouchers'));
-  const { data: salesInvoices } = useCollection<SalesInvoice>(user ? query(collection(firestore, 'salesInvoices'), where('customerId', '==', user.uid)) : null);
+  
+  const salesInvoicesQuery = user ? query(
+      collection(firestore, 'salesInvoices'),
+      where('customerId', '==', user.uid)
+  ) : null;
+  const { data: salesInvoices } = useCollection<SalesInvoice>(salesInvoicesQuery);
 
   
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = React.useState(false);
@@ -103,7 +112,7 @@ export default function CustomerDashboardPage() {
     const thisMonth = orders.filter(o => new Date(o.date).getMonth() === new Date().getMonth()).length || 0;
     const delivered = orders.filter(o => o.status === 'Delivered').length || 0;
     const inTransit = orders.filter(o => o.status === 'Shipped').length || 0;
-    const pending = orders.filter(o => o.status === 'Ordered').length || 0;
+    const pending = orders.filter(o => ['Ordered', 'Manufacturing', 'Awaiting Payment Confirmation'].includes(o.status)).length || 0;
     const cancelled = orders.filter(o => o.status === 'Canceled').length || 0;
     
     const totalValue = orders
@@ -114,57 +123,39 @@ export default function CustomerDashboardPage() {
   }, [orders]);
 
   const paymentKpis = React.useMemo(() => {
-    if (!userLedger || (!allJournalVouchers && !salesInvoices)) {
-        return { paidAmount: 0, outstandingBalance: orderKpis.totalValue, lastPaymentDate: null, lastInvoiceAmount: 0 };
+    const totalOrderValue = orderKpis.totalValue;
+
+    if (!userProfile?.coaLedgerId || (!allJournalVouchers && !salesInvoices)) {
+        return { paidAmount: 0, outstandingBalance: totalOrderValue, lastPaymentDate: null, lastInvoiceAmount: 0 };
     }
-
-    const jvTransactions = (allJournalVouchers || [])
-        .filter(jv => jv.entries.some(e => e.accountId === userLedger.id))
-        .map(jv => {
-            const entry = jv.entries.find(e => e.accountId === userLedger.id)!;
-            return {
-                id: jv.id,
-                date: jv.date,
-                createdAt: jv.createdAt,
-                description: jv.narration,
-                debit: entry.debit || 0,
-                credit: entry.credit || 0,
-            };
-        });
-
-    const invoiceTransactions = (salesInvoices || []).map(inv => ({
-        id: inv.id,
-        date: inv.date,
-        createdAt: new Timestamp(new Date(inv.date).getTime() / 1000, 0),
-        description: `Sales Invoice #${inv.invoiceNumber}`,
-        debit: inv.grandTotal,
-        credit: 0
-    }));
-
-    const allTransactions = [...jvTransactions, ...invoiceTransactions].sort((a, b) => {
-        const dateA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.date);
-        const dateB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.date);
-        return dateA.getTime() - dateB.getTime();
-    });
-
-    const totalCredit = allTransactions.reduce((sum, tx) => sum + tx.credit, 0);
-    const paidAmount = totalCredit;
-    const outstandingBalance = orderKpis.totalValue - paidAmount;
     
-    const lastPayment = jvTransactions
-        .filter(tx => tx.credit > 0)
-        .sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+    const userLedgerId = userProfile.coaLedgerId;
+
+    const jvCredits = (allJournalVouchers || [])
+      .flatMap(jv => jv.entries)
+      .filter(e => e.accountId === userLedgerId && (e.credit || 0) > 0)
+      .reduce((sum, e) => sum + (e.credit || 0), 0);
+      
+    const invoiceDebits = (salesInvoices || [])
+      .reduce((sum, inv) => sum + inv.grandTotal, 0);
+
+    const paidAmount = jvCredits;
+    const outstandingBalance = invoiceDebits - paidAmount;
+    
+    const lastPayment = (allJournalVouchers || [])
+        .filter(jv => jv.entries.some(e => e.accountId === userLedgerId && (e.credit || 0) > 0))
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
     
     const lastInvoiceAmount = orders?.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0]?.grandTotal || 0;
     
     return {
       outstandingBalance,
       paidAmount,
-      creditNotes: 0,
+      creditNotes: 0, // Placeholder
       lastPaymentDate: lastPayment ? new Date(lastPayment.date) : null,
       lastInvoiceAmount,
     };
-  }, [orderKpis.totalValue, userLedger, allJournalVouchers, salesInvoices, orders]);
+  }, [orderKpis.totalValue, userProfile, allJournalVouchers, salesInvoices, orders]);
   
   const alerts: any[] = [];
   if (paymentKpis.outstandingBalance > 0) {
@@ -173,6 +164,23 @@ export default function CustomerDashboardPage() {
   if (kpis.openServiceTickets > 0) {
     alerts.push({ id: 2, text: `You have ${kpis.openServiceTickets} open service tickets.`, action: '/dashboard/service-warranty/service-management', icon: Wrench });
   }
+  
+  const productKpis = {
+    activeWarranty: products?.filter(p => p.status === 'Active').length || 0,
+    expiringSoon: products?.filter(p => p.status === 'Expiring Soon').length || 0,
+  }
+
+  const referralKpis = {
+      pending: referrals?.filter(r => r.status === 'Pending').length || 0,
+      signedUp: referrals?.filter(r => r.status === 'Signed Up').length || 0,
+      completed: referrals?.filter(r => r.status === 'Completed').length || 0,
+  }
+
+  const postKpis = {
+      totalPosts: posts?.length || 0,
+      totalLikes: posts?.reduce((acc, p) => acc + (p.likes || 0), 0) || 0,
+  }
+
 
   return (
     <>
@@ -301,7 +309,9 @@ export default function CustomerDashboardPage() {
              </div>
           </CardContent>
            <CardFooter>
-                <p className="text-xs text-muted-foreground">Chart for order status distribution will be here.</p>
+                <Button variant="outline" asChild className="w-full">
+                  <Link href="/dashboard/my-orders">View All Orders <ArrowRight className="ml-2 h-4 w-4" /></Link>
+                </Button>
            </CardFooter>
         </Card>
         <Card className="col-span-full lg:col-span-3">
@@ -347,53 +357,107 @@ export default function CustomerDashboardPage() {
         <Card>
             <CardHeader>
                 <CardTitle>Products & Warranty</CardTitle>
-                <CardDescription>Coming Soon: A summary of your registered products and their warranty status.</CardDescription>
+                <CardDescription>A summary of your registered products and their warranty status.</CardDescription>
             </CardHeader>
-            <CardContent className="flex items-center justify-center h-48">
-                <p className="text-muted-foreground">Product and warranty details will be displayed here.</p>
+            <CardContent className="space-y-3">
+                <div className="flex justify-between items-center text-sm p-2 rounded-md bg-muted/50">
+                    <span className="text-muted-foreground">Products with Active Warranty</span>
+                    <span className="font-bold">{productKpis.activeWarranty}</span>
+                </div>
+                <div className="flex justify-between items-center text-sm p-2 rounded-md bg-muted/50">
+                    <span className="text-muted-foreground">Warranties Expiring Soon</span>
+                    <span className="font-bold">{productKpis.expiringSoon}</span>
+                </div>
             </CardContent>
+            <CardFooter>
+                <Button variant="outline" asChild className="w-full">
+                    <Link href="/dashboard/my-products">Manage My Products <ArrowRight className="ml-2 h-4 w-4"/></Link>
+                </Button>
+            </CardFooter>
         </Card>
         <Card>
             <CardHeader>
                 <CardTitle>Deals & Offers</CardTitle>
-                <CardDescription>Coming Soon: Personalized deals and offers for you.</CardDescription>
+                <CardDescription>Personalized deals and offers available for you.</CardDescription>
             </CardHeader>
             <CardContent className="flex items-center justify-center h-48">
-                <p className="text-muted-foreground">Active offers will be displayed here.</p>
+                <div className="text-center">
+                    <p className="text-4xl font-bold">{offers?.length || 0}</p>
+                    <p className="text-muted-foreground">Active offers</p>
+                </div>
             </CardContent>
+             <CardFooter>
+                <Button variant="outline" asChild className="w-full">
+                    <Link href="/dashboard/deals-offers">View All Offers <ArrowRight className="ml-2 h-4 w-4"/></Link>
+                </Button>
+            </CardFooter>
         </Card>
       </div>
        <div className="grid gap-4 md:grid-cols-2">
         <Card>
             <CardHeader>
                 <CardTitle>Referrals Funnel</CardTitle>
-                <CardDescription>Coming Soon: A summary of your referral progress.</CardDescription>
+                <CardDescription>A summary of your referral progress.</CardDescription>
             </CardHeader>
-            <CardContent className="flex items-center justify-center h-48">
-                <p className="text-muted-foreground">Referral funnel chart will be here.</p>
+            <CardContent className="space-y-3">
+                <div className="flex justify-between items-center text-sm p-2 rounded-md bg-muted/50">
+                    <span className="text-muted-foreground">Invites Sent (Pending)</span>
+                    <span className="font-bold">{referralKpis.pending}</span>
+                </div>
+                <div className="flex justify-between items-center text-sm p-2 rounded-md bg-muted/50">
+                    <span className="text-muted-foreground">Successful Sign-ups</span>
+                    <span className="font-bold">{referralKpis.signedUp}</span>
+                </div>
+                <div className="flex justify-between items-center text-sm p-2 rounded-md bg-muted/50">
+                    <span className="text-muted-foreground">Completed (First Purchase)</span>
+                    <span className="font-bold">{referralKpis.completed}</span>
+                </div>
             </CardContent>
+             <CardFooter>
+                <Button variant="outline" asChild className="w-full">
+                    <Link href="/dashboard/referrals">View Referral History <ArrowRight className="ml-2 h-4 w-4"/></Link>
+                </Button>
+            </CardFooter>
         </Card>
-        <Card>
-            <CardHeader>
-                <CardTitle>Support Tickets</CardTitle>
-                <CardDescription>Coming Soon: A summary of your open support tickets and their statuses.</CardDescription>
-            </CardHeader>
-            <CardContent className="flex items-center justify-center h-48">
-                <p className="text-muted-foreground">Ticket summary and resolution times will be here.</p>
-            </CardContent>
-        </Card>
-      </div>
-       <div className="grid gap-4 md:grid-cols-2">
         <Card>
             <CardHeader>
                 <CardTitle>Posts & Engagement</CardTitle>
-                <CardDescription>Coming Soon: A summary of your community post engagement.</CardDescription>
+                <CardDescription>A summary of your community post engagement.</CardDescription>
             </CardHeader>
-            <CardContent className="flex items-center justify-center h-48">
-                <p className="text-muted-foreground">Post engagement metrics will be displayed here.</p>
+            <CardContent className="space-y-3">
+                 <div className="flex justify-between items-center text-sm p-2 rounded-md bg-muted/50">
+                    <span className="text-muted-foreground">Total Posts Submitted</span>
+                    <span className="font-bold">{postKpis.totalPosts}</span>
+                </div>
+                 <div className="flex justify-between items-center text-sm p-2 rounded-md bg-muted/50">
+                    <span className="text-muted-foreground">Total Likes Received</span>
+                    <span className="font-bold">{postKpis.totalLikes}</span>
+                </div>
             </CardContent>
+            <CardFooter>
+                <Button variant="outline" asChild className="w-full">
+                    <Link href="/dashboard/create-post">Create New Post <ArrowRight className="ml-2 h-4 w-4"/></Link>
+                </Button>
+            </CardFooter>
         </Card>
       </div>
+       <Card>
+        <CardHeader>
+            <CardTitle>Support Tickets</CardTitle>
+            <CardDescription>A summary of your open support tickets and their statuses.</CardDescription>
+        </CardHeader>
+        <CardContent className="flex items-center justify-center h-48">
+            <div className="text-center">
+                <p className="text-4xl font-bold">{kpis.openServiceTickets}</p>
+                <p className="text-muted-foreground">Open tickets</p>
+            </div>
+        </CardContent>
+        <CardFooter>
+            <Button variant="outline" asChild className="w-full">
+                <Link href="/dashboard/service-warranty/service-management">View My Tickets <ArrowRight className="ml-2 h-4 w-4"/></Link>
+            </Button>
+        </CardFooter>
+      </Card>
       <MakePaymentDialog
         open={isPaymentDialogOpen}
         onOpenChange={setIsPaymentDialogOpen}
@@ -403,4 +467,5 @@ export default function CustomerDashboardPage() {
     </>
   );
 }
+
 
