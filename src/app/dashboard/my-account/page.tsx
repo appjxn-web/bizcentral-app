@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -112,8 +113,6 @@ function MyAccountPageContent() {
       collection(firestore, 'salesInvoices'),
       where('customerId', '==', targetId)
   ) : null;
-
-
   const { data: salesInvoices, loading: invoicesLoading } = useCollection<SalesInvoice>(salesInvoicesQuery);
   
   const pdfRef = React.useRef<HTMLDivElement>(null);

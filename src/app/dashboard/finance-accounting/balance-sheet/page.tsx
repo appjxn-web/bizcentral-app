@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -24,7 +25,7 @@ import { Landmark, Loader2, PlusCircle, ChevronDown, ChevronRight, Download } fr
 import type { CoaGroup, CoaLedger, JournalVoucher, Product, WorkOrder, Order, SalesInvoice, Party } from '@/lib/types';
 import { AddLedgerAccountDialog } from './_components/add-ledger-account-dialog';
 import { useFirestore, useCollection, useUser } from '@/firebase';
-import { collection, query, orderBy, doc, Timestamp } from 'firebase/firestore';
+import { collection, query, orderBy, doc, Timestamp, where } from 'firebase/firestore';
 import { useRole } from '../../_components/role-provider';
 import { cn } from '@/lib/utils';
 import * as XLSX from 'xlsx';
@@ -57,7 +58,9 @@ function BalanceSheetContent() {
   const { data: products, loading: productsLoading } = useCollection<Product>(collection(firestore, 'products'));
   const { data: workOrders, loading: workOrdersLoading } = useCollection<WorkOrder>(collection(firestore, 'workOrders'));
   const { data: allOrders, loading: ordersLoading } = useCollection<Order>(collection(firestore, 'orders'));
-  const { data: salesInvoices, loading: invoicesLoading } = useCollection<SalesInvoice>(collection(firestore, 'salesInvoices'));
+  const { data: salesInvoices, loading: invoicesLoading } = useCollection<SalesInvoice>(
+    user && ['Admin', 'CEO', 'Accounts Manager'].includes(currentRole) ? collection(firestore, 'salesInvoices') : null
+  );
   const { data: parties, loading: partiesLoading } = useCollection<Party>(collection(firestore, 'parties'));
   
   const jvQuery = React.useMemo(() => {
@@ -95,7 +98,7 @@ function BalanceSheetContent() {
   };
 
 const { assets, liabilities, equity, pnl, loading, kpis } = React.useMemo(() => {
-    if (groupsLoading || ledgersLoading || vouchersLoading || productsLoading || workOrdersLoading || ordersLoading || invoicesLoading || partiesLoading || !coaGroups || !coaLedgers || !journalVouchers || !products || !allOrders || !salesInvoices || !parties) {
+    if (groupsLoading || ledgersLoading || vouchersLoading || productsLoading || ordersLoading || invoicesLoading || partiesLoading || !coaGroups || !coaLedgers || !journalVouchers || !products || !allOrders || !salesInvoices || !parties) {
         return { assets: [], liabilities: [], equity: [], pnl: 0, loading: true, kpis: { assets: 0, liabilities: 0, equity: 0, totalLiabilitiesAndEquity: 0 }};
     }
 
