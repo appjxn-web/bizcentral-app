@@ -74,16 +74,21 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 
-function getStatusBadgeVariant(status: Order['status'] | 'Refund Pending' | 'Refund Complete') {
+function getStatusBadgeVariant(status: Order['status'] | 'Refund Pending' | 'Refund Complete' | SalesInvoice['status']) {
   const variants: Record<string, string> = {
     Delivered: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300',
     'Refund Complete': 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300',
+    Paid: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300',
     Shipped: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300',
+    'Invoice Sent': 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300',
     Ordered: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300',
     'Refund Pending': 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300',
+    'Work Complete': 'bg-yellow-100 text-yellow-800',
     Manufacturing: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300',
     'Ready for Dispatch': 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-300',
     'Awaiting Payment': 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300',
+    Unpaid: 'bg-orange-100 text-orange-800',
+    Overdue: 'bg-red-100 text-red-800',
     Canceled: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300',
     'Cancellation Requested': 'bg-rose-100 text-rose-800 dark:bg-rose-900/50 dark:text-rose-300'
   };
@@ -450,72 +455,53 @@ function MyOrdersPageContent() {
 
         const ordersRef = collection(firestore, 'orders');
 
-        if (['Admin', 'CEO', 'Sales Manager'].includes(currentRole)) {
-            return query(ordersRef, orderBy('date', 'desc'));
-        }
-
-        if (['Partner', 'Franchisee', 'Sales Agent', 'Dealer'].includes(currentRole)) {
-            return query(
+        const nonAdminRoles: UserRole[] = ['Customer', 'Partner', 'Franchisee', 'Sales Agent', 'Dealer', 'Employee'];
+        
+        if (nonAdminRoles.includes(currentRole)) {
+             return query(
                 ordersRef, 
-                where('assignedToUid', '==', user.uid), 
+                where('userId', '==', user.uid), 
                 orderBy('date', 'desc')
             );
         }
         
-        return query(
-            ordersRef, 
-            where('userId', '==', user.uid), 
-            orderBy('date', 'desc')
-        );
+        return query(ordersRef, orderBy('date', 'desc'));
     }, [user, currentRole, firestore]);
     
     const invoicesQuery = React.useMemo(() => {
         if (!user || !currentRole) return null;
         const invoicesRef = collection(firestore, 'salesInvoices');
-
-        if (['Admin', 'CEO', 'Sales Manager'].includes(currentRole)) {
-            return query(invoicesRef);
-        }
-
-        if (['Partner', 'Franchisee', 'Sales Agent', 'Dealer'].includes(currentRole)) {
-            return query(invoicesRef, where('assignedToUid', '==', user.uid));
-        }
         
-        return query(invoicesRef, where('customerId', '==', user.uid));
+        const nonAdminRoles: UserRole[] = ['Customer', 'Partner', 'Franchisee', 'Sales Agent', 'Dealer', 'Employee'];
+
+        if (nonAdminRoles.includes(currentRole)) {
+            return query(
+                invoicesRef, 
+                where('customerId', '==', user.uid),
+                orderBy('date', 'desc')
+            );
+        }
+    
+        return query(invoicesRef, orderBy('date', 'desc'));
     }, [user, currentRole, firestore]);
 
+
     const { data: orders, loading: ordersLoading } = useCollection<Order>(ordersQuery);
-    const { data: workOrders, loading: workOrdersLoading } = useCollection<WorkOrder>(collection(firestore, 'workOrders'));
     const { data: allSalesInvoices, loading: invoicesLoading } = useCollection<SalesInvoice>(invoicesQuery);
 
-
-    const getDynamicOrderStatus = (order: Order): OrderStatus => {
-        if (order.status !== 'Ordered') {
-            return order.status;
-        }
-
-        const relatedWorkOrder = workOrders?.find(wo => 
-            order.items.some(item => wo.productId === item.productId) && 
-            (wo.status === 'In Progress' || wo.status === 'Under QC')
-        );
-
-        if (relatedWorkOrder) {
-            return 'Manufacturing';
-        }
-
-        return order.status;
-    }
 
     const kpis = React.useMemo(() => {
         if (!orders) return { total: 0, inProcess: 0, shipped: 0, delivered: 0 };
         
         const total = orders.length;
-        const inProcess = orders.filter(o => ['Ordered', 'Manufacturing', 'Ready for Dispatch', 'Awaiting Payment', 'Cancellation Requested'].includes(getDynamicOrderStatus(o))).length;
+        const inProcess = orders.filter(o => ['Ordered', 'Manufacturing', 'Ready for Dispatch', 'Awaiting Payment', 'Cancellation Requested'].includes(o.status)).length;
         const shipped = orders.filter(o => o.status === 'Shipped').length;
         const delivered = orders.filter(o => o.status === 'Delivered').length;
 
         return { total, inProcess, shipped, delivered };
-    }, [orders, workOrders]);
+    }, [orders]);
+
+    const loading = ordersLoading || invoicesLoading;
 
   return (
     <>
@@ -564,7 +550,9 @@ function MyOrdersPageContent() {
       </div>
       
        <div className="space-y-4">
-        {orders && orders.length > 0 ? (
+        {loading ? (
+           <Card><CardContent className="p-12 text-center">Loading your orders...</CardContent></Card>
+        ) : orders && orders.length > 0 ? (
             orders.map((order) => (
                 <OrderCard key={order.id} order={order} allSalesInvoices={allSalesInvoices} />
             ))
@@ -595,5 +583,3 @@ export default function MyOrdersPage() {
 
     return <MyOrdersPageContent />;
 }
-
-    
