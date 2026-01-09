@@ -63,7 +63,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog';
-import type { PurchaseRequest, ReimbursementRequest, PostRequest, Order, CoaLedger, OrderStatus, SalesOrder, RefundRequest, SalaryAdvanceRequest, StockTransferRequest } from '@/lib/types';
+import type { PurchaseRequest, ReimbursementRequest, PostRequest, Order, CoaLedger, OrderStatus, SalesOrder, RefundRequest, SalaryAdvanceRequest, StockTransferRequest, UserProfile } from '@/lib/types';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 
 
@@ -121,6 +121,7 @@ export default function ApprovalsPage() {
   const { data: reimbursementRequests } = useCollection<ReimbursementRequest>(collection(firestore, 'reimbursementRequests'));
   const { data: salaryAdvanceRequests } = useCollection<SalaryAdvanceRequest>(collection(firestore, 'salaryAdvanceRequests'));
   const { data: stockTransferRequests } = useCollection<StockTransferRequest>(collection(firestore, 'stockTransferRequests'));
+  const { data: users } = useCollection<UserProfile>(collection(firestore, 'users'));
   
   const postsQuery = query(collection(firestore, 'posts'), orderBy('submittedAt', 'desc'));
   const { data: postRequests } = useCollection<PostRequest>(postsQuery);
@@ -456,7 +457,9 @@ export default function ApprovalsPage() {
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
-                {stockTransferRequests?.map(req => (
+                {stockTransferRequests?.map(req => {
+                  const partner = users?.find(u => u.id === req.partnerId);
+                  return (
                   <Collapsible asChild key={req.id} open={openRequestId === req.id} onOpenChange={() => setOpenRequestId(prev => prev === req.id ? null : req.id)}>
                     <TableBody>
                       <TableRow>
@@ -467,7 +470,7 @@ export default function ApprovalsPage() {
                             </Button>
                           </CollapsibleTrigger>
                         </TableCell>
-                        <TableCell>{req.partnerName}</TableCell>
+                        <TableCell>{partner?.businessName || req.partnerName || 'Unknown'}</TableCell>
                         <TableCell>{req.createdAt ? format(new Date(req.createdAt.toDate()), 'dd/MM/yyyy') : 'N/A'}</TableCell>
                         <TableCell>{req.items.length}</TableCell>
                         <TableCell><Badge variant="outline" className={cn(getStatusBadgeVariant(req.status))}>{req.status}</Badge></TableCell>
@@ -512,7 +515,7 @@ export default function ApprovalsPage() {
                       </CollapsibleContent>
                     </TableBody>
                   </Collapsible>
-                ))}
+                )})}
               </Table>
             </CardContent>
           </Card>
