@@ -33,7 +33,7 @@ import html2canvas from 'html2canvas';
 
 import { PageHeader } from '@/components/page-header';
 import { cn } from '@/lib/utils';
-import type { Order, OrderStatus, UserProfile, UserRole, WorkOrder, PickupPoint, SalesOrder, RefundRequest, Product, SalesInvoice, SalesInvoiceItem, Party, CompanyInfo } from '@/lib/types';
+import type { Order, OrderStatus, UserProfile, UserRole, WorkOrder, PickupPoint, SalesOrder, RefundRequest, SalesInvoice, SalesInvoiceItem, Party, CompanyInfo } from '@/lib/types';
 import { Button, buttonVariants } from '@/components/ui/button';
 import {
   Card,
@@ -43,14 +43,6 @@ import {
   CardTitle,
   CardFooter,
 } from '@/components/ui/card';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -283,7 +275,8 @@ function OrderRow({ order, onGenerateInvoice, onUpdateStatus, pickupPoints, dyna
   const existingInvoice = allSalesInvoices?.find(inv => inv.orderNumber === order.orderNumber);
 
   const pickupPointName = pickupPoints?.find(p => p.id === order.pickupPointId)?.name || 'N/A';
-  const canPerformActions = currentRole === 'Admin' || currentRole === 'CEO' || currentRole === 'Sales Manager' || currentRole === 'Accounts Manager';
+  const canPerformActions = ['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole);
+  const canGenerateInvoice = canPerformActions || currentRole === 'Partner';
 
   return (
     <Collapsible asChild key={order.id} open={isOpen} onOpenChange={setIsOpen}>
@@ -309,11 +302,11 @@ function OrderRow({ order, onGenerateInvoice, onUpdateStatus, pickupPoints, dyna
           <TableCell className="text-right font-mono">{formatIndianCurrency(order.grandTotal)}</TableCell>
           <TableCell className="text-right">
               <div className="flex gap-2 justify-end">
-                {canPerformActions && existingInvoice ? (
+                {existingInvoice ? (
                     <Button variant="secondary" size="sm" onClick={() => onViewInvoice(existingInvoice.invoiceNumber)}>
                         View Invoice
                     </Button>
-                ) : canPerformActions && (
+                ) : canGenerateInvoice && (
                     <Button 
                         variant="outline" 
                         size="sm" 

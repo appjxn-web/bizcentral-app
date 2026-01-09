@@ -82,9 +82,9 @@ service cloud.firestore {
         resource.data.assignedToUid == request.auth.uid
       );
 
-      allow create: if signedIn() && (request.resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if signedIn() && (request.resource.data.userId == request.auth.uid || isAdmin() || isPartner());
       
-      allow update: if isAdmin() || (
+      allow update: if isAdmin() || isPartner() || (
           signedIn() && 
           resource.data.userId == request.auth.uid && 
           request.resource.data.status == 'Cancellation Requested'
