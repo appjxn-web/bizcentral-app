@@ -1,5 +1,4 @@
 
-
 'use server';
 import {
   onDocumentCreated,
@@ -386,34 +385,36 @@ export const handleOrderUpdates = onDocumentUpdated("orders/{orderId}", async (e
 
     // --- Commission Calculation on Delivery ---
     if (before.status !== 'Delivered' && after.status === "Delivered" && after.assignedToUid) {
-      return db.runTransaction(async (transaction) => {
-        const uid = after.assignedToUid as string;
-        const uRef = db.doc(`users/${uid}`);
-        const pSnap = await transaction.get(uRef);
-        const pData = pSnap.data() as UserProfile;
-        if (!pData?.partnerMatrix) {
-          return;
-        }
+        return db.runTransaction(async (transaction) => {
+            const partnerId = after.assignedToUid!;
+            const partnerRef = db.doc(`users/${partnerId}`);
+            const partnerSnap = await transaction.get(partnerRef);
+            const partnerData = partnerSnap.data() as UserProfile | undefined;
 
-        let comm = 0;
-        after.items.forEach((item) => {
-          const m = pData.partnerMatrix;
-          const rule = m?.find((x) => x.category === item.category);
-          if (rule) {
-            const subTot = item.price * item.quantity;
-            comm += (subTot * (rule.commissionRate / 100));
-          }
+            if (!partnerData || !partnerData.partnerMatrix) {
+                console.log(`No commission matrix for partner ${partnerId}.`);
+                return;
+            }
+
+            let commissionTotal = 0;
+            after.items.forEach(item => {
+                const rule = partnerData.partnerMatrix?.find(r => r.category === item.category);
+                if (rule) {
+                    const itemTotal = item.price * item.quantity;
+                    commissionTotal += itemTotal * (rule.commissionRate / 100);
+                }
+            });
+
+            if (commissionTotal > 0) {
+                const walletRef = db.doc(`users/${partnerId}/wallet/main`);
+                transaction.set(walletRef, { 
+                    commissionPayable: admin.firestore.FieldValue.increment(commissionTotal) 
+                }, { merge: true });
+
+                const orderRef = event.data!.after.ref;
+                transaction.update(orderRef, { commission: commissionTotal });
+            }
         });
-
-        if (comm > 0) {
-          const wRef = db.doc(`users/${uid}/wallet/main`);
-          transaction.set(wRef, {
-            commissionPayable: admin.firestore.FieldValue.increment(comm),
-          }, {merge: true});
-          const oRef = db.doc(`orders/${event.params.orderId}`);
-          transaction.update(oRef, {commission: comm});
-        }
-      });
     }
 
     // --- Accounting Entry on Payment Approval ---
@@ -506,5 +507,6 @@ export const onGoalUpdate = onDocumentCreated("goalUpdates/{updateId}", async ()
 
 
     
+
 
 
