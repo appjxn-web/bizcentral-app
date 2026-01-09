@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -32,7 +31,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { PlusCircle, Save, Trash2, Check, ChevronsUpDown, CalendarClock, Loader2, DollarSign } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import type { Party, Product, UserRole, SalesOrder, Quotation, CoaLedger, UserProfile } from '@/lib/types';
+import type { Party, Product, UserRole, SalesOrder, Quotation, CoaLedger, UserProfile, Offer } from '@/lib/types';
 import { format, startOfMonth } from 'date-fns';
 import { Separator } from '@/components/ui/separator';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -155,46 +154,59 @@ export default function CreateSalesOrderPage() {
   }, [coaLedgers]);
 
 
-  React.useEffect(() => {
+   React.useEffect(() => {
     const editId = searchParams.get('id');
-    if (editId && firestore) {
+    if (editId && firestore && allSalesOrders) {
+      const orderToEdit = allSalesOrders.find(inv => inv.id === editId);
+      if (orderToEdit) {
         setIsEditMode(true);
         setOrderIdToEdit(editId);
-        const fetchOrder = async () => {
-            const orderDoc = await getDoc(doc(firestore, 'orders', editId));
-            if (orderDoc.exists()) {
-                const data = orderDoc.data() as SalesOrder;
-                setSelectedPartyId(data.userId);
-                setOrderDate(data.date);
-                setItems(data.items.map((item, i) => ({
-                    ...item,
-                    id: `item-${Date.now()}-${i}`,
-                })));
-                setOverallDiscount((data.discount / data.subtotal) * 100 || 0);
-                setBookingAmount(data.paymentReceived || 0);
-                setPaymentDetails(data.paymentDetails || '');
-                setExpectedDeliveryDate(data.expectedDeliveryDate || '');
-            }
-        };
-        fetchOrder();
+        setSelectedPartyId(orderToEdit.userId);
+        setOrderDate(orderToEdit.date);
+        setItems(orderToEdit.items.map((item, i) => ({
+          ...item,
+          id: `item-${Date.now()}-${i}`,
+        })));
+        setOverallDiscount((orderToEdit.discount / orderToEdit.subtotal) * 100 || 0);
+        setBookingAmount(orderToEdit.paymentReceived || 0);
+        setPaymentDetails(orderToEdit.paymentDetails || '');
+        setExpectedDeliveryDate(orderToEdit.expectedDeliveryDate || '');
+      }
     } else {
-        const rawData = localStorage.getItem('quotationToConvert');
-        if (rawData) {
-            const data = JSON.parse(rawData);
-            setSelectedPartyId(data.customerId);
-            setQuotationId(data.quotationNumber || data.id);
-            setItems(data.items.map((item: any, i: number) => ({
-                ...item, 
-                quantity: item.quantity || item.qty || 1,
-                id: `item-${Date.now()}-${i}`
-            })));
-            setOverallDiscount(data.overallDiscount || 0);
-            setTerms(data.terms || '50% advance payment required.');
-            localStorage.removeItem('quotationToConvert');
-            toast({ title: "Pre-filled from Quotation" });
-        }
+      const rawData = localStorage.getItem('quotationToConvert');
+      if (rawData && allProducts && allProducts.length > 0) {
+          const data = JSON.parse(rawData);
+          setSelectedPartyId(data.customerId);
+          setQuotationId(data.quotationNumber || data.id);
+
+          const mappedItems = data.items.map((item: any, i: number) => {
+              const product = allProducts.find(p => p.id === item.productId);
+              const rate = item.price || item.rate || 0;
+              const quantity = item.quantity || item.qty || 1;
+              
+              return {
+                  id: `item-${Date.now()}-${i}`,
+                  productId: item.productId,
+                  name: item.name || product?.name,
+                  hsn: product?.hsn || item.hsn || '',
+                  quantity: quantity,
+                  unit: product?.unit || item.unit || 'pcs',
+                  rate: rate,
+                  gstRate: (product as any)?.gstRate || item.gstRate || 18,
+                  amount: rate * quantity,
+                  category: product?.category || item.category,
+                  discount: 0,
+              };
+          });
+
+          setItems(mappedItems);
+          setOverallDiscount(data.overallDiscount || 0);
+          setTerms(data.terms || '50% advance payment required.');
+          localStorage.removeItem('quotationToConvert');
+          toast({ title: "Pre-filled from Quotation" });
+      }
     }
-  }, [searchParams, firestore, toast]);
+  }, [searchParams, firestore, allSalesOrders, allProducts, toast]);
   
     React.useEffect(() => {
     const fetchEstimate = async () => {
@@ -255,7 +267,7 @@ export default function CreateSalesOrderPage() {
     const sgst = isInterstate ? 0 : totalGst / 2;
     const igst = isInterstate ? totalGst : 0;
     
-    return { subtotal, totalDiscountAmount, taxableAmount, cgst, sgst, igst, grandTotal };
+    return { subtotal, totalDiscountAmount, taxableAmount, grandTotal, totalGst, cgst, sgst, igst };
   }, [items, isInterstate, overallDiscount]);
   
   const maxAllowedDiscount = React.useMemo(() => {

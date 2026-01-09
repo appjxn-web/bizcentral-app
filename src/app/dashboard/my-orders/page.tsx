@@ -101,7 +101,6 @@ const formatIndianCurrency = (num: number) => {
     style: 'currency',
     currency: 'INR',
     minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
   }).format(num);
 };
 
@@ -444,16 +443,20 @@ function MyOrdersPageContent() {
 
     const ordersQuery = React.useMemo(() => {
         if (!user || !currentRole) return null;
-        
+
         const isPartner = ['Partner', 'Franchisee', 'Sales Agent', 'Dealer'].includes(currentRole);
 
-        // This query now handles both customers (userId) and partners (assignedToUid)
+        if (isPartner) {
+            return query(
+                collection(firestore, 'orders'),
+                where('assignedToUid', '==', user.uid),
+                orderBy('date', 'desc')
+            );
+        }
+        
         return query(
             collection(firestore, 'orders'),
-            or(
-              where('userId', '==', user.uid),
-              where('assignedToUid', '==', user.uid)
-            ),
+            where('userId', '==', user.uid),
             orderBy('date', 'desc')
         );
     }, [user, currentRole, firestore]);
