@@ -173,6 +173,7 @@ export const navItems: NavItem[] = [
     icon: Warehouse,
     items: [
       { id: 'inventories-stocks', href: '/dashboard/inventories-reports/stocks', icon: Package, label: 'Stocks' },
+      { id: 'inventories-my-stock', href: '/dashboard/inventories-reports/my-stock', icon: Box, label: 'My Stock' },
       { id: 'inventories-inwards', href: '/dashboard/inventories-reports/inwards', icon: ArrowDownToLine, label: 'Inwards' },
       { id: 'inventories-outwards', href: '/dashboard/inventories-reports/outwards', icon: ArrowUpToLine, label: 'Outwards' },
       { id: 'inventories-reconciliation', href: '/dashboard/inventories-reports/stock-reconciliation', icon: CheckCheck, label: 'Stock Reconciliation' },

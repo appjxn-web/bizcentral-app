@@ -65,7 +65,8 @@ const permissions: Partial<Record<UserRole, string[]>> = {
     'help',
     'profiles-settings',
     'inventories-reports',
-    'inventories-spares-request'
+    'inventories-spares-request',
+    'inventories-my-stock'
   ],
   'CEO': [
     'command-center',
