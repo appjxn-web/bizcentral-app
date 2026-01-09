@@ -92,7 +92,7 @@ export default function CustomerDashboardPage() {
     const inTransit = orders?.filter(o => o.status === 'Shipped').length || 0;
     const pending = orders?.filter(o => o.status === 'Pending').length || 0;
     const cancelled = orders?.filter(o => o.status === 'Canceled').length || 0;
-    const totalValue = orders?.reduce((sum, o) => sum + o.total, 0) || 0;
+    const totalValue = orders?.reduce((sum, o) => sum + o.grandTotal, 0) || 0;
     const paidAmount = orders?.reduce((sum, o) => sum + (o.paymentReceived || 0), 0) || 0;
     const outstandingAmount = totalValue - paidAmount;
     
@@ -104,7 +104,7 @@ export default function CustomerDashboardPage() {
     const advancePaid = orders?.reduce((sum, o) => sum + (o.paymentReceived || 0), 0) || 0; // Simplified
     const creditNotes = 0; // Needs data from finance
     const lastPaymentDate = orders?.filter(o => o.paymentReceived).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0]?.date;
-    const lastInvoiceAmount = orders?.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0]?.total || 0;
+    const lastInvoiceAmount = orders?.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0]?.grandTotal || 0;
     
     return {
       outstandingBalance,
