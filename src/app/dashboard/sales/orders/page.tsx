@@ -443,7 +443,7 @@ function OrdersPageContent() {
         if (!user || !currentRole) return null;
         const invoicesRef = collection(firestore, 'salesInvoices');
     
-        if (['Admin', 'CEO', 'Accounts Manager', 'Sales Manager'].includes(currentRole)) {
+        if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
             return query(invoicesRef, orderBy('date', 'desc'));
         }
     
@@ -659,4 +659,5 @@ export default function OrdersPage() {
     
 
   
+
 

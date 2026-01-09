@@ -64,11 +64,11 @@ service cloud.firestore {
 
     // --- GLOBAL ORDERS (Main Sales) ---
     match /orders/{orderId} {
-      // List/Query rule: The query MUST include a filter for either userId or assignedToUid
+      // Rule for Queries (List)
       allow list: if signedIn() && (
         isAdmin() || 
-        resource.data.userId == request.auth.uid || 
-        resource.data.assignedToUid == request.auth.uid
+        request.query.where.userId == request.auth.uid ||
+        request.query.where.assignedToUid == request.auth.uid
       );
       
       // Rule for single documents (Get)
@@ -78,7 +78,7 @@ service cloud.firestore {
         resource.data.assignedToUid == request.auth.uid
       );
 
-      allow create: if signedIn() && (request.resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if signedIn();
       
       // Partners can update (edit) orders assigned to them
       allow update: if isAdmin() || (isPartner() && resource.data.assignedToUid == request.auth.uid);
