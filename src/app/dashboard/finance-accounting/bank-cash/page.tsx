@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -626,19 +625,27 @@ export default function BankAndCashPage() {
                         {loading ? (
                              <TableRow><TableCell colSpan={4} className="h-24 text-center">Loading...</TableCell></TableRow>
                         ) : cashAccounts.length > 0 ? (
-                            cashAccounts.map(acc => (
-                                <TableRow key={acc.id}>
-                                    <TableCell className="font-medium cursor-pointer" onClick={() => handleRowClick(acc.id)}>{acc.name}</TableCell>
-                                    <TableCell className="cursor-pointer" onClick={() => handleRowClick(acc.id)}>{acc.tags?.join(', ') || 'N/A'}</TableCell>
-                                    <TableCell className="text-right font-mono cursor-pointer" onClick={() => handleRowClick(acc.id)}>₹{(liveBalances.get(acc.id) || 0).toFixed(2)}</TableCell>
-                                    <TableCell>
-                                        <Button variant="ghost" size="icon" onClick={() => handleOpenDialog(acc)}>
-                                            <Edit className="h-4 w-4" />
-                                            <span className="sr-only">Edit</span>
-                                        </Button>
-                                    </TableCell>
-                                </TableRow>
-                            ))
+                            cashAccounts.map(acc => {
+                                const location = acc.tags?.[0] || '';
+                                const linkedId = acc.tags?.[1] || null;
+                                const linkedUser = linkedId ? users?.find(u => u.id === linkedId) : null;
+                                const displayLinked = linkedUser ? linkedUser.email : linkedId;
+                                return (
+                                    <TableRow key={acc.id}>
+                                        <TableCell className="font-medium cursor-pointer" onClick={() => handleRowClick(acc.id)}>{acc.name}</TableCell>
+                                        <TableCell className="cursor-pointer" onClick={() => handleRowClick(acc.id)}>
+                                            {[location, displayLinked].filter(Boolean).join(', ')}
+                                        </TableCell>
+                                        <TableCell className="text-right font-mono cursor-pointer" onClick={() => handleRowClick(acc.id)}>₹{(liveBalances.get(acc.id) || 0).toFixed(2)}</TableCell>
+                                        <TableCell>
+                                            <Button variant="ghost" size="icon" onClick={() => handleOpenDialog(acc)}>
+                                                <Edit className="h-4 w-4" />
+                                                <span className="sr-only">Edit</span>
+                                            </Button>
+                                        </TableCell>
+                                    </TableRow>
+                                );
+                            })
                         ) : (
                             <TableRow>
                                 <TableCell colSpan={4} className="h-24 text-center">
