@@ -1,3 +1,4 @@
+
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -63,7 +64,7 @@ service cloud.firestore {
 
     // --- GLOBAL ORDERS (Main Sales) ---
     match /orders/{orderId} {
-       allow list: if signedIn() && (
+      allow list: if signedIn() && (
         isAdmin() || 
         request.query.where.userId == request.auth.uid ||
         request.query.where.assignedToUid == request.auth.uid
@@ -111,9 +112,12 @@ service cloud.firestore {
 
     // --- FINANCE & ACCOUNTING ---
     match /salesInvoices/{invoiceId} {
-        allow read, list: if signedIn() && (
+        allow get: if signedIn() && (
           isAdmin() ||
-          resource.data.customerId == request.auth.uid ||
+          resource.data.customerId == request.auth.uid
+        );
+        allow list: if signedIn() && (
+          isAdmin() ||
           request.query.where.customerId == request.auth.uid
         );
         allow create, update, delete: if isAdmin();
@@ -128,8 +132,8 @@ service cloud.firestore {
     }
 
     match /journalVouchers/{voucherId} {
-      allow read, list: if signedIn(); 
-      allow create: if signedIn();
+      allow read, list: if signedIn() || isFunction(); 
+      allow create: if signedIn() || isFunction();
       allow update, delete: if isAdmin();
     }
     match /coa_groups/{id} { allow read, list: if signedIn() || isFunction(); allow write: if isAdmin(); }
