@@ -386,66 +386,70 @@ export const handleOrderUpdates = onDocumentUpdated("orders/{orderId}", async (e
   
     // --- Commission Calculation on Delivery ---
     if (before.status !== 'Delivered' && after.status === 'Delivered') {
-      return db.runTransaction(async (transaction) => {
-        // --- Partner Commission ---
-        if (after.assignedToUid) {
-          const partnerId = after.assignedToUid!;
-          const partnerRef = db.doc(`users/${partnerId}`);
-          const partnerSnap = await transaction.get(partnerRef);
-          const partnerData = partnerSnap.data() as UserProfile | undefined;
-  
-          if (partnerData?.partnerMatrix) {
-            let commissionTotal = 0;
-            after.items.forEach(item => {
-              const rule = partnerData.partnerMatrix?.find(r => r.category === item.category);
-              if (rule) {
-                const itemTotal = item.price * item.quantity;
-                commissionTotal += itemTotal * (rule.commissionRate / 100);
-              }
-            });
-  
-            if (commissionTotal > 0) {
-              const walletRef = db.doc(`users/${partnerId}/wallet/main`);
-              transaction.set(walletRef, {
-                commissionPayable: admin.firestore.FieldValue.increment(commissionTotal)
-              }, { merge: true });
-              transaction.update(event.data!.after.ref, { commission: commissionTotal });
-            }
-          }
-        }
-  
-        // --- Referral Commission ---
-        const userProfileRef = db.doc(`users/${after.userId}`);
-        const userProfileSnap = await transaction.get(userProfileRef);
-        const userProfile = userProfileSnap.data() as UserProfile | undefined;
-  
-        if (userProfile?.referredBy) {
-          const referrerWalletRef = db.doc(`users/${userProfile.referredBy}/wallet/main`);
-          const referralsQuery = db.collection(`users/${userProfile.referredBy}/referrals`)
-            .where('mobile', '==', userProfile.mobile)
-            .where('status', '==', 'First Purchased')
-            .limit(1);
-            
-          const referralsSnapshot = await transaction.get(referralsQuery);
-  
-          if (!referralsSnapshot.empty) {
-            const referralDoc = referralsSnapshot.docs[0];
-            const referralData = referralDoc.data();
-            
-            if (referralData.status === 'First Purchased') {
-              const firstPurchaseCommission = referralData.commission || 0;
-              
-              if (firstPurchaseCommission > 0) {
-                transaction.set(referrerWalletRef, { 
-                  commissionPayable: admin.firestore.FieldValue.increment(firstPurchaseCommission) 
-                }, { merge: true });
+        const orderId = event.params.orderId;
+        console.log(`Order ${orderId} delivered. Processing commissions...`);
+
+        return db.runTransaction(async (transaction) => {
+            // --- 1. Partner Commission ---
+            if (after.assignedToUid) {
+                const partnerId = after.assignedToUid!;
+                const partnerRef = db.doc(`users/${partnerId}`);
+                const partnerSnap = await transaction.get(partnerRef);
+                const partnerData = partnerSnap.data() as UserProfile | undefined;
                 
-                transaction.update(referralDoc.ref, { status: 'Completed' });
-              }
+                if (partnerData?.partnerMatrix) {
+                    let commissionTotal = after.commission || 0;
+                    if (!commissionTotal) { // Recalculate if not already on the order
+                        commissionTotal = after.items.reduce((acc, item) => {
+                            const rule = partnerData.partnerMatrix?.find(r => r.category === item.category);
+                            if (rule) {
+                                const itemTotal = item.price * item.quantity;
+                                return acc + (itemTotal * (rule.commissionRate / 100));
+                            }
+                            return acc;
+                        }, 0);
+                    }
+    
+                    if (commissionTotal > 0) {
+                        const walletRef = db.doc(`users/${partnerId}/wallet/main`);
+                        transaction.set(walletRef, { 
+                            commissionPayable: admin.firestore.FieldValue.increment(commissionTotal) 
+                        }, { merge: true });
+                        transaction.update(event.data!.after.ref, { payoutStatus: 'Payable', commission: commissionTotal });
+                    } else {
+                         transaction.update(event.data!.after.ref, { payoutStatus: 'No Commission' });
+                    }
+                } else {
+                     transaction.update(event.data!.after.ref, { payoutStatus: 'No Commission' });
+                }
             }
-          }
-        }
-      });
+
+            // --- 2. Referral Commission ---
+            const userProfileRef = db.doc(`users/${after.userId}`);
+            const userProfileSnap = await transaction.get(userProfileRef);
+            const userProfile = userProfileSnap.data() as UserProfile | undefined;
+    
+            if (userProfile?.referredBy) {
+                const referralsQuery = db.collection(`users/${userProfile.referredBy}/referrals`)
+                    .where('mobile', '==', userProfile.mobile)
+                    .where('status', '==', 'First Purchased')
+                    .limit(1);
+                
+                const referralsSnapshot = await transaction.get(referralsQuery);
+                if (!referralsSnapshot.empty) {
+                    const referralDoc = referralsSnapshot.docs[0];
+                    const firstPurchaseCommission = referralDoc.data().commission || 0;
+
+                    if (firstPurchaseCommission > 0) {
+                        const referrerWalletRef = db.doc(`users/${userProfile.referredBy}/wallet/main`);
+                        transaction.set(referrerWalletRef, { 
+                            commissionPayable: admin.firestore.FieldValue.increment(firstPurchaseCommission) 
+                        }, { merge: true });
+                        transaction.update(referralDoc.ref, { status: 'Completed' });
+                    }
+                }
+            }
+        });
     }
   
     // --- Accounting Entry on Payment Approval ---
