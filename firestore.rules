@@ -173,18 +173,14 @@ service cloud.firestore {
     match /workOrders/{id} { allow read, write: if signedIn(); }
     match /serviceRequests/{id} { allow read, write: if signedIn(); }
     match /stockTransferRequests/{requestId} {
-        allow get: if signedIn() && (
+        allow read, list: if signedIn() && (
             isAdmin() || 
             isInventoryManager() || 
             resource.data.requestingUserId == request.auth.uid
         );
-        allow list: if signedIn() && (
-            isAdmin() || 
-            isInventoryManager() || 
-            request.query.where.requestingUserId == request.auth.uid
-        );
         allow create: if signedIn() && (isAdmin() || isInventoryManager() || isPartner());
-        allow update: if isAdmin();
+        allow update: if isAdmin() || isInventoryManager();
+        allow delete: if isAdmin();
     }
     
     // --- REGISTERED PRODUCTS (Global Collection for Admins/Service) ---

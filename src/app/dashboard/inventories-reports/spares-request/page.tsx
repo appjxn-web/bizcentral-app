@@ -47,7 +47,22 @@ export default function SparesRequestPage() {
   const { data: productsData, loading: productsLoading } = useCollection<Product>(collection(firestore, 'products'));
   const { data: usersData, loading: usersLoading } = useCollection<User>(collection(firestore, 'users'));
   
-  const userRequestsQuery = user ? query(collection(firestore, 'stockTransferRequests'), where('requestingUserId', '==', user.uid), orderBy('createdAt', 'desc')) : null;
+  const userRequestsQuery = React.useMemo(() => {
+    if (!user || !currentRole) return null;
+    
+    const ref = collection(firestore, 'stockTransferRequests');
+  
+    if (['Admin', 'CEO', 'Inventory Manager'].includes(currentRole)) {
+      return query(ref, orderBy('createdAt', 'desc'));
+    }
+  
+    return query(
+      ref, 
+      where('requestingUserId', '==', user.uid),
+      orderBy('createdAt', 'desc')
+    );
+  }, [user, currentRole, firestore]);
+
   const { data: userRequests, loading: requestsLoading } = useCollection<StockTransferRequest>(userRequestsQuery);
 
 
