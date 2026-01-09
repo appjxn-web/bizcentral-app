@@ -28,7 +28,18 @@ const findOrCreateSpecificCustomerLedger = async (transaction: admin.firestore.T
 
     const partyRef = db.collection('parties').doc(userId);
     const partySnap = await transaction.get(partyRef);
-    const partyData = partySnap.data() as Party | undefined;
+    let partyData = partySnap.data() as Party | undefined;
+
+    // If party doesn't exist, create it within the transaction
+    if (!partySnap.exists) {
+        partyData = { 
+            id: userId,
+            name: customerName, 
+            type: 'Customer', 
+            email: customerEmail 
+        };
+        transaction.set(partyRef, partyData, { merge: true });
+    }
 
     // 1. If we have a valid ID that isn't the generic string, use it
     if (partyData?.coaLedgerId && partyData.coaLedgerId !== "customer-advances") {
@@ -58,11 +69,8 @@ const findOrCreateSpecificCustomerLedger = async (transaction: admin.firestore.T
 
     // Also create/update the party document to link it.
     transaction.set(partyRef, { 
-        id: userId,
+        ...partyData,
         coaLedgerId: newLedgerRef.id, 
-        name: customerName, 
-        type: 'Customer', 
-        email: customerEmail 
     }, { merge: true });
     
     return newLedgerRef.id;
@@ -373,39 +381,70 @@ export const handleOrderUpdates = onDocumentUpdated("orders/{orderId}", async (e
     if (!event.data) {
       return;
     }
+    const before = event.data.before.data() as Order;
     const after = event.data.after.data() as Order;
-    if (after.status !== "Delivered" || !after.assignedToUid) {
-      return;
-    }
 
-    return db.runTransaction(async (transaction) => {
-      const uid = after.assignedToUid as string;
-      const uRef = db.doc(`users/${uid}`);
-      const pSnap = await transaction.get(uRef);
-      const pData = pSnap.data() as UserProfile;
-      if (!pData?.partnerMatrix) {
-        return;
-      }
+    // --- Commission Calculation on Delivery ---
+    if (before.status !== 'Delivered' && after.status === "Delivered" && after.assignedToUid) {
+      return db.runTransaction(async (transaction) => {
+        const uid = after.assignedToUid as string;
+        const uRef = db.doc(`users/${uid}`);
+        const pSnap = await transaction.get(uRef);
+        const pData = pSnap.data() as UserProfile;
+        if (!pData?.partnerMatrix) {
+          return;
+        }
 
-      let comm = 0;
-      after.items.forEach((item) => {
-        const m = pData.partnerMatrix;
-        const rule = m?.find((x) => x.category === item.category);
-        if (rule) {
-          const subTot = item.price * item.quantity;
-          comm += (subTot * (rule.commissionRate / 100));
+        let comm = 0;
+        after.items.forEach((item) => {
+          const m = pData.partnerMatrix;
+          const rule = m?.find((x) => x.category === item.category);
+          if (rule) {
+            const subTot = item.price * item.quantity;
+            comm += (subTot * (rule.commissionRate / 100));
+          }
+        });
+
+        if (comm > 0) {
+          const wRef = db.doc(`users/${uid}/wallet/main`);
+          transaction.set(wRef, {
+            commissionPayable: admin.firestore.FieldValue.increment(comm),
+          }, {merge: true});
+          const oRef = db.doc(`orders/${event.params.orderId}`);
+          transaction.update(oRef, {commission: comm});
         }
       });
+    }
 
-      if (comm > 0) {
-        const wRef = db.doc(`users/${uid}/wallet/main`);
-        transaction.set(wRef, {
-          commissionPayable: admin.firestore.FieldValue.increment(comm),
-        }, {merge: true});
-        const oRef = db.doc(`orders/${event.params.orderId}`);
-        transaction.update(oRef, {commission: comm});
+    // --- Accounting Entry on Payment Approval ---
+    if (before.status === 'Awaiting Payment Confirmation' && after.status === 'Ordered') {
+      if (after.paymentReceived && after.paymentReceived > 0) {
+        await db.runTransaction(async (transaction) => {
+            const customerLedgerId = await findOrCreateSpecificCustomerLedger(transaction, after);
+            const companySnap = await transaction.get(db.doc("company/info"));
+            const primaryUpi = companySnap.data()?.primaryUpiId;
+            let bankAccountId = "L-1.1.1-2"; // Default Current Account
+            
+            if (primaryUpi) {
+                const ledgerSearch = await db.collection("coa_ledgers").where("bank.upiId", "==", primaryUpi).limit(1).get();
+                if (!ledgerSearch.empty) bankAccountId = ledgerSearch.docs[0].id;
+            }
+        
+            const jvRef = db.collection("journalVouchers").doc();
+            transaction.set(jvRef, {
+                id: jvRef.id,
+                date: new Date().toISOString().split("T")[0],
+                narration: `Advance for Order #${after.orderNumber || after.id} via UPI`,
+                voucherType: "Receipt Voucher",
+                entries: [
+                    { accountId: bankAccountId, debit: after.paymentReceived, credit: 0 },
+                    { accountId: customerLedgerId, debit: 0, credit: after.paymentReceived }, 
+                ],
+                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+        });
       }
-    });
+    }
  });
 export const onMilestoneUpdate = onDocumentWritten("goals/{goalId}/milestones/{milestoneId}", async (event: FirestoreEvent<Change<DocumentSnapshot> | undefined>) => { 
     const goalId = event.params.goalId;
@@ -467,4 +506,5 @@ export const onGoalUpdate = onDocumentCreated("goalUpdates/{updateId}", async ()
 
 
     
+
 

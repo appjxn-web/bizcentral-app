@@ -416,7 +416,7 @@ export interface GateEntry {
   remarks?: string;
 }
 
-export type TaskStatus = 'Pending' | 'In Progress' | 'Completed' | 'On Hold';
+export type TaskStatus = 'Pending' | 'In Progress' | 'Completed' | 'On Hold' | 'Rejected';
 export type TaskCategory = 'Service' | 'Production' | 'Office' | 'Other';
 
 export interface Task {
