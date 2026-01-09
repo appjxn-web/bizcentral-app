@@ -1,4 +1,3 @@
-
 'use client';
 
 import * as React from 'react';
@@ -78,7 +77,7 @@ const getSalaryDetails = (user: User, payrollConfig: PayrollConfig | undefined) 
         tds = annualTds / 12;
     }
     
-    const pf = (details?.pfEnabled && details.type === 'monthly') ? basic * (monthlyConfig.pfContributionPercent / 100) : 0;
+    const pf = (details.pfEnabled && details.type === 'monthly') ? basic * (monthlyConfig.pfContributionPercent / 100) : 0;
     const professionalTax = (details.type === 'monthly') ? monthlyConfig.professionalTax : 0;
 
     const totalDeductions = pf + professionalTax + tds;
@@ -175,16 +174,18 @@ export default function PayslipViewPage() {
             otEarning += slot1Hours * salary.hourlyRate * otMultipliers.slot1Multiplier;
             remainingOt -= slot1Hours;
 
-            const slot2Hours = Math.min(remainingOt, 2);
-            otEarning += slot2Hours * salary.hourlyRate * otMultipliers.slot2Multiplier;
-            remainingOt -= slot2Hours;
+            if (remainingOt > 0) {
+                const slot2Hours = Math.min(remainingOt, 2);
+                otEarning += slot2Hours * salary.hourlyRate * otMultipliers.slot2Multiplier;
+                remainingOt -= slot2Hours;
+            }
 
             if (remainingOt > 0) {
                 otEarning += remainingOt * salary.hourlyRate * otMultipliers.slot3Multiplier;
             }
         }
 
-        const totalDailyEarning = standardEarning + skillEarning + otEarning;
+        const totalDailyEarning = log.totalEarning || (standardEarning + skillEarning + otEarning);
         return {
             ...log,
             slot1: Math.min(otHours, 2),
@@ -363,13 +364,13 @@ export default function PayslipViewPage() {
                 <TableFooter>
                     <TableRow className="font-bold bg-gray-100 dark:bg-gray-800">
                         <TableCell>Total</TableCell>
-                        <TableCell className="text-right">{totalStdHours.toFixed(2)}</TableCell>
-                        <TableCell className="text-right">{totalOtSlot1.toFixed(2)}</TableCell>
-                        <TableCell className="text-right">{totalOtSlot2.toFixed(2)}</TableCell>
-                        <TableCell className="text-right">{totalOtSlot3.toFixed(2)}</TableCell>
-                        <TableCell className="text-right">{(totalHours).toFixed(2)}</TableCell>
-                        <TableCell className="text-right">{formatIndianCurrency(dailyEarningsData.reduce((acc: any, log: any) => acc + log.totalDailyEarning, 0))}</TableCell>
-                        <TableCell className="text-right font-mono">{formatIndianCurrency(totalWithdrawals)}</TableCell>
+                        <TableCell className="text-right">{kpis.totalStdHours.toFixed(2)}</TableCell>
+                        <TableCell className="text-right">{kpis.totalOtSlot1.toFixed(2)}</TableCell>
+                        <TableCell className="text-right">{kpis.totalOtSlot2.toFixed(2)}</TableCell>
+                        <TableCell className="text-right">{kpis.totalOtSlot3.toFixed(2)}</TableCell>
+                        <TableCell className="text-right">{(kpis.totalOT + kpis.totalStdHours).toFixed(2)}</TableCell>
+                        <TableCell className="text-right">{formatIndianCurrency(kpis.totalEarnings)}</TableCell>
+                        <TableCell className="text-right font-mono">{formatIndianCurrency(kpis.totalWithdrawals)}</TableCell>
                     </TableRow>
                 </TableFooter>
               </Table>

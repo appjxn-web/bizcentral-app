@@ -1,4 +1,3 @@
-
 'use client';
 
 import * as React from 'react';
@@ -37,7 +36,7 @@ import { MakePaymentDialog } from './_components/make-payment-dialog';
 
 
 const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(amount);
+    return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(amount || 0);
 }
 
 
@@ -95,7 +94,7 @@ export default function CustomerDashboardPage() {
     const inTransit = orders?.filter(o => o.status === 'Shipped').length || 0;
     const pending = orders?.filter(o => o.status === 'Pending').length || 0;
     const cancelled = orders?.filter(o => o.status === 'Canceled').length || 0;
-    const totalValue = orders?.reduce((sum, o) => sum + o.grandTotal, 0) || 0;
+    const totalValue = orders?.reduce((sum, o) => sum + (o.grandTotal || 0), 0) || 0;
     const paidAmount = orders?.reduce((sum, o) => sum + (o.paymentReceived || 0), 0) || 0;
     const outstandingAmount = totalValue - paidAmount;
     
@@ -150,7 +149,7 @@ export default function CustomerDashboardPage() {
           <CardContent>
             <div className="text-2xl font-bold">{kpis.activeOrders}</div>
             <p className="text-xs text-muted-foreground">Orders in progress</p>
-          </CardContent>
+          CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -300,59 +299,58 @@ export default function CustomerDashboardPage() {
             <CardHeader>
                 <CardTitle>Products & Warranty</CardTitle>
                 <CardDescription>Coming Soon: A summary of your registered products and their warranty status.</CardDescription>
-            </CardHeader>
-            <CardContent className="flex items-center justify-center h-48">
+            CardHeader>
+            CardContent className="flex items-center justify-center h-48">
                 <p className="text-muted-foreground">Product and warranty details will be displayed here.</p>
-            </CardContent>
-        </Card>
+            CardContent>
+        Card>
         <Card>
-            <CardHeader>
-                <CardTitle>Deals & Offers</CardTitle>
-                <CardDescription>Coming Soon: Personalized deals and offers for you.</CardDescription>
-            </CardHeader>
-            <CardContent className="flex items-center justify-center h-48">
+            CardHeader>
+                CardTitle>Deals & Offers</CardTitle>
+                CardDescription>Coming Soon: Personalized deals and offers for you.</CardDescription>
+            CardHeader>
+            CardContent className="flex items-center justify-center h-48">
                 <p className="text-muted-foreground">Active offers will be displayed here.</p>
-            </CardContent>
-        </Card>
-      </div>
-       <div className="grid gap-4 md:grid-cols-2">
-        <Card>
-            <CardHeader>
-                <CardTitle>Referrals Funnel</CardTitle>
-                <CardDescription>Coming Soon: A summary of your referral progress.</CardDescription>
-            </CardHeader>
-            <CardContent className="flex items-center justify-center h-48">
+            CardContent>
+        Card>
+      div>
+       div className="grid gap-4 md:grid-cols-2">
+        Card>
+            CardHeader>
+                CardTitle>Referrals Funnel</CardTitle>
+                CardDescription>Coming Soon: A summary of your referral progress.</CardDescription>
+            CardHeader>
+            CardContent className="flex items-center justify-center h-48">
                 <p className="text-muted-foreground">Referral funnel chart will be here.</p>
-            </CardContent>
-        </Card>
-        <Card>
-            <CardHeader>
-                <CardTitle>Support Tickets</CardTitle>
-                <CardDescription>Coming Soon: A summary of your open support tickets and their statuses.</CardDescription>
-            </CardHeader>
-            <CardContent className="flex items-center justify-center h-48">
+            CardContent>
+        Card>
+        Card>
+            CardHeader>
+                CardTitle>Support Tickets</CardTitle>
+                CardDescription>Coming Soon: A summary of your open support tickets and their statuses.</CardDescription>
+            CardHeader>
+            CardContent className="flex items-center justify-center h-48">
                 <p className="text-muted-foreground">Ticket summary and resolution times will be here.</p>
-            </CardContent>
-        </Card>
-      </div>
-       <div className="grid gap-4 md:grid-cols-2">
-        <Card>
-            <CardHeader>
-                <CardTitle>Posts & Engagement</CardTitle>
-                <CardDescription>Coming Soon: A summary of your community post engagement.</CardDescription>
-            </CardHeader>
-            <CardContent className="flex items-center justify-center h-48">
+            CardContent>
+        Card>
+      div>
+       div className="grid gap-4 md:grid-cols-2">
+        Card>
+            CardHeader>
+                CardTitle>Posts & Engagement</CardTitle>
+                CardDescription>Coming Soon: A summary of your community post engagement.</CardDescription>
+            CardHeader>
+            CardContent className="flex items-center justify-center h-48">
                 <p className="text-muted-foreground">Post engagement metrics will be displayed here.</p>
-            </CardContent>
-        </Card>
-      </div>
-      <MakePaymentDialog
+            CardContent>
+        Card>
+      div>
+      MakePaymentDialog
         open={isPaymentDialogOpen}
         onOpenChange={setIsPaymentDialogOpen}
         outstandingBalance={paymentKpis.outstandingBalance}
         userProfile={userProfile}
       />
-    </>
+    >
   );
 }
-

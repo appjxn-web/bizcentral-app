@@ -1,5 +1,3 @@
-
-
 'use client';
 
 import * as React from 'react';
@@ -52,7 +50,7 @@ import { useRole } from '../../_components/role-provider';
 
 
 const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(amount);
+    return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(amount || 0);
 }
 
 export default function CeoDashboardPage() {

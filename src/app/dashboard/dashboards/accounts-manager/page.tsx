@@ -1,4 +1,3 @@
-
 'use client';
 
 import * as React from 'react';
@@ -37,7 +36,7 @@ import type { JournalVoucher, CoaLedger, CoaGroup } from '@/lib/types';
 import { startOfMonth, endOfMonth } from 'date-fns';
 
 const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(amount);
+    return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(amount || 0);
 }
 
 

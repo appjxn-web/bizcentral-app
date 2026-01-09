@@ -1,4 +1,3 @@
-
 'use client';
 
 import * as React from 'react';
@@ -19,16 +18,16 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import {
-  Activity,
-  AlertTriangle,
-  CheckCircle2,
-  Clock,
-  Factory,
-  Percent,
-  TrendingUp,
-  Wrench,
-  XCircle,
-} from 'lucide-react';
+    Activity,
+    AlertTriangle,
+    CheckCircle2,
+    Clock,
+    Factory,
+    Percent,
+    TrendingUp,
+    Wrench,
+    XCircle,
+  } from 'lucide-react';
 import {
   Bar,
   BarChart,
@@ -51,7 +50,7 @@ import type { WorkOrder } from '@/lib/types';
 import { format, startOfDay, endOfDay, isToday, isPast } from 'date-fns';
 
 const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(amount);
+    return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(amount || 0);
 }
 
 
