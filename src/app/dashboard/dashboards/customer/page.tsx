@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -111,7 +112,7 @@ export default function CustomerDashboardPage() {
   }, [orders, payments]);
 
   const paymentKpis = React.useMemo(() => {
-    const outstandingBalance = orderKpis.outstandingAmount;
+    const outstandingBalance = orderKpis.totalValue - orderKpis.paidAmount;
     const lastPaymentDate = orders?.filter(o => o.paymentReceived).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0]?.date;
     const lastInvoiceAmount = orders?.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0]?.grandTotal || 0;
     
@@ -122,7 +123,7 @@ export default function CustomerDashboardPage() {
       lastPaymentDate,
       lastInvoiceAmount,
     };
-  }, [orders, orderKpis]);
+  }, [orderKpis]);
   
   const alerts: any[] = [];
   if (paymentKpis.outstandingBalance > 0) {
