@@ -86,6 +86,12 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
     
+    // --- PAYMENT SUBMISSIONS ---
+    match /paymentSubmissions/{submissionId} {
+      allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
+      allow read, list, update: if isAdmin();
+    }
+    
     // --- DISTRIBUTED COUNTERS ---
     match /counters/{counterId}/shards/{shardId} {
         allow read, write: if signedIn();
