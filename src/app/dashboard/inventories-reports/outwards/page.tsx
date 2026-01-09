@@ -24,9 +24,9 @@ import {
 import { format } from 'date-fns';
 import { Send, Package, ChevronRight, ChevronDown, Wrench, PackageSearch, Loader2, PlusCircle, Trash2, ChevronsUpDown, Check } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import type { WorkOrder, BillOfMaterial, Product, IssuedItem, User as UserType, CoaLedger, SparesRequest, BomItem, PurchaseOrder, Party } from '@/lib/types';
+import type { WorkOrder, BillOfMaterial, Product, IssuedItem, User as UserType, CoaLedger, SparesRequest, BomItem, PurchaseOrder, Party, StockTransferRequest } from '@/lib/types';
 import { useFirestore, useCollection, useUser } from '@/firebase';
-import { collection, query, where, doc, updateDoc, writeBatch, serverTimestamp, addDoc, increment, getDoc, getDocs } from 'firebase/firestore';
+import { collection, query, where, doc, updateDoc, writeBatch, serverTimestamp, addDoc, increment, getDoc, getDocs, orderBy } from 'firebase/firestore';
 import { cn } from '@/lib/utils';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { useToast } from '@/hooks/use-toast';
@@ -47,6 +47,8 @@ import { FirestorePermissionError } from '@/firebase/errors';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { useRole } from '../../_components/role-provider';
+
 
 interface StockTransferItem {
   id: string;
@@ -414,6 +416,16 @@ function SparesRequestRow({ request, onIssueClick, allProducts }: { request: Spa
     )
 }
 
+function getStatusBadgeVariant(status: string) {
+    const variants: Record<string, string> = {
+      'Pending Approval': 'bg-yellow-100 text-yellow-800',
+      'Approved': 'bg-blue-100 text-blue-800',
+      'Rejected': 'bg-red-100 text-red-800',
+      'Shipped': 'bg-green-100 text-green-800',
+    };
+    return variants[status] || 'bg-gray-100';
+}
+
 function StockTransferTab() {
   const { toast } = useToast();
   const firestore = useFirestore();
@@ -463,7 +475,7 @@ function StockTransferTab() {
             requestingUserId: user?.uid,
             requestingUserName: user?.displayName,
             partnerId: selectedPartnerId,
-            partnerName: partner?.name,
+            partnerName: (partner as UserProfile)?.businessName || partner?.name,
             items: items.map(({ id, ...rest }) => ({...rest, quantity: Number(rest.quantity)})),
             status: 'Pending Approval',
             createdAt: serverTimestamp(),
@@ -485,69 +497,126 @@ function StockTransferTab() {
     }
   };
 
+  const userRequestsQuery = React.useMemo(() => {
+    if (!user) return null;
+    return query(
+      collection(firestore, 'stockTransferRequests'),
+      orderBy('createdAt', 'desc')
+    );
+  }, [user, firestore]);
+
+  const { data: userRequests, loading: requestsLoading } = useCollection<StockTransferRequest>(userRequestsQuery);
+
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Create Stock Transfer</CardTitle>
-        <CardDescription>Request to move inventory from the main warehouse to a partner location.</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        <div className="max-w-md space-y-2">
-            <Label>To Partner</Label>
-            <Select onValueChange={setSelectedPartnerId}>
-                <SelectTrigger><SelectValue placeholder="Select a partner..." /></SelectTrigger>
-                <SelectContent>
-                    {partners?.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
-                </SelectContent>
-            </Select>
-        </div>
-        <div>
-            <Label>Items to Transfer</Label>
-            <div className="border rounded-md mt-2">
-                <Table>
-                    <TableHeader>
-                        <TableRow>
-                            <TableHead className="w-[60%]">Product</TableHead>
-                            <TableHead>Quantity</TableHead>
-                            <TableHead className="w-[50px]"><span className="sr-only">Remove</span></TableHead>
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                        {items.map(item => (
-                            <TableRow key={item.id}>
-                                <TableCell>
-                                     <Select value={item.productId} onValueChange={(value) => handleItemChange(item.id, 'productId', value)}>
-                                        <SelectTrigger><SelectValue placeholder="Select product..." /></SelectTrigger>
-                                        <SelectContent>
-                                            {products?.map(p => <SelectItem key={p.id} value={p.id}>{p.name} (Stock: {p.openingStock})</SelectItem>)}
-                                        </SelectContent>
-                                    </Select>
-                                </TableCell>
-                                <TableCell>
-                                    <Input type="number" value={item.quantity} onChange={(e) => handleItemChange(item.id, 'quantity', e.target.value)} />
-                                </TableCell>
-                                <TableCell>
-                                    <Button variant="ghost" size="icon" onClick={() => handleRemoveItem(item.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
-                                </TableCell>
-                            </TableRow>
-                        ))}
-                    </TableBody>
-                </Table>
-                 <Button variant="outline" size="sm" onClick={handleAddItem} className="m-2">
-                    <PlusCircle className="mr-2 h-4 w-4" /> Add Item
-                </Button>
+    <>
+        <Card>
+          <CardHeader>
+            <CardTitle>Create Stock Transfer</CardTitle>
+            <CardDescription>Request to move inventory from the main warehouse to a partner location.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="max-w-md space-y-2">
+                <Label>To Partner</Label>
+                <Select onValueChange={setSelectedPartnerId} value={selectedPartnerId || ''}>
+                    <SelectTrigger><SelectValue placeholder="Select a partner..." /></SelectTrigger>
+                    <SelectContent>
+                        {partners?.map(p => <SelectItem key={p.id} value={p.id}>{(p as UserProfile).businessName || p.name}</SelectItem>)}
+                    </SelectContent>
+                </Select>
             </div>
-        </div>
-        <div className="space-y-2">
-            <Label>Notes (Optional)</Label>
-            <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Add any notes for the approver..." />
-        </div>
-        <Button onClick={handleSubmit} disabled={isSubmitting}>
-            {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Submit for Approval
-        </Button>
-      </CardContent>
-    </Card>
+            <div>
+                <Label>Items to Transfer</Label>
+                <div className="border rounded-md mt-2">
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead className="w-[60%]">Product</TableHead>
+                                <TableHead>Quantity</TableHead>
+                                <TableHead className="w-[50px]"><span className="sr-only">Remove</span></TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {items.map(item => (
+                                <TableRow key={item.id}>
+                                    <TableCell>
+                                         <Select value={item.productId} onValueChange={(value) => handleItemChange(item.id, 'productId', value)}>
+                                            <SelectTrigger><SelectValue placeholder="Select product..." /></SelectTrigger>
+                                            <SelectContent>
+                                                {products?.map(p => <SelectItem key={p.id} value={p.id}>{p.name} (Stock: {p.openingStock})</SelectItem>)}
+                                            </SelectContent>
+                                        </Select>
+                                    </TableCell>
+                                    <TableCell>
+                                        <Input type="number" value={item.quantity} onChange={(e) => handleItemChange(item.id, 'quantity', e.target.value)} />
+                                    </TableCell>
+                                    <TableCell>
+                                        <Button variant="ghost" size="icon" onClick={() => handleRemoveItem(item.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                                    </TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                     <Button variant="outline" size="sm" onClick={handleAddItem} className="m-2">
+                        <PlusCircle className="mr-2 h-4 w-4" /> Add Item
+                    </Button>
+                </div>
+            </div>
+            <div className="space-y-2">
+                <Label>Notes (Optional)</Label>
+                <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Add any notes for the approver..." />
+            </div>
+            <Button onClick={handleSubmit} disabled={isSubmitting}>
+                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Submit for Approval
+            </Button>
+          </CardContent>
+        </Card>
+        
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle>All Stock Transfer Requests</CardTitle>
+            <CardDescription>A history of all submitted stock transfer requests.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Request Date</TableHead>
+                  <TableHead>Requesting User</TableHead>
+                  <TableHead>Recipient</TableHead>
+                  <TableHead>Items</TableHead>
+                  <TableHead>Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {requestsLoading ? (
+                  <TableRow><TableCell colSpan={5} className="h-24 text-center">Loading requests...</TableCell></TableRow>
+                ) : userRequests && userRequests.length > 0 ? (
+                  userRequests.map(req => (
+                    <TableRow key={req.id}>
+                      <TableCell>{req.createdAt ? format(req.createdAt.toDate(), 'dd/MM/yyyy') : 'Pending'}</TableCell>
+                      <TableCell>{req.requestingUserName}</TableCell>
+                      <TableCell>{req.partnerName}</TableCell>
+                      <TableCell>{req.items.length}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className={cn(getStatusBadgeVariant(req.status))}>
+                          {req.status}
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center h-24 text-muted-foreground">
+                      No requests have been made yet.
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+    </>
   );
 }
 
