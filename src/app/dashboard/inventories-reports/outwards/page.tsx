@@ -44,6 +44,8 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { writeBatch, doc } from 'firebase/firestore';
 import { getNextDocNumber } from '@/lib/number-series';
 import type { BillOfMaterial, WorkOrder, IssuedItem, CoaLedger } from '@/lib/types';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+
 
 interface StockTransferItem {
   id: string;
@@ -934,4 +936,3 @@ export default function OutwardsPage() {
     </>
   );
 }
-
