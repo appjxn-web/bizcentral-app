@@ -11,19 +11,31 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { PlusCircle, Save, Trash2, Check, ChevronsUpDown, Send } from 'lucide-react';
-import type { User, Product, SparesRequest } from '@/lib/types';
+import type { User, Product, SparesRequest, StockTransferRequest } from '@/lib/types';
 import { useFirestore, useCollection, useUser } from '@/firebase';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, query, where, orderBy } from 'firebase/firestore';
 import { cn } from '@/lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { useRole } from '../../_components/role-provider';
+import { format } from 'date-fns';
+import { Badge } from '@/components/ui/badge';
 
 interface RequestItem {
   id: string;
   productId: string;
   productName: string;
   quantity: number;
+}
+
+function getStatusBadgeVariant(status: string) {
+    const variants: Record<string, string> = {
+      'Pending Approval': 'bg-yellow-100 text-yellow-800',
+      'Approved': 'bg-blue-100 text-blue-800',
+      'Rejected': 'bg-red-100 text-red-800',
+      'Shipped': 'bg-green-100 text-green-800',
+    };
+    return variants[status] || 'bg-gray-100';
 }
 
 export default function SparesRequestPage() {
@@ -35,6 +47,10 @@ export default function SparesRequestPage() {
   const { data: productsData, loading: productsLoading } = useCollection<Product>(collection(firestore, 'products'));
   const { data: usersData, loading: usersLoading } = useCollection<User>(collection(firestore, 'users'));
   
+  const userRequestsQuery = user ? query(collection(firestore, 'stockTransferRequests'), where('requestingUserId', '==', user.uid), orderBy('createdAt', 'desc')) : null;
+  const { data: userRequests, loading: requestsLoading } = useCollection<StockTransferRequest>(userRequestsQuery);
+
+
   const [selectedEngineerId, setSelectedEngineerId] = React.useState<string | null>(null);
   const [items, setItems] = React.useState<RequestItem[]>([{ id: `item-${Date.now()}`, productId: '', productName: '', quantity: 1 }]);
   const [openCombobox, setOpenCombobox] = React.useState(false);
@@ -46,8 +62,10 @@ export default function SparesRequestPage() {
   const availableProducts = React.useMemo(() => {
     if (!productsData) return [];
     if (isPartner) {
+        // Partners can request any saleable product.
         return productsData.filter(p => p.saleable);
     }
+    // Internal staff requesting spares.
     return productsData.filter(p => p.type === 'Components' || p.type === 'Consumables' || p.source === 'Bought');
   }, [productsData, isPartner]);
 
@@ -185,7 +203,7 @@ export default function SparesRequestPage() {
                                 </TableCell>
                                 <TableCell>
                                     <Button variant="ghost" size="icon" onClick={() => handleRemoveItem(item.id)}>
-                                        <Trash2 className="h-4 w-4" />
+                                        <Trash2 className="h-4 w-4 text-destructive" />
                                     </Button>
                                 </TableCell>
                             </TableRow>
@@ -196,7 +214,49 @@ export default function SparesRequestPage() {
                     <PlusCircle className="mr-2 h-4 w-4" /> Add Part
                 </Button>
             </div>
-
+        </CardContent>
+      </Card>
+      
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle>My Requests</CardTitle>
+          <CardDescription>A history of your submitted stock and spares requests.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Request Date</TableHead>
+                <TableHead>Recipient</TableHead>
+                <TableHead>Items</TableHead>
+                <TableHead>Status</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {requestsLoading ? (
+                <TableRow><TableCell colSpan={4} className="h-24 text-center">Loading requests...</TableCell></TableRow>
+              ) : userRequests && userRequests.length > 0 ? (
+                userRequests.map(req => (
+                  <TableRow key={req.id}>
+                    <TableCell>{format(req.createdAt.toDate(), 'dd/MM/yyyy')}</TableCell>
+                    <TableCell>{req.partnerName}</TableCell>
+                    <TableCell>{req.items.length}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className={cn(getStatusBadgeVariant(req.status))}>
+                        {req.status}
+                      </Badge>
+                    </TableCell>
+                  </TableRow>
+                ))
+              ) : (
+                <TableRow>
+                  <TableCell colSpan={4} className="text-center h-24 text-muted-foreground">
+                    You have not made any requests yet.
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
         </CardContent>
       </Card>
     </>
