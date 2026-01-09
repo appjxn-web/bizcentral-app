@@ -33,7 +33,7 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { PlusCircle, Trash2, Check, ChevronsUpDown, Send, Package, Wrench, PackageSearch, Loader2, ChevronRight, ChevronDown } from 'lucide-react';
 import type { User, Product, SparesRequest, StockTransferRequest, UserProfile } from '@/lib/types';
-import { useFirestore, useCollection, useUser } from '@/firebase';
+import { useFirestore, useCollection, useUser, useDoc } from '@/firebase';
 import { collection, addDoc, serverTimestamp, query, where, orderBy, getDoc } from 'firebase/firestore';
 import { cn } from '@/lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -661,7 +661,7 @@ export default function OutwardsPage() {
   const { data: allProducts } = useCollection<Product>(collection(firestore, 'products'));
   const { data: coaLedgers } = useCollection<CoaLedger>(collection(firestore, 'coa_ledgers'));
   const { data: allBoms, loading: bomsLoading } = useCollection<BillOfMaterial>(collection(firestore, 'boms'));
-  const { data: allUsers } = useCollection<UserType>(collection(firestore, 'users'));
+  const { data: allUsers } = useCollection<User>(collection(firestore, 'users'));
   
   const [isIssueDialogOpen, setIsIssueDialogOpen] = React.useState(false);
   const [selectedRequest, setSelectedRequest] = React.useState<WorkOrder | SparesRequest | null>(null);
@@ -940,4 +940,3 @@ export default function OutwardsPage() {
     </>
   );
 }
-```
