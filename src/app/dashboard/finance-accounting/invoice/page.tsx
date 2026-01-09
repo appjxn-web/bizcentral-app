@@ -309,7 +309,7 @@ function GatePassDialog({ open, onOpenChange, invoice, companyInfo }: { open: bo
                                         <p><strong>Cost:</strong> {formatIndianCurrency(invoice.deliveryDetails.shippingCost)}</p>
                                     )}
                                     <p><strong>Vehicle:</strong> {invoice.deliveryDetails?.vehicleNumber}</p>
-                                    <p><strong>Driver:</strong> {invoice.deliveryDetails?.driverName} ({invoice.deliveryDetails?.driverPhone})</p>
+                                    <p><strong>Driver:</strong> {deliveryDetails?.driverName} ({deliveryDetails?.driverPhone})</p>
                                 </div>
                             </div>
                         </section>
@@ -348,7 +348,7 @@ function GatePassDialog({ open, onOpenChange, invoice, companyInfo }: { open: bo
                             <div className="text-right">
                                 <p className="font-semibold mb-12">For, {companyInfo?.companyName}</p>
                                 <div className="h-16 w-32"></div>
-                                <div className="border-t border-black w-48 ml-auto"></div>
+                                <Separator />
                                 <p className="text-xs pt-1">Authorized Signatory</p>
                             </div>
                         </footer>
@@ -592,14 +592,16 @@ function InvoicePage() {
     const invoicesQuery = React.useMemo(() => {
         if (!user || !currentRole) return null;
         const invoicesRef = collection(firestore, 'salesInvoices');
-        if (['Admin', 'CEO', 'Accounts Manager'].includes(currentRole)) {
-            return query(invoicesRef, orderBy('date', 'desc'));
+    
+        if (['Admin', 'CEO', 'Accounts Manager', 'Sales Manager'].includes(currentRole)) {
+            return query(invoicesRef);
         }
-         if (['Partner', 'Franchisee', 'Sales Agent', 'Dealer'].includes(currentRole)) {
-            return query(invoicesRef, where('assignedToUid', '==', user.uid), orderBy('date', 'desc'));
+    
+        if (['Partner', 'Franchisee', 'Sales Agent', 'Dealer'].includes(currentRole)) {
+            return query(invoicesRef, where('assignedToUid', '==', user.uid));
         }
-        return query(invoicesRef, where('customerId', '==', user.uid), orderBy('date', 'desc'));
-
+    
+        return query(invoicesRef, where('customerId', '==', user.uid));
     }, [user, currentRole, firestore]);
 
     const { data: orders, loading: ordersLoading } = useCollection<Order>(ordersQuery);
@@ -659,6 +661,7 @@ function InvoicePage() {
             ...order,
             customerId: order.userId,
             overallDiscount: (order.discount / order.subtotal) * 100 || 0,
+            assignedToUid: order.assignedToUid,
         };
         localStorage.setItem('invoiceDataToCreate', JSON.stringify(dataToPass));
         router.push('/dashboard/finance-accounting/invoice/create');

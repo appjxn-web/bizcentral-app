@@ -66,8 +66,8 @@ service cloud.firestore {
     match /orders/{orderId} {
       allow list: if signedIn() && (
         isAdmin() || 
-        request.query.where.userId == request.auth.uid ||
-        request.query.where.assignedToUid == request.auth.uid
+        (request.query.keys().hasAny(['where']) && request.query.where.userId == request.auth.uid) ||
+        (request.query.keys().hasAny(['where']) && request.query.where.assignedToUid == request.auth.uid)
       );
       
       allow get: if signedIn() && (
@@ -79,7 +79,7 @@ service cloud.firestore {
       allow create: if signedIn() && (request.resource.data.userId == request.auth.uid || isAdmin());
       
       // Allow partners to update status for orders assigned to them
-      allow update: if isAdmin() || (isPartner() && resource.data.assignedToUid == request.auth.uid);
+      allow update: if (isAdmin() || (isPartner() && resource.data.assignedToUid == request.auth.uid) || (signedIn() && resource.data.userId == request.auth.uid && request.resource.data.status == 'Cancellation Requested'));
         
       allow delete: if isAdmin();
     }
@@ -104,7 +104,7 @@ service cloud.firestore {
     
     match /refundRequests/{requestId} {
       allow get: if signedIn() && (resource.data.customerId == request.auth.uid || isAdmin());
-      allow list: if signedIn() && (isAdmin() || request.query.where.customerId == request.auth.uid);
+      allow list: if signedIn() && (isAdmin() || (request.query.keys().hasAny(['where']) && request.query.where.customerId == request.auth.uid));
       allow write: if isAdmin();
     }
 
@@ -117,8 +117,8 @@ service cloud.firestore {
         );
         allow list: if signedIn() && (
           isAdmin() ||
-          request.query.where.customerId == request.auth.uid ||
-          request.query.where.assignedToUid == request.auth.uid
+          (request.query.keys().hasAny(['where']) && request.query.where.customerId == request.auth.uid) ||
+          (request.query.keys().hasAny(['where']) && request.query.where.assignedToUid == request.auth.uid)
         );
         
         // Allow Partners to create invoices for their assigned orders
@@ -212,5 +212,3 @@ service cloud.firestore {
     }
   }
 }
-
-    

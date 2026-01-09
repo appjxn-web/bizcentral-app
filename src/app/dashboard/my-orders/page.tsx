@@ -445,33 +445,57 @@ function MyOrdersPageContent() {
     const ordersQuery = React.useMemo(() => {
         if (!user || !currentRole) return null;
 
-        const isPartner = ['Partner', 'Franchisee', 'Sales Agent', 'Dealer'].includes(currentRole);
+        const ordersRef = collection(firestore, 'orders');
 
-        if (isPartner) {
+        if (['Admin', 'CEO', 'Sales Manager'].includes(currentRole)) {
+            return query(ordersRef, orderBy('date', 'desc'));
+        }
+
+        if (['Partner', 'Franchisee', 'Sales Agent', 'Dealer'].includes(currentRole)) {
             return query(
-                collection(firestore, 'orders'),
-                where('assignedToUid', '==', user.uid),
+                ordersRef, 
+                where('assignedToUid', '==', user.uid), 
                 orderBy('date', 'desc')
             );
         }
         
         return query(
-            collection(firestore, 'orders'),
-            where('userId', '==', user.uid),
+            ordersRef, 
+            where('userId', '==', user.uid), 
             orderBy('date', 'desc')
         );
     }, [user, currentRole, firestore]);
 
-    const { data: orders } = useCollection<Order>(ordersQuery);
+    const { data: orders, loading: ordersLoading } = useCollection<Order>(ordersQuery);
+    const { data: workOrders, loading: workOrdersLoading } = useCollection<WorkOrder>(collection(firestore, 'workOrders'));
+
+    const getDynamicOrderStatus = (order: Order): OrderStatus => {
+        if (order.status !== 'Ordered') {
+            return order.status;
+        }
+
+        const relatedWorkOrder = workOrders?.find(wo => 
+            order.items.some(item => wo.productId === item.productId) && 
+            (wo.status === 'In Progress' || wo.status === 'Under QC')
+        );
+
+        if (relatedWorkOrder) {
+            return 'Manufacturing';
+        }
+
+        return order.status;
+    }
 
     const kpis = React.useMemo(() => {
         if (!orders) return { total: 0, inProcess: 0, shipped: 0, delivered: 0 };
+        
         const total = orders.length;
-        const inProcess = orders.filter(o => ['Ordered', 'Manufacturing', 'Ready for Dispatch', 'Awaiting Payment', 'Cancellation Requested'].includes(o.status)).length;
+        const inProcess = orders.filter(o => ['Ordered', 'Manufacturing', 'Ready for Dispatch', 'Awaiting Payment', 'Cancellation Requested'].includes(getDynamicOrderStatus(o))).length;
         const shipped = orders.filter(o => o.status === 'Shipped').length;
         const delivered = orders.filter(o => o.status === 'Delivered').length;
+
         return { total, inProcess, shipped, delivered };
-    }, [orders]);
+    }, [orders, workOrders]);
 
   return (
     <>
