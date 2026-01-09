@@ -63,7 +63,7 @@ import {
 import Image from 'next/image';
 import { Separator } from '@/components/ui/separator';
 import { useFirestore, useCollection, useUser, useDoc } from '@/firebase';
-import { collection, query, orderBy, doc, where, or, updateDoc, writeBatch, limit } from 'firebase/firestore';
+import { collection, query, orderBy, doc, where, or, updateDoc, writeBatch, limit, getDocs } from 'firebase/firestore';
 import { OrderStatusTracker } from '../../my-orders/_components/order-status';
 import {
   Dialog,
@@ -435,37 +435,29 @@ function OrdersPageContent() {
             orderBy('date', 'desc')
         );
     }, [user, currentRole, firestore]);
-    
+
     const invoicesQuery = React.useMemo(() => {
         if (!user || !currentRole) return null;
         const invoicesRef = collection(firestore, 'salesInvoices');
-    
+
         if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
-            return query(invoicesRef, orderBy('date', 'desc'));
+            return query(invoicesRef);
         }
     
         if (['Partner', 'Franchisee', 'Sales Agent', 'Dealer'].includes(currentRole)) {
-            return query(
-                invoicesRef, 
-                where('assignedToUid', '==', user.uid),
-                orderBy('date', 'desc')
-            );
+            return query(invoicesRef, where('assignedToUid', '==', user.uid));
         }
     
-        return query(
-            invoicesRef, 
-            where('customerId', '==', user.uid),
-            orderBy('date', 'desc')
-        );
+        return query(invoicesRef, where('customerId', '==', user.uid));
     }, [user, currentRole, firestore]);
 
     const { data: orders, loading: ordersLoading } = useCollection<Order>(ordersQuery);
     const { data: workOrders, loading: workOrdersLoading } = useCollection<WorkOrder>(collection(firestore, 'workOrders'));
-    const { data: allSalesInvoices } = useCollection<SalesInvoice>(invoicesQuery);
+    const { data: allSalesInvoices, loading: invoicesLoading } = useCollection<SalesInvoice>(invoicesQuery);
     const { data: settingsData } = useDoc<any>(doc(firestore, 'company', 'settings'));
     const { data: pickupPoints } = useCollection<PickupPoint>(collection(firestore, 'pickupPoints'));
     const { data: allProducts, loading: productsLoading } = useCollection<Product>(collection(firestore, 'products'));
-
+    
     const getDynamicOrderStatus = (order: Order): OrderStatus => {
         if (order.status !== 'Ordered') {
             return order.status;
@@ -541,7 +533,7 @@ function OrdersPageContent() {
         router.push(`/dashboard/sales/create-order?id=${orderId}`);
     };
 
-    const loading = ordersLoading || workOrdersLoading || productsLoading;
+    const loading = ordersLoading || workOrdersLoading || productsLoading || invoicesLoading;
 
   return (
     <>
