@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -34,8 +35,8 @@ import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { useFirestore, useCollection } from '@/firebase';
-import { collection, doc, updateDoc, writeBatch, serverTimestamp, addDoc, increment } from 'firebase/firestore';
-import type { PayoutRequest, CoaLedger } from '@/lib/types';
+import { collection, doc, updateDoc, writeBatch, serverTimestamp, addDoc, increment, query, where, getDocs } from 'firebase/firestore';
+import type { PayoutRequest, CoaLedger, Order } from '@/lib/types';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 
@@ -107,6 +108,7 @@ export default function PayoutsPage() {
       };
       batch.set(jvRef, jvData);
 
+      // We only update the wallet balance. commissionPayable was already debited when the request was made.
       batch.update(partnerWalletRef, {
         commissionPayable: increment(-request.amount),
         walletBalance: increment(request.amount)
@@ -119,9 +121,17 @@ export default function PayoutsPage() {
         paymentAccountId: paymentAccountId
       });
 
+      // Find all delivered orders for this partner that are marked as 'Payable' and update them to 'Paid'.
+      const ordersRef = collection(firestore, 'orders');
+      const q = query(ordersRef, where('assignedToUid', '==', request.partnerId), where('payoutStatus', '==', 'Payable'));
+      const ordersToUpdateSnap = await getDocs(q);
+      ordersToUpdateSnap.forEach(orderDoc => {
+          batch.update(orderDoc.ref, { payoutStatus: 'Paid' });
+      });
+
       await batch.commit();
 
-      toast({ title: 'Payment Processed', description: 'Commission payout has been successfully recorded.' });
+      toast({ title: 'Payment Processed', description: 'Commission payout has been successfully recorded and relevant orders updated.' });
       setPaymentDialog({ isOpen: false, request: null });
     } catch (error: any) {
       console.error(error);
@@ -217,5 +227,3 @@ export default function PayoutsPage() {
     </>
   );
 }
-
-    

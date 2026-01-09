@@ -297,6 +297,7 @@ export interface Order {
   assignedToUid: string | null;
   paymentDetails?: string;
   commission?: number;
+  payoutStatus?: 'Awaiting Delivery' | 'Payable' | 'Paid';
   pickupPoint?: {
     name: string;
     type: 'Factory' | 'Partner';
@@ -1162,5 +1163,3 @@ export interface SupportCallbackRequest {
   createdAt: Timestamp;
   createdByUid: string;
 }
-
-    

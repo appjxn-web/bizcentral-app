@@ -69,6 +69,11 @@ export default function CommissionReportPage() {
         }
 
         const finalCommission = order.commission || calculatedCommission;
+        
+        let payoutStatus: Order['payoutStatus'] = 'Awaiting Delivery';
+        if (order.status === 'Delivered') {
+            payoutStatus = order.payoutStatus || 'Payable';
+        }
 
         return {
             orderId: order.orderNumber || order.id,
@@ -77,7 +82,7 @@ export default function CommissionReportPage() {
             orderTotal: order.grandTotal,
             commissionAmount: finalCommission,
             orderStatus: order.status,
-            payoutStatus: order.status === 'Delivered' ? 'Paid' : 'Awaiting Delivery'
+            payoutStatus: payoutStatus
         };
     });
   }, [orders, userProfile]);
@@ -214,7 +219,7 @@ export default function CommissionReportPage() {
                         <Badge variant="secondary">{item.orderStatus}</Badge>
                     </TableCell>
                     <TableCell>
-                      <Badge variant={item.payoutStatus === 'Paid' ? 'default' : 'outline'}>
+                      <Badge variant={item.payoutStatus === 'Paid' ? 'default' : (item.payoutStatus === 'Payable' ? 'outline' : 'secondary')}>
                         {item.payoutStatus}
                       </Badge>
                     </TableCell>
@@ -234,4 +239,3 @@ export default function CommissionReportPage() {
     </>
   );
 }
-
