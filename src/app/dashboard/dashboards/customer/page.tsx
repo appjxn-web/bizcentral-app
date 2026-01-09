@@ -33,6 +33,7 @@ import { Separator } from '@/components/ui/separator';
 import { useUser, useFirestore, useCollection, useDoc } from '@/firebase';
 import { collection, query, where, doc } from 'firebase/firestore';
 import type { Order, RegisteredProduct, ServiceRequest, Referral, UserProfile } from '@/lib/types';
+import { MakePaymentDialog } from './_components/make-payment-dialog';
 
 
 const formatCurrency = (amount: number) => {
@@ -56,6 +57,8 @@ export default function CustomerDashboardPage() {
   const { data: products } = useCollection<RegisteredProduct>(productsQuery);
   const { data: serviceRequests } = useCollection<ServiceRequest>(serviceRequestsQuery);
   const { data: referrals } = useCollection<Referral>(referralsQuery);
+  
+  const [isPaymentDialogOpen, setIsPaymentDialogOpen] = React.useState(false);
 
 
   const kpis = React.useMemo(() => {
@@ -264,7 +267,7 @@ export default function CustomerDashboardPage() {
                     <p className="text-sm text-red-800 dark:text-red-300">Outstanding Balance</p>
                     <p className="text-2xl font-bold text-red-600 dark:text-red-400">{formatCurrency(paymentKpis.outstandingBalance)}</p>
                 </div>
-                <Button size="sm">Make Payment</Button>
+                <Button size="sm" onClick={() => setIsPaymentDialogOpen(true)}>Make Payment</Button>
             </div>
             <div className="text-sm space-y-2">
                 <div className="flex justify-between">
@@ -343,6 +346,13 @@ export default function CustomerDashboardPage() {
             </CardContent>
         </Card>
       </div>
+      <MakePaymentDialog
+        open={isPaymentDialogOpen}
+        onOpenChange={setIsPaymentDialogOpen}
+        outstandingBalance={paymentKpis.outstandingBalance}
+        userProfile={userProfile}
+      />
     </>
   );
 }
+
