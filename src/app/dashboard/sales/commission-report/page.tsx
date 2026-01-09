@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -96,8 +97,8 @@ export default function CommissionReportPage() {
   }, [commissionData, referrals]);
 
   const handleRequestPayout = async () => {
-    if (!userProfile || !userProfile.commissionPayable || userProfile.commissionPayable <= 0) {
-      toast({ variant: 'destructive', title: 'No Commission Payable', description: 'You do not have any commission available for payout.' });
+    if (!userProfile || !userProfile.commissionPayable || userProfile.commissionPayable < 1000) {
+      toast({ variant: 'destructive', title: 'Payout Request Failed', description: `You need at least ₹1,000 in your payable balance to request a payout. Current balance: ${formatCurrency(userProfile?.commissionPayable || 0)}` });
       return;
     }
     setIsRequestingPayout(true);
@@ -165,7 +166,7 @@ export default function CommissionReportPage() {
                 <p className="text-xs text-muted-foreground">Commission ready for withdrawal.</p>
             </CardContent>
             <CardFooter>
-                 <Button className="w-full" size="sm" onClick={handleRequestPayout} disabled={isRequestingPayout || !userProfile?.commissionPayable || userProfile.commissionPayable <= 0}>
+                 <Button className="w-full" size="sm" onClick={handleRequestPayout} disabled={isRequestingPayout || !userProfile?.commissionPayable || userProfile.commissionPayable < 1000}>
                     {isRequestingPayout ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
                     Request Payout
                 </Button>
@@ -233,3 +234,4 @@ export default function CommissionReportPage() {
     </>
   );
 }
+

@@ -1,4 +1,5 @@
 
+
 'use server';
 import {
   onDocumentCreated,
@@ -426,10 +427,11 @@ export const handleOrderUpdates = onDocumentUpdated("orders/{orderId}", async (e
 
                 if (!referralSnap.empty) {
                     const referralDoc = referralSnap.docs[0];
-                    if (referralDoc.data().status === 'Signed Up') {
+                    if (referralDoc.data().status === 'Signed Up' || referralDoc.data().status === 'First Purchased') {
                          const firstPurchaseCommission = (referralDoc.data().commission / 100) * after.grandTotal;
                          transaction.update(referralDoc.ref, { status: 'First Purchased', commission: firstPurchaseCommission });
-                         transaction.set(referrerRef, { wallet: { commissionPayable: admin.firestore.FieldValue.increment(firstPurchaseCommission) }}, { merge: true });
+                         const referrerWalletRef = db.doc(`users/${userProfile.referredBy}/wallet/main`);
+                         transaction.set(referrerWalletRef, { commissionPayable: admin.firestore.FieldValue.increment(firstPurchaseCommission) }, { merge: true });
                     }
                 }
             }
@@ -526,6 +528,7 @@ export const onGoalUpdate = onDocumentCreated("goalUpdates/{updateId}", async ()
 
 
     
+
 
 
 
