@@ -56,10 +56,11 @@ const findOrCreateSpecificCustomerLedger = async (transaction: admin.firestore.T
         openingBalance: { amount: 0, drCr: 'DR', asOf: new Date().toISOString() }
     });
 
+    // Also create/update the party document to link it.
     transaction.set(partyRef, { 
+        id: userId,
         coaLedgerId: newLedgerRef.id, 
         name: customerName, 
-        id: userId, 
         type: 'Customer', 
         email: customerEmail 
     }, { merge: true });
@@ -466,3 +467,4 @@ export const onGoalUpdate = onDocumentCreated("goalUpdates/{updateId}", async ()
 
 
     
+
