@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -48,6 +47,14 @@ import type { BillOfMaterial, WorkOrder, IssuedItem, CoaLedger } from '@/lib/typ
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogHeader, DialogTitle, DialogDescription, DialogContent, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+} from '@/components/ui/dropdown-menu';
 
 
 interface StockTransferItem {
@@ -1042,3 +1049,4 @@ export default function OutwardsPage() {
   );
 }
 
+```
