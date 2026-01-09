@@ -178,9 +178,14 @@ service cloud.firestore {
     match /grns/{id} { allow read, write: if signedIn(); }
     match /workOrders/{id} { allow read, write: if signedIn(); }
     match /serviceRequests/{id} { allow read, write: if signedIn(); }
-    match /stockTransferRequests/{id} {
-        allow read: if signedIn() && (isAdmin() || isInventoryManager() || isPartner());
-        allow create: if signedIn() && (isAdmin() || isInventoryManager());
+    match /stockTransferRequests/{requestId} {
+        allow read: if signedIn() && (
+          isAdmin() || 
+          isInventoryManager() || 
+          resource.data.requestingUserId == request.auth.uid ||
+          resource.data.partnerId == request.auth.uid
+        );
+        allow create: if signedIn() && (isAdmin() || isInventoryManager() || isPartner());
         allow update: if isAdmin();
     }
     
