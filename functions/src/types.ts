@@ -33,6 +33,7 @@ export type OrderStatus =
   | "Manufacturing"
   | "Ready for Dispatch"
   | "Awaiting Payment"
+  | "Awaiting Payment Confirmation"
   | "Shipped"
   | "Delivered"
   | "Canceled"
