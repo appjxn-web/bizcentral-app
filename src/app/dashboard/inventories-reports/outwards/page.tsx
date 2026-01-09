@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -21,34 +20,30 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { format } from 'date-fns';
-import { Send, Package, ChevronRight, ChevronDown, Wrench, PackageSearch, Loader2, PlusCircle, Trash2, ChevronsUpDown, Check } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
-import type { WorkOrder, BillOfMaterial, Product, IssuedItem, User as UserType, CoaLedger, SparesRequest, BomItem, PurchaseOrder, Party, StockTransferRequest } from '@/lib/types';
-import { useFirestore, useCollection, useUser } from '@/firebase';
-import { collection, query, where, doc, updateDoc, writeBatch, serverTimestamp, addDoc, increment, getDoc, getDocs, orderBy } from 'firebase/firestore';
-import { cn } from '@/lib/utils';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { useToast } from '@/hooks/use-toast';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-  DialogClose,
-} from '@/components/ui/dialog';
-import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { errorEmitter } from '@/firebase/error-emitter';
-import { FirestorePermissionError } from '@/firebase/errors';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { useToast } from '@/hooks/use-toast';
+import { PlusCircle, Trash2, Check, ChevronsUpDown, Send, Package, Wrench, PackageSearch, Loader2, ChevronRight, ChevronDown } from 'lucide-react';
+import type { User, Product, SparesRequest, StockTransferRequest, UserProfile } from '@/lib/types';
+import { useFirestore, useCollection, useUser } from '@/firebase';
+import { collection, addDoc, serverTimestamp, query, where, orderBy } from 'firebase/firestore';
+import { cn } from '@/lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { useRole } from '../../_components/role-provider';
-
+import { format } from 'date-fns';
+import { Badge } from '@/components/ui/badge';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { writeBatch, doc } from 'firebase/firestore';
+import { getNextDocNumber } from '@/lib/number-series';
+import type { BillOfMaterial, WorkOrder, IssuedItem, CoaLedger } from '@/lib/types';
 
 interface StockTransferItem {
   id: string;
@@ -57,14 +52,13 @@ interface StockTransferItem {
   quantity: number;
 }
 
-
 interface IssueDialogProps {
   request: WorkOrder | SparesRequest | null;
   bomItems: (BomItem & { availableStock: number; alreadyIssued: number })[] | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onIssue: (request: WorkOrder | SparesRequest, issuedItems: {productId: string; productName: string; issuedQty: number; rate: number}[], employeeId: string) => void;
-  users: UserType[];
+  users: User[];
 }
 
 function IssueMaterialsDialog({ request, bomItems, open, onOpenChange, onIssue, users }: IssueDialogProps) {
@@ -134,7 +128,7 @@ function IssueMaterialsDialog({ request, bomItems, open, onOpenChange, onIssue, 
   const uniqueAssignees = React.useMemo(() => {
     if (!allRequestItems || isAdvanceRequest) return [];
     const assigneeIds = new Set(allRequestItems.map(item => item.assigneeId).filter(Boolean));
-    return Array.from(assigneeIds).map(id => users.find(u => u.id === id)).filter(Boolean) as UserType[];
+    return Array.from(assigneeIds).map(id => users.find(u => u.id === id)).filter(Boolean) as User[];
   }, [allRequestItems, isAdvanceRequest, users]);
 
   const filteredItemsToDisplay = React.useMemo(() => {
@@ -432,6 +426,7 @@ function StockTransferTab() {
   const { user } = useUser();
   const { data: partners } = useCollection<Party>(query(collection(firestore, 'parties'), where('type', '==', 'Partner')));
   const { data: products } = useCollection<Product>(collection(firestore, 'products'));
+  const [openRequestId, setOpenRequestId] = React.useState<string | null>(null);
 
   const [selectedPartnerId, setSelectedPartnerId] = React.useState<string | null>(null);
   const [items, setItems] = React.useState<StockTransferItem[]>([{ id: `item-${Date.now()}`, productId: '', productName: '', quantity: 1 }]);
@@ -485,7 +480,6 @@ function StockTransferTab() {
         await addDoc(collection(firestore, 'stockTransferRequests'), requestData);
         toast({ title: 'Request Submitted', description: 'Stock transfer request has been sent for approval.' });
         
-        // Reset form
         setSelectedPartnerId(null);
         setItems([{ id: `item-${Date.now()}`, productId: '', productName: '', quantity: 1 }]);
         setNotes('');
@@ -581,6 +575,7 @@ function StockTransferTab() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-12"></TableHead>
                   <TableHead>Request Date</TableHead>
                   <TableHead>Requesting User</TableHead>
                   <TableHead>Recipient</TableHead>
@@ -588,31 +583,60 @@ function StockTransferTab() {
                   <TableHead>Status</TableHead>
                 </TableRow>
               </TableHeader>
-              <TableBody>
-                {requestsLoading ? (
-                  <TableRow><TableCell colSpan={5} className="h-24 text-center">Loading requests...</TableCell></TableRow>
-                ) : userRequests && userRequests.length > 0 ? (
-                  userRequests.map(req => (
-                    <TableRow key={req.id}>
-                      <TableCell>{req.createdAt ? format(req.createdAt.toDate(), 'dd/MM/yyyy') : 'Pending'}</TableCell>
-                      <TableCell>{req.requestingUserName}</TableCell>
-                      <TableCell>{req.partnerName}</TableCell>
-                      <TableCell>{req.items.length}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className={cn(getStatusBadgeVariant(req.status))}>
-                          {req.status}
-                        </Badge>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                ) : (
-                  <TableRow>
-                    <TableCell colSpan={5} className="text-center h-24 text-muted-foreground">
-                      No requests have been made yet.
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
+              {requestsLoading ? (
+                <TableBody><TableRow><TableCell colSpan={6} className="h-24 text-center">Loading requests...</TableCell></TableRow></TableBody>
+              ) : userRequests && userRequests.length > 0 ? (
+                userRequests.map(req => (
+                    <Collapsible asChild key={req.id} open={openRequestId === req.id} onOpenChange={(isOpen) => setOpenRequestId(isOpen ? req.id : null)}>
+                        <TableBody>
+                        <TableRow>
+                            <TableCell>
+                            <CollapsibleTrigger asChild>
+                                <Button variant="ghost" size="icon" className="h-8 w-8">
+                                    <ChevronRight className={cn("h-4 w-4 transition-transform", openRequestId === req.id && "rotate-90")} />
+                                </Button>
+                            </CollapsibleTrigger>
+                            </TableCell>
+                            <TableCell>{req.createdAt ? format(req.createdAt.toDate(), 'dd/MM/yyyy') : 'Pending'}</TableCell>
+                            <TableCell>{req.requestingUserName}</TableCell>
+                            <TableCell>{req.partnerName}</TableCell>
+                            <TableCell>{req.items.length}</TableCell>
+                            <TableCell>
+                            <Badge variant="outline" className={cn(getStatusBadgeVariant(req.status))}>
+                                {req.status}
+                            </Badge>
+                            </TableCell>
+                        </TableRow>
+                        <CollapsibleContent asChild>
+                            <TableRow>
+                                <TableCell colSpan={6} className="p-0">
+                                    <div className="p-4 bg-muted/50">
+                                        <h4 className="font-semibold text-sm mb-2">Requested Items:</h4>
+                                        <Table>
+                                        <TableHeader><TableRow><TableHead>Product</TableHead><TableHead className="text-right">Quantity</TableHead></TableRow></TableHeader>
+                                        <TableBody>
+                                            {req.items.map(item => (
+                                            <TableRow key={item.productId}>
+                                                <TableCell>{item.productName}</TableCell>
+                                                <TableCell className="text-right font-mono">{item.quantity}</TableCell>
+                                            </TableRow>
+                                            ))}
+                                        </TableBody>
+                                        </Table>
+                                    </div>
+                                </TableCell>
+                            </TableRow>
+                        </CollapsibleContent>
+                        </TableBody>
+                    </Collapsible>
+                ))
+              ) : (
+                <TableBody><TableRow>
+                  <TableCell colSpan={6} className="text-center h-24 text-muted-foreground">
+                    No requests have been made yet.
+                  </TableCell>
+                </TableRow></TableBody>
+              )}
             </Table>
           </CardContent>
         </Card>
@@ -702,7 +726,6 @@ export default function OutwardsPage() {
             });
         }
         
-        // --- Inventory & Accounting Logic ---
         const wipLedger = coaLedgers.find(l => l.name.includes('Work-in-Progress'));
         if (!wipLedger) throw new Error("WIP ledger not found.");
         
@@ -743,7 +766,6 @@ export default function OutwardsPage() {
         const jvRef = doc(collection(firestore, 'journalVouchers'));
         batch.set(jvRef, jvData);
         
-        // --- Notification Logic ---
         const notificationRef = doc(collection(firestore, 'users', employeeId, 'notifications'));
         batch.set(notificationRef, {
             type: 'info',
@@ -912,3 +934,4 @@ export default function OutwardsPage() {
     </>
   );
 }
+
