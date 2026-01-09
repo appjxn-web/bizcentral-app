@@ -83,16 +83,21 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 
-function getStatusBadgeVariant(status: Order['status'] | 'Refund Pending' | 'Refund Complete') {
+function getStatusBadgeVariant(status: Order['status'] | 'Refund Pending' | 'Refund Complete' | SalesInvoice['status']) {
   const variants: Record<string, string> = {
     Delivered: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300',
     'Refund Complete': 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300',
+    Paid: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300',
     Shipped: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300',
+    'Invoice Sent': 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300',
     Ordered: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300',
     'Refund Pending': 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300',
+    'Work Complete': 'bg-yellow-100 text-yellow-800',
     Manufacturing: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300',
     'Ready for Dispatch': 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-300',
     'Awaiting Payment': 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300',
+    Unpaid: 'bg-orange-100 text-orange-800',
+    Overdue: 'bg-red-100 text-red-800',
     Canceled: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300',
     'Cancellation Requested': 'bg-rose-100 text-rose-800 dark:bg-rose-900/50 dark:text-rose-300'
   };
@@ -407,7 +412,7 @@ function OrdersPageContent() {
     const { toast } = useToast();
     const { user } = useUser();
     const { currentRole } = useRole();
-
+    
     const ordersQuery = React.useMemo(() => {
         if (!user || !currentRole) return null;
         const ordersRef = collection(firestore, 'orders');
@@ -430,10 +435,25 @@ function OrdersPageContent() {
             orderBy('date', 'desc')
         );
     }, [user, currentRole, firestore]);
+
+    const invoicesQuery = React.useMemo(() => {
+        if (!user || !currentRole) return null;
+        const invoicesRef = collection(firestore, 'salesInvoices');
     
+        if (['Admin', 'CEO', 'Accounts Manager'].includes(currentRole)) {
+            return query(invoicesRef);
+        }
+    
+        if (['Partner', 'Franchisee', 'Sales Agent', 'Dealer'].includes(currentRole)) {
+            return query(invoicesRef, where('assignedToUid', '==', user.uid));
+        }
+    
+        return query(invoicesRef, where('customerId', '==', user.uid));
+    }, [user, currentRole, firestore]);
+
     const { data: orders, loading: ordersLoading } = useCollection<Order>(ordersQuery);
     const { data: workOrders, loading: workOrdersLoading } = useCollection<WorkOrder>(collection(firestore, 'workOrders'));
-    const { data: allSalesInvoices } = useCollection<SalesInvoice>(collection(firestore, 'salesInvoices'));
+    const { data: allSalesInvoices } = useCollection<SalesInvoice>(invoicesQuery);
     const { data: settingsData } = useDoc<any>(doc(firestore, 'company', 'settings'));
     const { data: pickupPoints } = useCollection<PickupPoint>(collection(firestore, 'pickupPoints'));
     const { data: allProducts, loading: productsLoading } = useCollection<Product>(collection(firestore, 'products'));
@@ -481,6 +501,7 @@ function OrdersPageContent() {
             ...order,
             customerId: order.userId,
             overallDiscount: (order.discount / order.subtotal) * 100 || 0,
+            assignedToUid: order.assignedToUid,
         };
         localStorage.setItem('invoiceDataToCreate', JSON.stringify(dataToPass));
         router.push('/dashboard/finance-accounting/invoice/create');
