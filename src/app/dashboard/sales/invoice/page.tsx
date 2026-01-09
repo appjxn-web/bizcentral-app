@@ -5,6 +5,7 @@
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
+import Link from 'next/link';
 import {
   MoreHorizontal,
   PlusCircle,
@@ -24,17 +25,12 @@ import {
   Receipt,
   Eye,
   Edit,
-  CircleDollarSign,
-  Send,
-  Printer,
 } from 'lucide-react';
-import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
 
 import { PageHeader } from '@/components/page-header';
 import { cn } from '@/lib/utils';
-import type { Order, OrderStatus, UserProfile, UserRole, WorkOrder, PickupPoint, SalesOrder, RefundRequest, Product, SalesInvoice, SalesInvoiceItem, Party, CompanyInfo } from '@/lib/types';
-import { Button, buttonVariants } from '@/components/ui/button';
+import type { Order, OrderStatus, UserProfile, UserRole, WorkOrder, PickupPoint, SalesOrder, RefundRequest, SalesInvoice, SalesInvoiceItem, Party, CompanyInfo } from '@/lib/types';
+import { Button } from '@/components/ui/button';
 import {
   Card,
   CardContent,
@@ -69,7 +65,7 @@ import {
 import Image from 'next/image';
 import { Separator } from '@/components/ui/separator';
 import { useFirestore, useCollection, useUser, useDoc } from '@/firebase';
-import { collection, query, orderBy, doc, where, or, updateDoc, writeBatch, limit, getDocs, getDoc } from 'firebase/firestore';
+import { collection, query, orderBy, doc, where, or, updateDoc, writeBatch, limit, getDocs } from 'firebase/firestore';
 import { OrderStatusTracker } from '../../my-orders/_components/order-status';
 import {
   Dialog,
@@ -454,27 +450,23 @@ function InvoicePageContent() {
             return query(invoicesRef);
         }
     
+        // For Partners, they should see invoices where they are assigned.
         if (['Partner', 'Franchisee', 'Sales Agent', 'Dealer'].includes(currentRole)) {
             return query(invoicesRef, where('assignedToUid', '==', user.uid));
         }
     
+        // For Customers, they see invoices where they are the customer.
         return query(invoicesRef, where('customerId', '==', user.uid));
     }, [user, currentRole, firestore]);
+
 
     const { data: orders, loading: ordersLoading } = useCollection<Order>(ordersQuery);
     const { data: workOrders, loading: workOrdersLoading } = useCollection<WorkOrder>(collection(firestore, 'workOrders'));
     const { data: allSalesInvoices, loading: invoicesLoading } = useCollection<SalesInvoice>(invoicesQuery);
     const { data: settingsData } = useDoc<any>(doc(firestore, 'company', 'settings'));
     const { data: pickupPoints } = useCollection<PickupPoint>(collection(firestore, 'pickupPoints'));
-    const { data: allProducts, loading: productsLoading } = useCollection<Product>(collection(firestore, 'products'));
-    const { data: parties, loading: partiesLoading } = useCollection<Party>(collection(firestore, 'parties'));
-    const { data: companyInfo, loading: companyInfoLoading } = useDoc<CompanyInfo>(doc(firestore, 'company', 'info'));
+    const { data: allProducts, loading: productsLoading } = useCollection<any>(collection(firestore, 'products'));
     
-    const [isDeliveryNoteOpen, setIsDeliveryNoteOpen] = React.useState(false);
-    const [selectedInvoiceForDelivery, setSelectedInvoiceForDelivery] = React.useState<SalesInvoice | null>(null);
-    const [isGatePassDialogOpen, setIsGatePassDialogOpen] = React.useState(false);
-    const [gatePassData, setGatePassData] = React.useState<any>(null);
-
     const getDynamicOrderStatus = (order: Order): OrderStatus => {
         if (order.status !== 'Ordered') {
             return order.status;
@@ -521,7 +513,7 @@ function InvoicePageContent() {
             assignedToUid: order.assignedToUid,
         };
         localStorage.setItem('invoiceDataToCreate', JSON.stringify(dataToPass));
-        router.push('/dashboard/finance-accounting/invoice/create');
+        router.push('/dashboard/sales/create-invoice');
     };
     
     const handleUpdateStatus = async (orderId: string, status: OrderStatus) => {
@@ -548,49 +540,6 @@ function InvoicePageContent() {
       toast({ title: "Status Updated", description: `Invoice marked as ${status}.`});
     }
     
-    const handleOpenDeliveryNoteDialog = (invoice: SalesInvoice) => {
-        setSelectedInvoiceForDelivery(invoice);
-        setIsDeliveryNoteOpen(true);
-    };
-
-    const handleConfirmDeliveryNote = async (deliveryDetails: any) => {
-      if (!selectedInvoiceForDelivery || !firestore) return;
-    
-      const orderQuery = query(
-          collection(firestore, 'orders'),
-          where('orderNumber', '==', selectedInvoiceForDelivery.orderNumber),
-          limit(1)
-      );
-
-      const orderSnapshot = await getDocs(orderQuery);
-
-      if (orderSnapshot.empty) {
-          toast({ variant: "destructive", title: "Error", description: `Could not find original sales order ${selectedInvoiceForDelivery.orderNumber}` });
-          return;
-      }
-      
-      const orderToUpdateRef = orderSnapshot.docs[0].ref;
-
-      const batch = writeBatch(firestore);
-      const invoiceRef = doc(firestore, 'salesInvoices', selectedInvoiceForDelivery.id);
-      
-      batch.update(invoiceRef, { deliveryDetails });
-      batch.update(orderToUpdateRef, { status: 'Shipped' });
-      
-      await batch.commit();
-      
-      toast({
-          title: "Order Shipped!",
-          description: "Delivery details saved and order status updated."
-      });
-      
-      const updatedInvoiceData = { ...selectedInvoiceForDelivery, deliveryDetails };
-      
-      setGatePassData(updatedInvoiceData);
-      setIsDeliveryNoteOpen(false);
-      setIsGatePassDialogOpen(true);
-    };
-
     const onViewInvoice = (invoiceId: string) => {
         router.push(`/dashboard/sales/invoice/view?id=${invoiceId}`);
     };
@@ -600,15 +549,15 @@ function InvoicePageContent() {
     };
 
     const handleEditInvoice = (invoiceId: string) => {
-        router.push(`/dashboard/finance-accounting/invoice/create?id=${invoiceId}`);
+        router.push(`/dashboard/sales/create-invoice?id=${invoiceId}`);
     };
 
-    const loading = ordersLoading || workOrdersLoading || productsLoading || invoicesLoading || partiesLoading;
+    const loading = ordersLoading || workOrdersLoading || productsLoading || invoicesLoading;
 
   return (
     <>
       <PageHeader title="Invoices">
-         <Button onClick={() => router.push('/dashboard/finance-accounting/invoice/create')}>
+         <Button onClick={() => router.push('/dashboard/sales/create-invoice')}>
             <PlusCircle className="mr-2 h-4 w-4" />
             Create New Invoice
         </Button>
@@ -732,15 +681,6 @@ function InvoicePageContent() {
                                      <DropdownMenuItem onClick={() => handleEditInvoice(invoice.invoiceNumber)}>
                                         <Edit className="mr-2 h-4 w-4"/> Edit
                                     </DropdownMenuItem>
-                                    {invoice.deliveryDetails ? (
-                                        <DropdownMenuItem onClick={() => setGatePassData(invoice)}>
-                                            <Eye className="mr-2 h-4 w-4" /> View Gate Pass
-                                        </DropdownMenuItem>
-                                    ) : (
-                                        <DropdownMenuItem onClick={() => handleOpenDeliveryNoteDialog(invoice)}>
-                                          <Truck className="mr-2 h-4 w-4" /> Delivery Note
-                                        </DropdownMenuItem>
-                                    )}
                                     {invoice.status !== 'Paid' && (
                                         <DropdownMenuItem onClick={() => handleInvoicePaymentStatus(invoice.invoiceNumber, 'Paid')}>
                                             <CheckCircle className="mr-2 h-4 w-4"/> Mark as Paid
@@ -775,3 +715,4 @@ export default function InvoicePageWrapper() {
 
     return <InvoicePageContent />;
 }
+
