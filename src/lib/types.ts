@@ -87,21 +87,21 @@ export interface Offer {
 };
 
 export interface StockTransferRequest {
-    id: string;
-    requestingUserId: string;
-    requestingUserName: string;
-    partnerId: string;
-    partnerName: string;
-    items: {
-        productId: string;
-        productName: string;
-        quantity: number;
-    }[];
-    status: 'Pending Approval' | 'Approved' | 'Rejected' | 'Shipped';
-    createdAt: Timestamp;
-    approvedAt?: Timestamp;
-    shippedAt?: Timestamp;
-    notes?: string;
+  id: string;
+  requestingUserId: string;
+  requestingUserName: string;
+  partnerId: string;
+  partnerName: string;
+  items: {
+      productId: string;
+      productName: string;
+      quantity: number;
+  }[];
+  status: 'Pending Approval' | 'Approved' | 'Rejected' | 'Shipped';
+  createdAt: Timestamp;
+  approvedAt?: Timestamp;
+  shippedAt?: Timestamp;
+  notes?: string;
 }
 
 
@@ -589,7 +589,7 @@ export interface WorkOrder {
   salesOrderNumber?: string;
 }
 
-export type PurchaseRequestStatus = 'Pending' | 'Approved' | 'Rejected' | 'Ordered' | 'Completed';
+export type RequestStatus = 'Pending' | 'Approved' | 'Rejected' | 'Ordered' | 'Completed';
 
 export interface PurchaseOrderItem {
   productId: string;
@@ -626,7 +626,7 @@ export interface PurchaseRequest {
   rate: number;
   requestDate: string;
   requestedBy: string;
-  status: PurchaseRequestStatus;
+  status: RequestStatus;
   supplierId?: string;
   supplierName?: string;
   subtotal?: number;
@@ -1182,3 +1182,5 @@ export interface SupportCallbackRequest {
   createdAt: Timestamp;
   createdByUid: string;
 }
+
+```

@@ -19,6 +19,7 @@ import {
   ThumbsDown,
   Ban,
   Wallet,
+  ArrowRightLeft,
 } from 'lucide-react';
 import { PageHeader } from '@/components/page-header';
 import {
@@ -60,7 +61,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog';
-import type { PurchaseRequest, ReimbursementRequest, PostRequest, Order, CoaLedger, OrderStatus, SalesOrder, RefundRequest, SalaryAdvanceRequest } from '@/lib/types';
+import type { PurchaseRequest, ReimbursementRequest, PostRequest, Order, CoaLedger, OrderStatus, SalesOrder, RefundRequest, SalaryAdvanceRequest, StockTransferRequest } from '@/lib/types';
 
 
 type PurchaseRequestStatus = 'Pending' | 'Approved' | 'Rejected' | 'Ordered';
@@ -84,6 +85,7 @@ function getStatusBadgeVariant(status: string) {
     case 'Ordered':
     case 'Paid':
     case 'Completed':
+    case 'Shipped':
       return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300';
     default:
       return 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300';
@@ -115,6 +117,7 @@ export default function ApprovalsPage() {
   const { data: purchaseRequests } = useCollection<PurchaseRequest>(collection(firestore, 'purchaseRequests'));
   const { data: reimbursementRequests } = useCollection<ReimbursementRequest>(collection(firestore, 'reimbursementRequests'));
   const { data: salaryAdvanceRequests } = useCollection<SalaryAdvanceRequest>(collection(firestore, 'salaryAdvanceRequests'));
+  const { data: stockTransferRequests } = useCollection<StockTransferRequest>(collection(firestore, 'stockTransferRequests'));
   
   const postsQuery = query(collection(firestore, 'posts'), orderBy('submittedAt', 'desc'));
   const { data: postRequests } = useCollection<PostRequest>(postsQuery);
@@ -129,6 +132,7 @@ export default function ApprovalsPage() {
   const pendingSalaryAdvanceCount = salaryAdvanceRequests?.filter(r => r.status === 'Pending Approval').length || 0;
   const pendingPostCount = postRequests?.filter(p => p.status === 'Pending').length || 0;
   const pendingCancellationCount = cancellationRequests?.length || 0;
+  const pendingStockTransferCount = stockTransferRequests?.filter(r => r.status === 'Pending Approval').length || 0;
 
   const kpis = React.useMemo(() => {
     const pendingPurchaseValue = (purchaseRequests || [])
@@ -140,11 +144,11 @@ export default function ApprovalsPage() {
       .reduce((sum, r) => sum + r.requestAmount, 0);
     
     return {
-      totalPending: pendingPurchaseCount + pendingReimbursementCount + pendingPostCount + pendingCancellationCount + pendingSalaryAdvanceCount,
+      totalPending: pendingPurchaseCount + pendingReimbursementCount + pendingPostCount + pendingCancellationCount + pendingSalaryAdvanceCount + pendingStockTransferCount,
       pendingPurchaseValue,
       pendingReimbursementValue,
     };
-  }, [purchaseRequests, reimbursementRequests, salaryAdvanceRequests, postRequests, cancellationRequests, pendingPurchaseCount, pendingReimbursementCount, pendingSalaryAdvanceCount, pendingPostCount, pendingCancellationCount]);
+  }, [purchaseRequests, reimbursementRequests, salaryAdvanceRequests, postRequests, cancellationRequests, stockTransferRequests, pendingPurchaseCount, pendingReimbursementCount, pendingSalaryAdvanceCount, pendingPostCount, pendingCancellationCount, pendingStockTransferCount]);
 
 
   const handlePurchaseUpdate = async (requestId: string, status: PurchaseRequestStatus) => {
@@ -165,6 +169,16 @@ export default function ApprovalsPage() {
     toast({ title: 'Salary Advance Updated', description: `Request has been ${status}.` });
   };
   
+  const handleStockTransferUpdate = async (requestId: string, newStatus: 'Approved' | 'Rejected') => {
+    const requestRef = doc(firestore, 'stockTransferRequests', requestId);
+    const updateData: { status: 'Approved' | 'Rejected', approvedAt?: any } = { status: newStatus };
+    if (newStatus === 'Approved') {
+        updateData.approvedAt = serverTimestamp();
+    }
+    await updateDoc(requestRef, updateData);
+    toast({ title: 'Stock Transfer Request Updated', description: `Request has been ${newStatus}.` });
+  };
+
   const handlePostUpdate = async (postId: string, status: PostStatus) => {
     const postRef = doc(firestore, 'posts', postId);
     try {
@@ -263,7 +277,7 @@ export default function ApprovalsPage() {
       </div>
 
       <Tabs defaultValue="posts">
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="grid w-full grid-cols-6">
            <TabsTrigger value="posts">
             Posts
             {pendingPostCount > 0 && <Badge className="ml-2">{pendingPostCount}</Badge>}
@@ -271,6 +285,10 @@ export default function ApprovalsPage() {
            <TabsTrigger value="order-cancellations">
             Order Cancellations
             {pendingCancellationCount > 0 && <Badge className="ml-2">{pendingCancellationCount}</Badge>}
+          </TabsTrigger>
+          <TabsTrigger value="stock-transfers">
+            Stock Transfers
+            {pendingStockTransferCount > 0 && <Badge className="ml-2">{pendingStockTransferCount}</Badge>}
           </TabsTrigger>
           <TabsTrigger value="purchase-requests">
             Purchase Requests
@@ -409,6 +427,55 @@ export default function ApprovalsPage() {
                                 <CheckCircle className="mr-2 h-4 w-4" /> Approve Cancellation
                             </Button>
                         </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+        <TabsContent value="stock-transfers">
+          <Card>
+            <CardHeader>
+              <CardTitle>Stock Transfer Requests</CardTitle>
+              <CardDescription>Review and approve stock transfer requests from partners.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Requesting Partner</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Items</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {stockTransferRequests?.map(req => (
+                    <TableRow key={req.id}>
+                      <TableCell>{req.partnerName}</TableCell>
+                      <TableCell>{req.createdAt ? format(new Date(req.createdAt.toDate()), 'dd/MM/yyyy') : 'N/A'}</TableCell>
+                      <TableCell>{req.items.length}</TableCell>
+                      <TableCell><Badge variant="outline" className={cn(getStatusBadgeVariant(req.status))}>{req.status}</Badge></TableCell>
+                      <TableCell className="text-right">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button size="icon" variant="ghost" disabled={req.status !== 'Pending Approval'}>
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                            <DropdownMenuItem onClick={() => handleStockTransferUpdate(req.id, 'Approved')}>
+                              <CheckCircle className="mr-2 h-4 w-4" /> Approve
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleStockTransferUpdate(req.id, 'Rejected')} className="text-red-500">
+                              <XCircle className="mr-2 h-4 w-4" /> Reject
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -581,3 +648,4 @@ export default function ApprovalsPage() {
     </>
   );
 }
+
