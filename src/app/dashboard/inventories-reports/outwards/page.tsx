@@ -30,7 +30,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { PlusCircle, Trash2, Check, ChevronsUpDown, Send, Package, Wrench, PackageSearch, Loader2, ChevronRight, ChevronDown, MoreHorizontal, Eye } from 'lucide-react';
+import { PlusCircle, Trash2, Check, ChevronsUpDown, Send, Package, Wrench, PackageSearch, Loader2, ChevronRight, ChevronDown, MoreHorizontal, Eye, Edit } from 'lucide-react';
 import type { User, Product, SparesRequest, StockTransferRequest, UserProfile } from '@/lib/types';
 import { useFirestore, useCollection, useUser, useDoc } from '@/firebase';
 import { collection, addDoc, serverTimestamp, query, where, orderBy, getDoc } from 'firebase/firestore';
@@ -1048,5 +1048,3 @@ export default function OutwardsPage() {
     </>
   );
 }
-
-```
