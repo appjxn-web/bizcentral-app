@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -95,9 +96,13 @@ export default function SalesOrderViewPage() {
     const { data: orderData, loading: orderLoading } = useDoc<SalesOrder>(orderRef);
 
     const { data: companyInfo, loading: companyInfoLoading } = useDoc<CompanyInfo>(doc(firestore, 'company', 'info'));
-
+    
     const { data: customerData, loading: customerLoading } = useDoc<Party>(
         orderData?.userId ? doc(firestore, 'parties', orderData.userId) : null
+    );
+    
+    const { data: creatorData, loading: creatorLoading } = useDoc<UserProfile>(
+        (orderData as any)?.createdByUid ? doc(firestore, 'users', (orderData as any).createdByUid) : null
     );
 
     const bankLedgerQuery = React.useMemo(() => {
@@ -144,7 +149,7 @@ export default function SalesOrderViewPage() {
         setIsDownloading(false);
     };
 
-    const isLoading = orderLoading || companyInfoLoading || customerLoading || bankLedgerLoading;
+    const isLoading = orderLoading || companyInfoLoading || customerLoading || bankLedgerLoading || creatorLoading;
 
     if (isLoading) {
         return (
@@ -162,6 +167,7 @@ export default function SalesOrderViewPage() {
     
     const { grandTotal, subtotal, discount, cgst, sgst, igst, items } = orderData;
     const taxableAmount = subtotal - discount;
+    const creatorName = creatorData?.businessName || creatorData?.name || 'Authorized Signatory';
 
     return (
         <>
@@ -328,10 +334,10 @@ export default function SalesOrderViewPage() {
                                 </div>
                             </div>
                             <div className="text-right">
-                                <p className="font-semibold mb-16">For, {orderData.createdBy || companyInfo?.companyName}</p>
+                                <p className="font-semibold text-sm mb-16">For, {orderData.createdBy || companyInfo?.companyName}</p>
                                 <div className="h-16 w-32"></div>
                                 <Separator className="w-full max-w-[200px] ml-auto"/>
-                                <p className="text-xs pt-1">Authorized Signatory</p>
+                                <p className="text-xs pt-1">Authorized Signatory ({creatorName})</p>
                             </div>
                         </footer>
                     </div>

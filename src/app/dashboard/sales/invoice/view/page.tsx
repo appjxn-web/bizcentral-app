@@ -24,7 +24,7 @@ import {
 import { Download, Loader2, ArrowLeft } from 'lucide-react';
 import { format } from 'date-fns';
 import { QRCodeSVG } from 'qrcode.react';
-import type { SalesInvoice, CompanyInfo, Party, CoaLedger, Address, Order, Offer } from '@/lib/types';
+import type { SalesInvoice, CompanyInfo, Party, CoaLedger, Address, Order, Offer, UserProfile } from '@/lib/types';
 import { useFirestore, useDoc, useCollection } from '@/firebase';
 import { collection, doc, query, where, limit } from 'firebase/firestore';
 
@@ -110,7 +110,11 @@ export default function InvoiceViewPage() {
     const { data: customerData, loading: customerLoading } = useDoc<Party>(
         invoiceData?.customerId ? doc(firestore, 'parties', invoiceData.customerId) : null
     );
-    
+
+    const { data: creatorData, loading: creatorLoading } = useDoc<UserProfile>(
+        (invoiceData as any)?.createdByUid ? doc(firestore, 'users', (invoiceData as any).createdByUid) : null
+    );
+
     const bankLedgerQuery = React.useMemo(() => {
         if (!companyInfo?.primaryUpiId || !firestore) return null;
         return query(
@@ -180,7 +184,7 @@ export default function InvoiceViewPage() {
         setIsDownloading(false);
     };
 
-    const isLoading = invoiceLoading || companyInfoLoading || customerLoading || bankLedgerLoading || orderLoading;
+    const isLoading = invoiceLoading || companyInfoLoading || customerLoading || bankLedgerLoading || orderLoading || creatorLoading;
 
     if (isLoading) {
         return (
@@ -203,6 +207,7 @@ export default function InvoiceViewPage() {
     }
 
     const { grandTotal, subtotal, discount, cgst, sgst, igst, items, totalDiscountAmount, taxableAmount } = calculations;
+    const creatorName = creatorData?.businessName || creatorData?.name || 'Authorized Signatory';
 
     return (
         <>
@@ -246,7 +251,7 @@ export default function InvoiceViewPage() {
                         </header>
         
                         <section className="my-6">
-                            <h2 className="text-right text-lg font-bold mb-4 underline">TAX INVOICE</h2>
+                             <h2 className="text-right text-lg font-bold mb-4 underline">TAX INVOICE</h2>
                             <div className="flex flex-col md:flex-row justify-between gap-4">
                                 <div>
                                     <h3 className="font-semibold text-sm">Billed To:</h3>
@@ -366,7 +371,7 @@ export default function InvoiceViewPage() {
                                 <p className="font-semibold text-sm mb-16">For, {companyInfo?.companyName}</p>
                                 <div className="h-16 w-32"></div>
                                 <Separator className="w-full max-w-[200px] ml-auto"/>
-                                <p className="text-xs pt-1">Authorized Signatory</p>
+                                <p className="text-xs pt-1">Authorized Signatory ({creatorName})</p>
                             </div>
                         </footer>
                     </div>
@@ -375,4 +380,3 @@ export default function InvoiceViewPage() {
         </>
       );
 }
-
