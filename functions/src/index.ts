@@ -11,7 +11,7 @@ import {
 } from "firebase-functions/v2/firestore";
 import * as admin from "firebase-admin";
 import {getFirestore, FieldValue} from "firebase-admin/firestore";
-import type {Order, SalesInvoice, Party, Goal, UserProfile, CreditNote, DebitNote, RefundRequest, Product, StockTransferRequest} from "./types";
+import type {Order, SalesInvoice, Party, Goal, UserProfile, CreditNote, DebitNote, RefundRequest, Product, StockTransferRequest, DocPrefixConfig} from "./types";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { getNextDocNumber } from "./number-series";
 
@@ -270,7 +270,7 @@ export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}", a
                 let commissionTotal = invoice.items.reduce((acc, item) => {
                     const rule = partnerData.partnerMatrix?.find(r => r.category === item.category);
                     if (rule) {
-                        const itemTotal = item.rate * item.quantity;
+                        const itemTotal = item.price * item.quantity;
                         const discountAmount = itemTotal * ((invoice.discount / invoice.subtotal) || 0);
                         const commissionableValue = itemTotal - discountAmount;
                         return acc + (commissionableValue * (rule.commissionRate / 100));
@@ -673,3 +673,6 @@ export const onGoalUpdate = onDocumentCreated("goalUpdates/{updateId}", async ()
   
 
 
+
+
+    
