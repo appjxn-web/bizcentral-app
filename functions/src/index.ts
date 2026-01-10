@@ -190,15 +190,15 @@ export const handleOrderCreation = onDocumentCreated("orders/{orderId}", async (
 export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}", async (event) => {
     const snap = event.data;
     if (!snap) return;
-    const invoice = snap.data() as SalesInvoice;
+    const invoice = snap.data() as SalesInvoice & { assignedToUid?: string };
 
     try {
       await db.runTransaction(async (transaction) => {
         const customerLedgerId = await findOrCreateSpecificCustomerLedger(transaction, invoice);
         
         const getLedgerIdByName = async (name: string): Promise<string | null> => {
-            const query = db.collection('coa_ledgers').where('name', '==', name).limit(1).get();
-            const res = await query;
+            const query = db.collection('coa_ledgers').where('name', '==', name).limit(1);
+            const res = await transaction.get(query);
             return res.empty ? null : res.docs[0].id;
         };
 
@@ -209,7 +209,6 @@ export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}", a
           { accountId: salesLedgerId, credit: invoice.taxableAmount, debit: 0 },
         ];
 
-        // Handle GST
         if(invoice.igst && invoice.igst > 0) {
             salesEntries.push({ accountId: "L-2.1.2-3", credit: invoice.igst, debit: 0 });
         } else {
@@ -225,19 +224,16 @@ export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}", a
           entries: salesEntries,
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
           voucherType: "Sales Voucher",
-          createdByUid: (invoice as any).assignedToUid || invoice.customerId,
+          createdByUid: invoice.assignedToUid || invoice.customerId,
         });
 
-        // --- COGS Entry & Stock Deduction ---
         let totalCost = 0;
-        const cogsEntries = [];
         const cogsLedgerId = await getLedgerIdByName("COST OF GOODS SOLD (COGS)");
         const finishedGoodsLedgerId = await getLedgerIdByName("Stock-in-Hand – Finished Goods");
-        const partnerId = (invoice as any).assignedToUid;
+        const partnerId = invoice.assignedToUid;
 
         if (cogsLedgerId && finishedGoodsLedgerId) {
             for (const item of invoice.items) {
-                 // Determine where to deduct stock from
                 const stockRef = partnerId
                     ? db.doc(`users/${partnerId}/stock/${item.productId}`)
                     : db.doc(`products/${item.productId}`);
@@ -248,34 +244,31 @@ export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}", a
 
                 const product = productSnap.data() as Product;
                 
-                // 1. Decrement Stock
                 transaction.update(stockRef, {
                     quantity: admin.firestore.FieldValue.increment(-item.quantity)
                 });
                 
-                // 2. Calculate COGS
                 const itemCost = (product?.cost || 0) * item.quantity;
                 totalCost += itemCost;
             }
 
             if (totalCost > 0) {
-                cogsEntries.push({ accountId: cogsLedgerId, debit: totalCost, credit: 0 });
-                cogsEntries.push({ accountId: finishedGoodsLedgerId, debit: 0, credit: totalCost });
-                
                 const cogsJvRef = db.collection("journalVouchers").doc();
                 transaction.set(cogsJvRef, {
                     id: cogsJvRef.id,
                     date: invoice.date,
                     narration: `COGS for Invoice ${invoice.invoiceNumber}`,
-                    entries: cogsEntries,
+                    entries: [
+                        { accountId: cogsLedgerId, debit: totalCost, credit: 0 },
+                        { accountId: finishedGoodsLedgerId, debit: 0, credit: totalCost }
+                    ],
                     createdAt: admin.firestore.FieldValue.serverTimestamp(),
                     voucherType: "Journal Voucher",
-                    createdByUid: (invoice as any).assignedToUid || invoice.customerId,
+                    createdByUid: invoice.assignedToUid || invoice.customerId,
                 });
             }
         }
         
-        // --- Partner Commission Calculation ---
         if (partnerId) {
             const partnerRef = db.doc(`users/${partnerId}`);
             const partnerSnap = await transaction.get(partnerRef);
@@ -286,7 +279,9 @@ export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}", a
                     const rule = partnerData.partnerMatrix?.find(r => r.category === item.category);
                     if (rule) {
                         const itemTotal = item.price * item.quantity;
-                        return acc + (itemTotal * (rule.commissionRate / 100));
+                        const discountAmount = itemTotal * ((invoice.discount / invoice.subtotal) || 0);
+                        const commissionableValue = itemTotal - discountAmount;
+                        return acc + (commissionableValue * (rule.commissionRate / 100));
                     }
                     return acc;
                 }, 0);
@@ -300,7 +295,6 @@ export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}", a
             }
         }
 
-        // Update the original Sales Order status if it exists
         if (invoice.orderId) {
             const orderRef = db.collection('orders').doc(invoice.orderId);
             transaction.update(orderRef, { status: 'Ready for Dispatch' });
