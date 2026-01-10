@@ -18,12 +18,13 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Download, Loader2, Printer } from 'lucide-react';
+import { Download, Loader2, ArrowLeft } from 'lucide-react';
 import { format } from 'date-fns';
-import { useFirestore, useDoc } from '@/firebase';
-import { doc } from 'firebase/firestore';
-import type { StockTransferRequest, CompanyInfo, Party } from '@/lib/types';
 import { QRCodeSVG } from 'qrcode.react';
+import { useFirestore, useDoc, useCollection } from '@/firebase';
+import { collection, query, where, doc, getDocs, limit, getDoc } from 'firebase/firestore';
+import type { StockTransferRequest, CompanyInfo, Party, Address } from '@/lib/types';
+
 
 const formatIndianCurrency = (num: number) => {
   return new Intl.NumberFormat('en-IN', {
@@ -83,13 +84,14 @@ export default function GatePassPage() {
     }
     
     const { shippingDetails, items } = request as any;
+    const customerAddress = partnerData?.address;
 
     return (
         <>
             <PageHeader title={`Gate Pass for Request: ${requestId}`}>
                 <div className="flex gap-2">
                     <Button variant="outline" onClick={() => window.print()}>
-                        <Printer className="mr-2 h-4 w-4" /> Print
+                        Print
                     </Button>
                     <Button onClick={handleDownloadPdf} disabled={isDownloading}>
                         {isDownloading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
@@ -115,9 +117,11 @@ export default function GatePassPage() {
                              <div>
                                 <h3 className="font-semibold text-sm">Dispatch To:</h3>
                                 <p className="font-bold">{request.partnerName}</p>
-                                <p className="text-sm">
-                                    {[partnerData?.address?.line1, partnerData?.address?.line2, partnerData?.address?.city].filter(Boolean).join(', ')}
-                                </p>
+                                {customerAddress && (
+                                     <p className="text-sm">
+                                        {[customerAddress.line1, customerAddress.line2, customerAddress.city].filter(Boolean).join(', ')}
+                                    </p>
+                                )}
                             </div>
                             <div className="text-right">
                                 <h3 className="font-semibold text-sm">Shipping Details:</h3>
