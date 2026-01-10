@@ -225,7 +225,7 @@ export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}", a
           voucherType: "Sales Voucher"
         });
 
-        // --- COGS Entry ---
+        // --- COGS Entry & Stock Deduction ---
         let totalCost = 0;
         const cogsEntries = [];
         const cogsLedgerId = await getLedgerIdByName("COST OF GOODS SOLD (COGS)");
@@ -235,7 +235,16 @@ export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}", a
             for (const item of invoice.items) {
                 const productRef = db.collection('products').doc(item.productId);
                 const productSnap = await transaction.get(productRef);
-                const product = productSnap.data() as Product | undefined;
+                if (!productSnap.exists) continue;
+
+                const product = productSnap.data() as Product;
+                
+                // 1. Decrement Stock
+                transaction.update(productRef, {
+                    openingStock: admin.firestore.FieldValue.increment(-item.quantity)
+                });
+                
+                // 2. Calculate COGS
                 const itemCost = (product?.cost || 0) * item.quantity;
                 totalCost += itemCost;
             }
@@ -558,6 +567,7 @@ export const onGoalUpdate = onDocumentCreated("goalUpdates/{updateId}", async ()
     
 
       
+
 
 
 
