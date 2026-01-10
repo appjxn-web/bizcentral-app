@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -138,7 +137,7 @@ export default function CreateInvoicePage() {
   const [assignedToUid, setAssignedToUid] = React.useState<string | null>(null);
   
   const { data: allProducts, loading: productsLoading } = useCollection<Product>(query(collection(firestore, 'products'), where('saleable', '==', true)));
-  const { data: allSalesInvoices } = useCollection<SalesInvoice>(collection(firestore, 'salesInvoices'));
+  const { data: allSalesInvoices, loading: invoicesLoading } = useCollection<SalesInvoice>(collection(firestore, 'salesInvoices'));
   const { data: settingsData } = useDoc<any>(doc(firestore, 'company', 'settings'));
 
   const [paymentDate, setPaymentDate] = React.useState(format(new Date(), 'yyyy-MM-dd'));
@@ -834,6 +833,7 @@ export default function CreateInvoicePage() {
 }
 
   
+
 
 
 
