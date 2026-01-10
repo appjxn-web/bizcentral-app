@@ -471,18 +471,27 @@ function MyOrdersPageContent() {
     const invoicesQuery = React.useMemo(() => {
         if (!user || !currentRole) return null;
         const invoicesRef = collection(firestore, 'salesInvoices');
-        
-        const nonAdminRoles: UserRole[] = ['Customer', 'Partner', 'Franchisee', 'Sales Agent', 'Dealer', 'Employee'];
-
-        if (nonAdminRoles.includes(currentRole)) {
+    
+        // 1. Admins see all
+        if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
+            return query(invoicesRef, orderBy('date', 'desc'));
+        }
+    
+        // 2. Partners see only assigned
+        if (['Partner', 'Franchisee', 'Sales Agent', 'Dealer'].includes(currentRole)) {
             return query(
                 invoicesRef, 
-                where('customerId', '==', user.uid),
+                where('assignedToUid', '==', user.uid),
                 orderBy('date', 'desc')
             );
         }
     
-        return query(invoicesRef, orderBy('date', 'desc'));
+        // 3. Customers see only their own
+        return query(
+            invoicesRef, 
+            where('customerId', '==', user.uid),
+            orderBy('date', 'desc')
+        );
     }, [user, currentRole, firestore]);
 
 
@@ -583,3 +592,5 @@ export default function MyOrdersPage() {
 
     return <MyOrdersPageContent />;
 }
+
+    
