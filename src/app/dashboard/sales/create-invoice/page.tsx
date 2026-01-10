@@ -32,7 +32,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { PlusCircle, Save, Trash2, Check, ChevronsUpDown, CalendarClock, Loader2, DollarSign } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import type { Party, Product, UserRole, SalesOrder, Quotation, CoaLedger, SalesInvoice, CompanyInfo, PartyType, CoaNature, Offer, UserProfile } from '@/lib/types';
+import type { Party, Product, UserRole, SalesOrder, Quotation, CoaLedger, SalesInvoice, CompanyInfo, PartyType, CoaNature, Offer, UserProfile, JournalVoucher } from '@/lib/types';
 import { format, startOfMonth } from 'date-fns';
 import { Separator } from '@/components/ui/separator';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -88,6 +88,29 @@ const formatIndianCurrency = (num: number) => {
   }).format(num);
 };
 
+const getMaxDiscount = (role: UserRole, category: string): number => {
+    if (role === 'Admin' || role === 'CEO') {
+        return 100;
+    }
+    if (role === 'Sales Manager') {
+        return 20;
+    }
+    if (role === 'Partner') {
+        return 15;
+    }
+    if (role === 'Manager') { 
+        if (category === 'Electronics') return 12;
+        if (category === 'Furniture') return 15;
+        return 10;
+    }
+    if (role === 'Employee') { 
+        if (category === 'Electronics') return 10;
+        if (category === 'Furniture') return 13;
+        return 8;
+    }
+    return 5;
+};
+
 interface PartnerStockItem {
   id: string;
   quantity: number;
@@ -133,6 +156,7 @@ export default function CreateInvoicePage() {
   const { data: allSalesInvoices, loading: invoicesLoading } = useCollection<SalesInvoice>(invoicesQuery);
   const { data: allProducts, loading: productsLoading } = useCollection<Product>(query(collection(firestore, 'products'), where('saleable', '==', true)));
   const { data: settingsData } = useDoc<any>(doc(firestore, 'company', 'settings'));
+  const { data: allJournalVouchers } = useCollection<JournalVoucher>(collection(firestore, 'journalVouchers'));
 
   const [paymentDate, setPaymentDate] = React.useState(format(new Date(), 'yyyy-MM-dd'));
   const [paymentMode, setPaymentMode] = React.useState('UPI');
@@ -467,22 +491,24 @@ export default function CreateInvoicePage() {
 
   const handleRecordPayment = async () => {
     const amount = Number(paymentAmount);
-    if (!amount || amount <= 0 || !bankAccountId || !selectedParty) {
+    if (!amount || amount <= 0 || !bankAccountId || !selectedParty || !settingsData?.prefixes || !allJournalVouchers) {
         toast({ variant: 'destructive', title: 'Invalid Payment', description: 'Please enter a valid amount, select a customer and a payment account.' });
         return;
     }
-
+  
+    const bankLedger = paymentAccounts.find(acc => acc.id === bankAccountId);
+    if (!bankLedger) return;
+  
     try {
       const partyLedger = await getOrCreatePartyLedger(selectedParty);
-      const bankLedger = paymentAccounts.find(acc => acc.id === bankAccountId);
-
-      if (!partyLedger || !bankLedger) {
-        throw new Error('Could not find ledger accounts for transaction.');
-      }
       
+      const newVoucherId = getNextDocNumber('Receipt Voucher', settingsData.prefixes, allJournalVouchers);
+
       const jvData = {
+        id: newVoucherId,
+        voucherNumber: newVoucherId,
         date: paymentDate,
-        narration: `Payment received from ${selectedParty.name} via ${bankLedger.name}. Ref: ${paymentRef}`,
+        narration: `Payment received from ${selectedParty.name} via ${bankLedger.name}. Ref: ${paymentRef}. SO#${salesOrderNumber}`,
         voucherType: 'Receipt Voucher',
         entries: [
           { accountId: bankAccountId, debit: amount, credit: 0 },
@@ -491,13 +517,25 @@ export default function CreateInvoicePage() {
         createdAt: serverTimestamp(),
       };
       
-      await addDoc(collection(firestore, 'journalVouchers'), jvData);
-
+      await setDoc(doc(firestore, 'journalVouchers', newVoucherId), jvData);
+  
       setBookingAmount(prev => prev + amount);
       const details = `Mode: ${bankLedger.name}, Ref: ${paymentRef}, Date: ${paymentDate}, Amount: ₹${amount.toFixed(2)}`;
       setPaymentDetails(prev => prev ? `${prev}\\n${details}` : details);
       
-      toast({ title: 'Payment Recorded', description: `A journal entry for ₹${amount.toFixed(2)} has been created.` });
+      const receiptData = {
+        type: 'Receipt',
+        id: newVoucherId,
+        date: paymentDate,
+        partyName: selectedParty.name,
+        amount: amount,
+        narration: jvData.narration,
+      };
+      
+      localStorage.setItem('receiptToPrint', JSON.stringify(receiptData));
+      window.open('/dashboard/finance-accounting/receipt/view', '_blank');
+
+      toast({ title: 'Payment Recorded', description: `A journal entry and receipt for ₹${amount.toFixed(2)} have been created.` });
       
       setIsPaymentDialogOpen(false);
       setPaymentAmount('');
@@ -802,4 +840,9 @@ export default function CreateInvoicePage() {
     </>
   );
 }
+
+  
+
+
+
 

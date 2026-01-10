@@ -32,7 +32,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { PlusCircle, Save, Trash2, Check, ChevronsUpDown, CalendarClock, Loader2, DollarSign } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import type { Party, Product, UserRole, SalesOrder, Quotation, CoaLedger, UserProfile, Offer } from '@/lib/types';
+import type { Party, Product, UserRole, SalesOrder, Quotation, CoaLedger, UserProfile, Offer, JournalVoucher } from '@/lib/types';
 import { format, startOfMonth } from 'date-fns';
 import { Separator } from '@/components/ui/separator';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -136,9 +136,10 @@ export default function CreateSalesOrderPage() {
   const [isEditMode, setIsEditMode] = React.useState(false);
   const [orderIdToEdit, setOrderIdToEdit] = React.useState<string | null>(null);
   
+  const { data: allSalesOrders, loading: soLoading } = useCollection<SalesOrder>(collection(firestore, 'orders'));
   const { data: allProducts, loading: productsLoading } = useCollection<Product>(query(collection(firestore, 'products'), where('saleable', '==', true)));
-  const { data: allSalesOrders } = useCollection<SalesOrder>(collection(firestore, 'orders'));
   const { data: settingsData } = useDoc<any>(doc(firestore, 'company', 'settings'));
+  const { data: allJournalVouchers } = useCollection<JournalVoucher>(collection(firestore, 'journalVouchers'));
 
   // State for payment dialog
   const [paymentDate, setPaymentDate] = React.useState(format(new Date(), 'yyyy-MM-dd'));
@@ -371,7 +372,7 @@ export default function CreateSalesOrderPage() {
       toast({ variant: 'destructive', title: 'Missing Information', description: 'Please select a customer and add items.' });
       return;
     }
-    if (!firestore || !authUser) return;
+    if (!firestore || !authUser || !allSalesOrders || !settingsData) return;
 
     const customerUserQuery = query(collection(firestore, 'users'), where('email', '==', selectedParty?.email), limit(1));
     const customerUserSnap = await getDocs(customerUserQuery);
@@ -414,8 +415,10 @@ export default function CreateSalesOrderPage() {
             await updateDoc(orderRef, orderData);
             toast({ title: 'Sales Order Updated' });
         } else {
+            const newOrderNumber = getNextDocNumber('Sales Order', settingsData.prefixes, allSalesOrders);
             const newOrderData: Partial<SalesOrder> = {
                 ...orderData,
+                orderNumber: newOrderNumber,
                 status: 'Ordered',
                 createdAt: serverTimestamp(),
             };
@@ -429,25 +432,63 @@ export default function CreateSalesOrderPage() {
     }
   };
 
-  const handleRecordPayment = () => {
+  const handleRecordPayment = async () => {
     const amount = Number(paymentAmount);
-    if (!amount || amount <= 0 || !bankAccountId) {
-        toast({ variant: 'destructive', title: 'Invalid Payment', description: 'Please enter a valid amount and select a payment account.' });
-        return;
+    if (!amount || amount <= 0 || !bankAccountId || !selectedParty || !settingsData?.prefixes || !allJournalVouchers) {
+      toast({ variant: 'destructive', title: 'Invalid Payment', description: 'Please enter a valid amount, select a customer and a payment account.' });
+      return;
     }
-    setBookingAmount(prev => prev + amount);
-    
-    const accountName = paymentAccounts.find(acc => acc.id === bankAccountId)?.name || 'Unknown Account';
-    const details = `Mode: ${accountName}, Ref: ${paymentRef}, Date: ${paymentDate}, Amount: ₹${amount.toFixed(2)}`;
-    setPaymentDetails(prev => prev ? `${prev}\\n${details}` : details);
-    
-    toast({ title: 'Payment Recorded', description: `₹${amount.toFixed(2)} recorded.` });
-    
-    setIsPaymentDialogOpen(false);
-    setPaymentAmount('');
-    setPaymentRef('');
-    setBankAccountId('');
-  }
+  
+    const bankLedger = paymentAccounts.find(acc => acc.id === bankAccountId);
+    if (!bankLedger) return;
+  
+    try {
+      const newVoucherId = getNextDocNumber('Receipt Voucher', settingsData.prefixes, allJournalVouchers);
+      const jvData = {
+        id: newVoucherId,
+        voucherNumber: newVoucherId,
+        date: paymentDate,
+        narration: `Advance payment received from ${selectedParty.name} via ${bankLedger.name}. Ref: ${paymentRef}`,
+        voucherType: 'Receipt Voucher',
+        entries: [
+          { accountId: bankAccountId, debit: amount, credit: 0 },
+          { accountId: 'L-2.1.3-4', debit: 0, credit: amount } // Customer Advances
+        ],
+        createdAt: serverTimestamp(),
+      };
+  
+      await setDoc(doc(firestore, 'journalVouchers', newVoucherId), jvData);
+  
+      setBookingAmount(prev => prev + amount);
+      const details = `Mode: ${bankLedger.name}, Ref: ${paymentRef}, Date: ${paymentDate}, Amount: ₹${amount.toFixed(2)}`;
+      setPaymentDetails(prev => prev ? `${prev}\n${details}` : details);
+      
+      const receiptData = {
+        type: 'Receipt',
+        id: newVoucherId,
+        date: paymentDate,
+        partyName: selectedParty.name,
+        amount: amount,
+        narration: jvData.narration,
+      };
+      
+      localStorage.setItem('receiptToPrint', JSON.stringify(receiptData));
+      window.open('/dashboard/finance-accounting/receipt/view', '_blank');
+
+      toast({ title: 'Payment Recorded', description: `A journal entry and receipt for ₹${amount.toFixed(2)} have been created.` });
+      
+      setIsPaymentDialogOpen(false);
+      setPaymentAmount('');
+      setPaymentRef('');
+      setBankAccountId('');
+    } catch (e: any) {
+      console.error(e);
+      toast({ variant: 'destructive', title: 'Payment Failed', description: e.message });
+    }
+  };
+  
+  const balanceDue = calculations.grandTotal - bookingAmount;
+  const qrUpiString = companyInfo ? `upi://pay?pa=${companyInfo.primaryUpiId || 'your-upi-id@okhdfcbank'}&pn=${encodeURIComponent(companyInfo.companyName || 'Your Company')}&am=${balanceDue.toFixed(2)}&cu=INR` : '';
 
 
   return (
@@ -724,6 +765,7 @@ export default function CreateSalesOrderPage() {
 }
 
   
+
 
 
 
