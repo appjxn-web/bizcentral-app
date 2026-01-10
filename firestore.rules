@@ -198,7 +198,10 @@ service cloud.firestore {
     match /products/{id} { allow read, list: if true; allow write: if signedIn(); }
     match /productCategories/{id} { allow read, list: if true; allow write: if isAdmin(); }
     match /posts/{id} { allow read, list: if true; allow write: if signedIn(); }
-    match /company/{id} { allow read: if true; allow write: if isAdmin() || isFunction(); }
+    match /company/{id} {
+      allow read: if signedIn(); // Allow any signed in user to read company info
+      allow write: if isAdmin() || isFunction();
+    }
     match /supportSettings/{id} { allow read: if true; allow write: if isAdmin(); }
     match /faqs/{id} { allow read: if true; }
     match /helpGuides/{id} { allow read: if true; }
@@ -231,5 +234,3 @@ service cloud.firestore {
     }
   }
 }
-
-    
