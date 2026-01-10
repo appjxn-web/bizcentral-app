@@ -86,7 +86,7 @@ export default function GatePassPage() {
     }
     
     const { shippingDetails, items } = request as any;
-    const customerAddress = partnerData?.address;
+    const customerAddress = (partnerData?.address as Address);
 
     return (
         <>
@@ -118,7 +118,7 @@ export default function GatePassPage() {
                         <section className="my-6 grid grid-cols-2 gap-4">
                              <div>
                                 <h3 className="font-semibold text-sm">Dispatch To:</h3>
-                                <p className="font-bold">{partnerData?.name || request.partnerName}</p>
+                                <p className="font-bold">{(partnerData as UserProfile)?.businessName || partnerData?.name || request.partnerName}</p>
                                 {customerAddress && (
                                      <p className="text-sm">
                                         {[customerAddress.line1, customerAddress.line2, customerAddress.city, customerAddress.state, customerAddress.pin].filter(Boolean).join(', ')}
