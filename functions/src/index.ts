@@ -191,6 +191,7 @@ export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}", a
     const snap = event.data;
     if (!snap) return;
     const invoice = snap.data() as SalesInvoice & { assignedToUid?: string };
+    const invoiceCreatorId = (snap.data() as any).createdByUid || invoice.assignedToUid || invoice.customerId;
 
     try {
       await db.runTransaction(async (transaction) => {
@@ -224,7 +225,7 @@ export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}", a
           entries: salesEntries,
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
           voucherType: "Sales Voucher",
-          createdByUid: invoice.assignedToUid || invoice.customerId,
+          createdByUid: invoiceCreatorId,
         });
 
         // --- Handle Stock Deduction & COGS ---
@@ -268,7 +269,7 @@ export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}", a
                     ],
                     createdAt: admin.firestore.FieldValue.serverTimestamp(),
                     voucherType: "Journal Voucher",
-                    createdByUid: invoice.assignedToUid || invoice.customerId,
+                    createdByUid: invoiceCreatorId,
                 });
             }
         }
@@ -283,7 +284,7 @@ export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}", a
                 let commissionTotal = invoice.items.reduce((acc, item) => {
                     const rule = partnerData.partnerMatrix?.find(r => r.category === item.category);
                     if (rule) {
-                        const itemTotal = item.price * item.quantity;
+                        const itemTotal = item.rate * item.quantity;
                         const discountAmount = itemTotal * ((invoice.discount / invoice.subtotal) || 0);
                         const commissionableValue = itemTotal - discountAmount;
                         return acc + (commissionableValue * (rule.commissionRate / 100));
@@ -372,7 +373,8 @@ export const onCreditNoteCreated = onDocumentCreated("creditNotes/{noteId}", asy
       narration: narration,
       entries,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      voucherType: 'Credit Note'
+      voucherType: 'Credit Note',
+      createdByUid: (snap.data() as any).createdByUid,
     };
     batch.set(jvRef, jvData);
 
@@ -424,7 +426,8 @@ export const onDebitNoteCreated = onDocumentCreated("debitNotes/{noteId}", async
       narration: narration,
       entries,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      voucherType: 'Debit Note'
+      voucherType: 'Debit Note',
+      createdByUid: (snap.data() as any).createdByUid,
     };
 
     await jvRef.set(jvData);
@@ -489,7 +492,7 @@ export const handleQuotationCreation = onDocumentCreated("quotations/{docId}", a
 
 export const handleWorkOrderCreation = onDocumentCreated("workOrders/{id}", () => {});
 export const handleVoucherCreation = onDocumentCreated("journalVouchers/{id}", () => {});
-export const handleOrderUpdates = onDocumentUpdated("orders/{orderId}", async (event: FirestoreEvent<Change<DocumentSnapshot> | undefined>) => {
+export const handleOrderUpdates = onDocumentUpdated("orders/{orderId}", async (event: FirestoreEvent<Change<DocumentSnapshot> | undefined, {orderId: string}>) => {
     if (!event.data) {
       return;
     }
@@ -502,6 +505,7 @@ export const handleOrderUpdates = onDocumentUpdated("orders/{orderId}", async (e
         console.log(`Order ${orderId} delivered. Processing commissions...`);
 
         return db.runTransaction(async (transaction) => {
+            const orderRef = db.doc(`orders/${orderId}`);
             // --- 1. Partner Commission ---
             if (after.assignedToUid) {
                 const partnerId = after.assignedToUid!;
@@ -527,12 +531,12 @@ export const handleOrderUpdates = onDocumentUpdated("orders/{orderId}", async (e
                         transaction.set(walletRef, { 
                             commissionPayable: admin.firestore.FieldValue.increment(commissionTotal) 
                         }, { merge: true });
-                        transaction.update(event.data!.after.ref, { payoutStatus: 'Payable', commission: commissionTotal });
+                        transaction.update(orderRef, { payoutStatus: 'Payable', commission: commissionTotal });
                     } else {
-                         transaction.update(event.data!.after.ref, { payoutStatus: 'No Commission' });
+                         transaction.update(orderRef, { payoutStatus: 'No Commission' });
                     }
                 } else {
-                     transaction.update(event.data!.after.ref, { payoutStatus: 'No Commission' });
+                     transaction.update(orderRef, { payoutStatus: 'No Commission' });
                 }
             }
 

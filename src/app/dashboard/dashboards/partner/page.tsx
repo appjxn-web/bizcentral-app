@@ -27,7 +27,7 @@ import {
 } from 'lucide-react';
 import { OverviewChart } from '@/components/dashboard/overview-chart';
 import { useUser, useDoc, useFirestore, useCollection } from '@/firebase';
-import type { UserProfile, Order, Lead, ServiceRequest, RegisteredProduct, Offer, UserWallet } from '@/lib/types';
+import type { UserProfile, Order, Lead, ServiceRequest, RegisteredProduct, Offer, UserWallet, SalesInvoice } from '@/lib/types';
 import { collection, doc, query, where, orderBy } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
@@ -112,7 +112,7 @@ export default function PartnerDashboardPage() {
       totalLeads: leads.length,
       totalSales,
       franchiseCommission,
-      pendingCommission: (walletData?.commissionPayable || 0) + pendingCommissionOrders,
+      pendingCommission: pendingCommissionOrders,
       walletBalance: walletData?.balance || 0,
       openServiceTickets: serviceRequests?.filter(sr => sr.status !== 'Completed' && sr.status !== 'Canceled').length || 0,
       productsUnderWarranty: registeredProducts?.filter(p => p.status === 'Active').length || 0,

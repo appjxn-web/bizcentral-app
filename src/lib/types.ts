@@ -323,6 +323,7 @@ export interface Order {
   }
   createdAt: any;
   expectedDeliveryDate?: string | null;
+  cancellationReason?: string;
 }
 export interface SalesOrder extends Order {
   orderNumber: string;
@@ -910,6 +911,7 @@ export interface SalesInvoice {
       driverPhone: string;
       remarks: string;
     };
+    assignedToUid?: string;
 }
 
 export interface CreditItem extends Omit<SalesInvoiceItem, 'discount' | 'amount'> {

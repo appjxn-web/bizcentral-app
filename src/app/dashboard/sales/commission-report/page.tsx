@@ -1,3 +1,4 @@
+
 'use client';
 
 import * as React from 'react';
@@ -7,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useUser, useFirestore, useCollection, useDoc } from '@/firebase';
 import { collection, query, where, doc, orderBy, addDoc, serverTimestamp } from 'firebase/firestore';
-import type { Order, UserProfile, PayoutRequest, Referral } from '@/lib/types';
+import type { Order, UserProfile, PayoutRequest, Referral, UserWallet, SalesInvoice } from '@/lib/types';
 import { format } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
 import { CircleDollarSign, TrendingUp, Loader2, Wallet, Send, Handshake } from 'lucide-react';
@@ -35,6 +36,9 @@ export default function CommissionReportPage() {
   const userDocRef = targetUserId ? doc(firestore, 'users', targetUserId) : null;
   const { data: userProfile, loading: userProfileLoading } = useDoc<UserProfile>(userDocRef);
 
+  const walletDocRef = targetUserId ? doc(firestore, 'users', targetUserId, 'wallet', 'main') : null;
+  const { data: walletData, loading: walletLoading } = useDoc<UserWallet>(walletDocRef);
+
   const ordersQuery = React.useMemo(() => {
     if (!targetUserId || !firestore) return null;
     return query(
@@ -44,29 +48,36 @@ export default function CommissionReportPage() {
     );
   }, [targetUserId, firestore]);
   
+  const invoicesQuery = React.useMemo(() => {
+    if (!targetUserId || !firestore) return null;
+    return query(
+        collection(firestore, 'salesInvoices'),
+        where('assignedToUid', '==', targetUserId)
+    );
+  }, [targetUserId, firestore]);
+
   const { data: orders, loading: ordersLoading } = useCollection<Order>(ordersQuery);
+  const { data: invoices, loading: invoicesLoading } = useCollection<SalesInvoice>(invoicesQuery);
 
   const referralsQuery = targetUserId ? query(collection(firestore, 'users', targetUserId, 'referrals'), where('status', 'in', ['First Purchased', 'Completed'])) : null;
   const { data: referrals, loading: referralsLoading } = useCollection<Referral>(referralsQuery);
 
 
   const commissionData = React.useMemo(() => {
-    if (!orders) return [];
+    if (!orders || !invoices) return [];
 
     return orders.map(order => {
-        let calculatedCommission = 0;
-        if (order.items && userProfile?.partnerMatrix) {
-            calculatedCommission = order.items.reduce((acc, item) => {
-                const rule = userProfile.partnerMatrix?.find(r => r.category === item.category);
-                if (rule) {
-                    const commissionableValue = (item.price || 0) * (item.quantity || 0);
-                    return acc + (commissionableValue * (rule.commissionRate / 100));
-                }
-                return acc;
-            }, 0);
-        }
-
-        const finalCommission = order.commission || calculatedCommission;
+        const correspondingInvoice = invoices.find(inv => inv.orderId === order.id);
+        const commissionAmount = correspondingInvoice?.items.reduce((acc, item) => {
+            const rule = userProfile?.partnerMatrix?.find(r => r.category === (item as any).category);
+            if (rule) {
+                const itemTotal = item.rate * item.quantity;
+                const discountAmount = itemTotal * ((correspondingInvoice.discount / correspondingInvoice.subtotal) || 0);
+                const commissionableValue = itemTotal - discountAmount;
+                return acc + (commissionableValue * (rule.commissionRate / 100));
+            }
+            return acc;
+        }, 0) || order.commission || 0;
         
         let payoutStatus: Order['payoutStatus'] = 'Awaiting Delivery';
         if (order.status === 'Delivered') {
@@ -78,20 +89,20 @@ export default function CommissionReportPage() {
             orderDate: order.date,
             customerName: order.customerName,
             orderTotal: order.grandTotal,
-            commissionAmount: finalCommission,
+            commissionAmount: commissionAmount,
             orderStatus: order.status,
             payoutStatus: payoutStatus
         };
     });
-  }, [orders, userProfile]);
+  }, [orders, invoices, userProfile]);
 
   const kpis = React.useMemo(() => {
     const totalEarned = commissionData
-        .filter(i => i.orderStatus === 'Delivered')
+        .filter(i => i.payoutStatus === 'Paid' || i.payoutStatus === 'Payable')
         .reduce((acc, item) => acc + item.commissionAmount, 0);
-        
+
     const pendingPayout = commissionData
-        .filter(i => i.orderStatus !== 'Delivered' && i.orderStatus !== 'Canceled')
+        .filter(i => i.orderStatus === 'Ordered' || i.orderStatus === 'Ready for Dispatch' || i.orderStatus === 'Shipped')
         .reduce((acc, item) => acc + item.commissionAmount, 0);
 
     const totalReferralEarnings = referrals?.reduce((acc, r) => acc + (r.earnings || 0) + (r.commission || 0), 0) || 0;
@@ -100,8 +111,8 @@ export default function CommissionReportPage() {
   }, [commissionData, referrals]);
 
   const handleRequestPayout = async () => {
-    if (!userProfile || !userProfile.commissionPayable || userProfile.commissionPayable < 1000) {
-      toast({ variant: 'destructive', title: 'Payout Request Failed', description: `You need at least ₹1,000 in your payable balance to request a payout. Current balance: ${formatCurrency(userProfile?.commissionPayable || 0)}` });
+    if (!userProfile || !walletData?.commissionPayable || walletData.commissionPayable < 1000) {
+      toast({ variant: 'destructive', title: 'Payout Request Failed', description: `You need at least ₹1,000 in your payable balance to request a payout. Current balance: ${formatCurrency(walletData?.commissionPayable || 0)}` });
       return;
     }
     setIsRequestingPayout(true);
@@ -109,12 +120,12 @@ export default function CommissionReportPage() {
       const payoutRequest: Omit<PayoutRequest, 'id'> = {
         partnerId: userProfile.id,
         partnerName: userProfile.name,
-        amount: userProfile.commissionPayable,
+        amount: walletData.commissionPayable,
         status: 'Pending',
         requestDate: new Date().toISOString(),
       };
       await addDoc(collection(firestore, 'payoutRequests'), payoutRequest);
-      toast({ title: 'Payout Requested', description: `Your request for ${formatCurrency(userProfile.commissionPayable)} has been submitted for approval.` });
+      toast({ title: 'Payout Requested', description: `Your request for ${formatCurrency(walletData.commissionPayable)} has been submitted for approval.` });
     } catch (e) {
       toast({ variant: 'destructive', title: 'Request Failed' });
     } finally {
@@ -122,7 +133,7 @@ export default function CommissionReportPage() {
     }
   };
   
-  const loading = userProfileLoading || ordersLoading || referralsLoading;
+  const loading = userProfileLoading || ordersLoading || referralsLoading || walletLoading || invoicesLoading;
 
   return (
     <>
@@ -159,17 +170,17 @@ export default function CommissionReportPage() {
             <p className="text-xs text-muted-foreground">From orders currently in progress.</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="flex flex-col">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Commission Payable</CardTitle>
               <Wallet className="h-4 w-4 text-primary" />
             </CardHeader>
-            <CardContent>
-                <div className="text-2xl font-bold">{formatCurrency(userProfile?.commissionPayable || 0)}</div>
+            <CardContent className="flex-grow">
+                <div className="text-2xl font-bold">{formatCurrency(walletData?.commissionPayable || 0)}</div>
                 <p className="text-xs text-muted-foreground">Commission ready for withdrawal.</p>
             </CardContent>
             <CardFooter>
-                 <Button className="w-full" size="sm" onClick={handleRequestPayout} disabled={isRequestingPayout || !userProfile?.commissionPayable || userProfile.commissionPayable < 1000}>
+                 <Button className="w-full" size="sm" onClick={handleRequestPayout} disabled={isRequestingPayout || !walletData?.commissionPayable || walletData.commissionPayable < 1000}>
                     {isRequestingPayout ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
                     Request Payout
                 </Button>
