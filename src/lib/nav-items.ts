@@ -66,6 +66,7 @@ import {
   Goal,
   FilePlus,
   FileMinus,
+  Printer,
 } from 'lucide-react';
 import type { UserRole } from './types';
 
@@ -151,6 +152,7 @@ export const navItems: NavItem[] = [
         { id: 'finance-balance-sheet', href: '/dashboard/finance-accounting/balance-sheet', icon: Scale, label: 'Balance Sheet'},
         { id: 'finance-profit-and-loss', href: '/dashboard/finance-accounting/profit-and-loss', icon: TrendingUp, label: 'Profit & Loss'},
         { id: 'finance-trial-balance', href: '/dashboard/finance-accounting/trial-balance', icon: Columns3, label: 'Trial Balance'},
+        { id: 'finance-print-receipt', href: '/dashboard/finance-accounting/receipt/view', icon: Printer, label: 'Print Receipt' },
     ]
   },
   {
