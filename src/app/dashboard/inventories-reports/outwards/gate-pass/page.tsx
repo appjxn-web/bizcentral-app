@@ -105,12 +105,19 @@ export default function GatePassPage() {
                     <div className="max-w-4xl mx-auto p-8 font-sans" ref={pdfRef}>
                         <header className="flex justify-between items-start border-b pb-4">
                             <div>
-                                {companyInfo?.logo && <Image src={companyInfo.logo} alt="Logo" width={150} height={40} crossOrigin="anonymous" />}
+                                {companyInfo?.logo && <Image src={companyInfo.logo} alt="Logo" width={175} height={40} crossOrigin="anonymous" />}
                             </div>
                             <div className="text-right">
-                                <h1 className="text-2xl font-bold text-primary">Dispatch Note / Gate Pass</h1>
-                                <p><strong>Request No:</strong> {request.id}</p>
-                                <p><strong>Date:</strong> {format(new Date(), 'dd/MM/yyyy')}</p>
+                                <h1 className="text-2xl font-bold text-primary">{companyInfo?.companyName}</h1>
+                                {companyInfo?.addresses?.[0] && (
+                                    <p className="text-sm text-muted-foreground">
+                                    {[companyInfo.addresses[0].line1, companyInfo.addresses[0].line2, companyInfo.addresses[0].city, companyInfo.addresses[0].pin].filter(Boolean).join(', ')}
+                                    </p>
+                                )}
+                                <div className="text-xs mt-2">
+                                    {companyInfo?.taxInfo?.gstin?.value && <p><strong>GSTIN:</strong> {companyInfo.taxInfo.gstin.value}</p>}
+                                    {companyInfo?.taxInfo?.cin?.value && <p><strong>CIN:</strong> {companyInfo.taxInfo.cin.value}</p>}
+                                </div>
                             </div>
                         </header>
                         
