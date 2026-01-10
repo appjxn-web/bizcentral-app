@@ -233,7 +233,7 @@ function PartnerPickupDetails({ userId }: { userId: string }) {
             <p className="text-xs text-muted-foreground">Partner</p>
             {addressString && <p className="mt-2 text-sm">{addressString}</p>}
             <div className="flex gap-4 mt-2">
-                {partner.mobile && <a href={`tel:${partner.mobile}`} className="flex items-center gap-1 text-primary hover:underline text-sm"><Phone className="h-4 w-4" /> Call</a>}
+                {partner.mobile && <a href={`tel:${partner.mobile}`} className="flex items-center gap-1 text-primary hover:underline text-sm"><Phone className="mr-2 h-4 w-4" /> Call</a>}
                 {mapUrl && <a href={mapUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-primary hover:underline text-sm"><MapPin className="h-4 w-4" /> Get Directions</a>}
             </div>
         </>
@@ -322,7 +322,7 @@ function OrderRow({ order, onGenerateInvoice, onUpdateStatus, pickupPoints, dyna
                         <DropdownMenuItem onClick={() => onViewInvoice(existingInvoice.invoiceNumber)}>
                            <Receipt className="mr-2 h-4 w-4" /> View Invoice
                         </DropdownMenuItem>
-                    ) : canGenerateInvoice && ['Awaiting Payment', 'Ready for Dispatch', 'Shipped', 'Delivered'].includes(dynamicStatus) && (
+                    ) : canGenerateInvoice && ['Awaiting Payment', 'Ready for Dispatch', 'Shipped', 'Delivered', 'Ordered', 'Manufacturing', 'Awaiting Payment Confirmation'].includes(dynamicStatus) && (
                         <DropdownMenuItem onClick={() => onGenerateInvoice(order)}>
                            <Receipt className="mr-2 h-4 w-4" /> Generate Invoice
                         </DropdownMenuItem>
@@ -444,10 +444,12 @@ function OrdersPageContent() {
             return query(invoicesRef);
         }
     
+        // For Partners, they should see invoices where they are assigned.
         if (['Partner', 'Franchisee', 'Sales Agent', 'Dealer'].includes(currentRole)) {
             return query(invoicesRef, where('assignedToUid', '==', user.uid));
         }
     
+        // For Customers, they see invoices where they are the customer.
         return query(invoicesRef, where('customerId', '==', user.uid));
     }, [user, currentRole, firestore]);
 

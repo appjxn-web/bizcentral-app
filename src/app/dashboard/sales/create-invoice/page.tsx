@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -258,6 +257,9 @@ export default function CreateInvoicePage() {
           setPaymentDetails(data.paymentDetails || '');
           setAppliedCoupons(data.appliedCoupons || []);
           
+          // Set invoice date to current date when generating from SO
+          setInvoiceDate(format(new Date(), 'yyyy-MM-dd'));
+          
           localStorage.removeItem('invoiceDataToCreate');
           toast({ title: "Pre-filled from Sales Order" });
       }
@@ -438,6 +440,7 @@ export default function CreateInvoicePage() {
           status: finalBalanceDue <= 0 ? 'Paid' : 'Unpaid',
           appliedCoupons: appliedCoupons,
           assignedToUid: finalAssignedToUid,
+          createdByUid: authUser?.uid,
       };
       
       if (isEditMode && invoiceIdToEdit) {
@@ -844,6 +847,7 @@ export default function CreateInvoicePage() {
 }
 
   
+
 
 
 
