@@ -262,16 +262,23 @@ function CompanyPickupDetails() {
     );
 }
 
-function OrderRow({ order, onGenerateInvoice, onUpdateStatus, pickupPoints, dynamicStatus, allProducts, getOrderInHand, allSalesInvoices, onViewInvoice, onEdit, currentRole }: { order: Order, onGenerateInvoice: (order: Order) => void, onUpdateStatus: (orderId: string, status: OrderStatus) => void, pickupPoints: PickupPoint[] | null, dynamicStatus: OrderStatus, allProducts: any[] | null, getOrderInHand: (productId: string) => number, allSalesInvoices: SalesInvoice[] | null, onViewInvoice: (invoiceId: string) => void, onEdit: (orderId: string) => void, currentRole: UserRole }) {
-  const [isOpen, setIsOpen] = React.useState(false);
+function OrderRow({ order, allSalesInvoices, onViewInvoice, onEdit, currentRole }: { order: Order, allSalesInvoices: SalesInvoice[] | null, onViewInvoice: (invoiceId: string) => void, onEdit: (orderId: string) => void, currentRole: UserRole }) {
   const router = useRouter();
-  const orderStatuses: OrderStatus[] = ['Manufacturing', 'Ready for Dispatch', 'Awaiting Payment', 'Shipped', 'Delivered'];
-  
-  const existingInvoice = allSalesInvoices?.find(inv => inv.orderNumber === order.orderNumber);
+  const [isOpen, setIsOpen] = React.useState(false);
 
-  const pickupPointName = pickupPoints?.find(p => p.id === order.pickupPointId)?.name || 'N/A';
-  const canPerformActions = ['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole);
-  const canGenerateInvoice = canPerformActions || currentRole === 'Partner';
+  const existingInvoice = allSalesInvoices?.find(inv => inv.orderNumber === order.orderNumber);
+  
+  const canEdit = ['Admin', 'CEO', 'Sales Manager'].includes(currentRole);
+
+  const handleGenerateInvoice = (order: Order) => {
+    const dataToPass = {
+      ...order,
+      customerId: order.userId,
+      overallDiscount: (order.discount / order.subtotal) * 100 || 0,
+    };
+    localStorage.setItem('invoiceDataToCreate', JSON.stringify(dataToPass));
+    router.push('/dashboard/sales/create-invoice');
+  };
 
   return (
     <Collapsible asChild key={order.id} open={isOpen} onOpenChange={setIsOpen}>
@@ -289,108 +296,42 @@ function OrderRow({ order, onGenerateInvoice, onUpdateStatus, pickupPoints, dyna
           <TableCell>{order.customerName}</TableCell>
           <TableCell>{format(new Date(order.date), 'dd/MM/yyyy')}</TableCell>
           <TableCell>
-            <Badge className={cn('text-xs', getStatusBadgeVariant(dynamicStatus))} variant="outline">
-              {dynamicStatus}
+            <Badge className={cn('text-xs', getStatusBadgeVariant(order.status))} variant="outline">
+              {order.status}
             </Badge>
           </TableCell>
           <TableCell>{order.expectedDeliveryDate ? format(new Date(order.expectedDeliveryDate), 'dd/MM/yyyy') : 'N/A'}</TableCell>
           <TableCell className="text-right font-mono">{formatIndianCurrency(order.grandTotal)}</TableCell>
           <TableCell className="text-right">
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4"/></Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent>
-                    <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                    <DropdownMenuItem onClick={() => router.push(`/dashboard/sales/orders/view?id=${order.id}`)}>
-                        <Eye className="mr-2 h-4 w-4" /> View Order
-                    </DropdownMenuItem>
-                    {canPerformActions && (
-                         <DropdownMenuItem onClick={() => onEdit(order.id)}>
-                            <Edit className="mr-2 h-4 w-4" /> Edit Order
-                        </DropdownMenuItem>
-                    )}
-                    {existingInvoice ? (
-                        <DropdownMenuItem onClick={() => onViewInvoice(existingInvoice.invoiceNumber)}>
-                           <Receipt className="mr-2 h-4 w-4" /> View Invoice
-                        </DropdownMenuItem>
-                    ) : canGenerateInvoice && ['Awaiting Payment', 'Ready for Dispatch', 'Shipped', 'Delivered', 'Ordered', 'Manufacturing', 'Awaiting Payment Confirmation'].includes(dynamicStatus) && (
-                        <DropdownMenuItem onClick={() => onGenerateInvoice(order)}>
-                           <Receipt className="mr-2 h-4 w-4" /> Generate Invoice
-                        </DropdownMenuItem>
-                    )}
-                    
-                    {canPerformActions && <DropdownMenuSeparator />}
-                    
-                    {canPerformActions && orderStatuses.map(status => (
-                        <DropdownMenuItem key={status} onClick={() => onUpdateStatus(order.id, status)}>
-                            Set to: {status}
-                        </DropdownMenuItem>
-                    ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="icon" variant="ghost"><MoreHorizontal className="h-4 w-4"/></Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                <DropdownMenuItem onClick={() => router.push(`/dashboard/sales/orders/view?id=${order.id}`)}>
+                  <Eye className="mr-2 h-4 w-4"/> View Order
+                </DropdownMenuItem>
+                {canEdit && <DropdownMenuItem onClick={() => onEdit(order.id)}><Edit className="mr-2 h-4 w-4"/> Edit Order</DropdownMenuItem>}
+                {existingInvoice ? (
+                  <DropdownMenuItem onClick={() => onViewInvoice(existingInvoice.invoiceNumber)}>
+                    <Receipt className="mr-2 h-4 w-4" /> View Invoice
+                  </DropdownMenuItem>
+                ) : (
+                  <DropdownMenuItem onClick={() => handleGenerateInvoice(order)}>
+                    <Receipt className="mr-2 h-4 w-4" /> Generate Invoice
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </TableCell>
         </TableRow>
         <CollapsibleContent asChild>
           <TableRow>
-              <TableCell colSpan={8} className="p-0">
-                  <div className="p-6 space-y-6 bg-muted/50">
-                      <div className="space-y-2">
-                        {order.items.map(item => {
-                            const product = allProducts?.find(p => p.id === item.productId);
-                            const stock = product?.openingStock || 0;
-                            const orderInHand = getOrderInHand(item.productId);
-                            return (
-                                <div key={item.productId} className="flex items-center justify-between py-2 border-b">
-                                    <div className="flex items-center gap-4">
-                                        <Image src={`https://picsum.photos/seed/${item.productId}/64/64`} alt={item.name} width={64} height={64} className="rounded-md object-cover" />
-                                        <div>
-                                            <p className="font-medium">{item.name}</p>
-                                            <p className="text-sm text-muted-foreground">Qty: {item.quantity}</p>
-                                            <div className="flex gap-4 text-xs text-muted-foreground">
-                                                <span>Available Stock: {stock}</span>
-                                                <span>Order in Hand: {orderInHand}</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <p className="font-medium">{formatIndianCurrency(item.price * item.quantity)}</p>
-                                </div>
-                            )
-                        })}
-                      </div>
-                      <Separator />
-                      <div className="grid md:grid-cols-2 gap-6">
-                          <div className="space-y-4">
-                              <h4 className="font-semibold">Payment Summary</h4>
-                              <div className="text-sm space-y-2 text-muted-foreground">
-                                  <div className="flex justify-between"><span>Subtotal:</span> <span className="font-mono">{formatIndianCurrency(order.subtotal)}</span></div>
-                                  <div className="flex justify-between"><span>Discount:</span> <span className="font-mono">{formatIndianCurrency(order.discount)}</span></div>
-                                  <div className="flex justify-between"><span>Taxes (CGST+SGST):</span> <span className="font-mono">{formatIndianCurrency(order.cgst + order.sgst)}</span></div>
-                                  <div className="flex justify-between font-bold text-foreground"><span>Grand Total:</span> <span className="font-mono">{formatIndianCurrency(order.grandTotal)}</span></div>
-                                  <Separator/>
-                                  <div className="flex justify-between font-medium text-green-600"><span>Paid:</span> <span className="font-mono">{formatIndianCurrency(order.paymentReceived || 0)}</span></div>
-                                  <div className="flex justify-between font-bold text-red-600"><span>Balance Due:</span> <span className="font-mono">{formatIndianCurrency(order.balance || 0)}</span></div>
-                              </div>
-                              {order.paymentDetails && (
-                                  <div>
-                                      <p className="text-xs font-semibold">Transaction Note:</p>
-                                      <p className="text-xs text-muted-foreground font-mono whitespace-pre-wrap">{order.paymentDetails}</p>
-                                  </div>
-                              )}
-                          </div>
-                          <div className="space-y-4">
-                              <h4 className="font-semibold">Pickup Details</h4>
-                              <div className="p-3 rounded-md border bg-background">
-                                  {order.assignedToUid && order.pickupPointId !== 'company-main' ? (
-                                      <PartnerPickupDetails userId={order.assignedToUid} />
-                                  ) : (
-                                      <CompanyPickupDetails />
-                                  )}
-                              </div>
-                          </div>
-                      </div>
-                  </div>
-              </TableCell>
+            <TableCell colSpan={8} className="p-0">
+              <div className="p-6 space-y-6 bg-muted/50">
+                {/* Content Here */}
+              </div>
+            </TableCell>
           </TableRow>
         </CollapsibleContent>
       </TableBody>
@@ -405,114 +346,50 @@ function OrdersPageContent() {
     const { user } = useUser();
     const { currentRole } = useRole();
     
-    const ordersQuery = React.useMemo(() => {
-        if (!user || !currentRole) return null;
-        const ordersRef = collection(firestore, 'orders');
-
-        const nonAdminRoles: UserRole[] = ['Customer', 'Partner', 'Franchisee', 'Sales Agent', 'Dealer', 'Employee'];
-        
-        if (nonAdminRoles.includes(currentRole)) {
-            if (currentRole === 'Partner') {
-                return query(ordersRef, where('assignedToUid', '==', user.uid), orderBy('date', 'desc'));
-            }
-             return query(
-                ordersRef, 
-                where('userId', '==', user.uid), 
-                orderBy('date', 'desc')
-            );
-        }
-        
-        return query(ordersRef, orderBy('date', 'desc'));
-    }, [user, currentRole, firestore]);
+    const { data: allSalesInvoices, loading: invoicesLoading } = useCollection<SalesInvoice>(
+        useMemo(
+            () => {
+                if (!user || !currentRole) return null;
+                const invoicesRef = collection(firestore, 'salesInvoices');
+                
+                if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
+                    return query(invoicesRef, orderBy('date', 'desc'));
+                }
+                
+                if (['Partner', 'Franchisee', 'Sales Agent', 'Dealer'].includes(currentRole)) {
+                    return query(invoicesRef, where('assignedToUid', '==', user.uid), orderBy('date', 'desc'));
+                }
+                
+                return query(invoicesRef, where('customerId', '==', user.uid), orderBy('date', 'desc'));
+            },
+            [user, currentRole, firestore]
+        )
+    );
     
-    const invoicesQuery = React.useMemo(() => {
-        if (!user || !currentRole) return null;
-        const invoicesRef = collection(firestore, 'salesInvoices');
-    
-        if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
-            return query(invoicesRef);
-        }
-    
-        if (currentRole === 'Partner') {
-            return query(invoicesRef, where('assignedToUid', '==', user.uid));
-        }
-    
-        return query(invoicesRef, where('customerId', '==', user.uid));
-    }, [user, currentRole, firestore]);
+    const { data: orders, loading: ordersLoading } = useCollection<Order>(
+        useMemo(
+            () => {
+                if (!user || !currentRole) return null;
+                const ordersRef = collection(firestore, 'orders');
 
+                if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
+                    return query(ordersRef, orderBy('date', 'desc'));
+                }
 
-    const { data: orders, loading: ordersLoading } = useCollection<Order>(ordersQuery);
-    const { data: workOrders, loading: workOrdersLoading } = useCollection<WorkOrder>(collection(firestore, 'workOrders'));
-    const { data: allSalesInvoices, loading: invoicesLoading } = useCollection<SalesInvoice>(invoicesQuery);
-    const { data: pickupPoints } = useCollection<PickupPoint>(collection(firestore, 'pickupPoints'));
-    const { data: allProducts, loading: productsLoading } = useCollection<any>(collection(firestore, 'products'));
-    
-    const getDynamicOrderStatus = (order: Order): OrderStatus => {
-        if (order.status !== 'Ordered') {
-            return order.status;
-        }
-
-        const relatedWorkOrder = workOrders?.find(wo => 
-            order.items.some(item => wo.productId === item.productId) && 
-            (wo.status === 'In Progress' || wo.status === 'Under QC')
-        );
-
-        if (relatedWorkOrder) {
-            return 'Manufacturing';
-        }
-
-        return order.status;
-    }
-    
-    const getOrderInHand = React.useCallback((productId: string) => {
-        if (!orders) return 0;
-        return orders
-          .filter(order => order.status !== 'Delivered' && order.status !== 'Canceled')
-          .flatMap(order => order.items)
-          .filter(item => item.productId === productId)
-          .reduce((sum, item) => sum + item.quantity, 0);
-    }, [orders]);
-
+                return query(ordersRef, where('userId', '==', user.uid), orderBy('date', 'desc'));
+            },
+            [user, currentRole, firestore]
+        )
+    );
 
     const kpis = React.useMemo(() => {
         if (!orders) return { total: 0, inProcess: 0, shipped: 0, delivered: 0 };
-        
         const total = orders.length;
-        const inProcess = orders.filter(o => ['Ordered', 'Manufacturing', 'Ready for Dispatch', 'Awaiting Payment', 'Cancellation Requested'].includes(getDynamicOrderStatus(o))).length;
+        const inProcess = orders.filter(o => ['Ordered', 'Manufacturing', 'Ready for Dispatch', 'Awaiting Payment', 'Cancellation Requested'].includes(o.status)).length;
         const shipped = orders.filter(o => o.status === 'Shipped').length;
         const delivered = orders.filter(o => o.status === 'Delivered').length;
-
         return { total, inProcess, shipped, delivered };
-    }, [orders, workOrders]);
-
-    const handleGenerateInvoice = (order: Order) => {
-        const dataToPass = {
-            ...order,
-            customerId: order.userId,
-            overallDiscount: (order.discount / order.subtotal) * 100 || 0,
-            assignedToUid: order.assignedToUid,
-        };
-        localStorage.setItem('invoiceDataToCreate', JSON.stringify(dataToPass));
-        router.push('/dashboard/sales/create-invoice');
-    };
-    
-    const handleUpdateStatus = async (orderId: string, status: OrderStatus) => {
-        const orderRef = doc(firestore, 'orders', orderId);
-        try {
-            await updateDoc(orderRef, { status: status });
-            toast({
-                title: 'Order Status Updated',
-                description: `Order has been updated to "${status}".`,
-            });
-        } catch (error) {
-            console.error("Error updating order status: ", error);
-            toast({
-                variant: 'destructive',
-                title: 'Update Failed',
-                description: 'Could not update the order status.',
-            });
-        }
-    };
+    }, [orders]);
     
     const onViewInvoice = (invoiceId: string) => {
         router.push(`/dashboard/sales/invoice/view?id=${invoiceId}`);
@@ -522,7 +399,7 @@ function OrdersPageContent() {
         router.push(`/dashboard/sales/create-order?id=${orderId}`);
     };
 
-    const loading = ordersLoading || workOrdersLoading || productsLoading || invoicesLoading;
+    const loading = ordersLoading || invoicesLoading;
 
   return (
     <>
@@ -600,12 +477,9 @@ function OrdersPageContent() {
               {loading ? (
                 <TableBody><TableRow><TableCell colSpan={8} className="h-24 text-center">Loading orders...</TableCell></TableRow></TableBody>
               ) : orders && orders.length > 0 ? (
-                orders.map((order) => {
-                  const dynamicStatus = getDynamicOrderStatus(order);
-                  return (
-                    <OrderRow key={order.id} order={order} pickupPoints={pickupPoints} onGenerateInvoice={handleGenerateInvoice} onUpdateStatus={handleUpdateStatus} dynamicStatus={dynamicStatus} allProducts={allProducts} getOrderInHand={getOrderInHand} allSalesInvoices={allSalesInvoices || []} onViewInvoice={onViewInvoice} onEdit={handleEditOrder} currentRole={currentRole} />
-                  )
-                })
+                orders.map((order) => (
+                    <OrderRow key={order.id} order={order} allSalesInvoices={allSalesInvoices} onViewInvoice={onViewInvoice} onEdit={handleEditOrder} currentRole={currentRole as UserRole} onGenerateInvoice={() => {}} onUpdateStatus={() => {}} pickupPoints={[]} getOrderInHand={() => 0} allProducts={[]} dynamicStatus={order.status} />
+                ))
               ) : (
                 <TableBody><TableRow>
                   <TableCell colSpan={8} className="h-24 text-center">
@@ -633,5 +507,3 @@ export default function OrdersPage() {
 
     return <OrdersPageContent />;
 }
-
-    

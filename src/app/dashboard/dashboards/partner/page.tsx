@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -48,7 +47,7 @@ export default function PartnerDashboardPage() {
   const walletDocRef = user ? doc(firestore, 'users', user.uid, 'wallet', 'main') : null;
   const { data: walletData } = useDoc<UserWallet>(walletDocRef);
   
-  const ordersQuery = React.useMemo(() => {
+    const ordersQuery = React.useMemo(() => {
     if (!user || !firestore) return null;
     return query(
         collection(firestore, 'orders'),

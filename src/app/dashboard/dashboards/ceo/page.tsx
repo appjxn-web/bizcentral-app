@@ -1,3 +1,4 @@
+
 'use client';
 
 import * as React from 'react';
@@ -44,7 +45,7 @@ import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useFirestore, useCollection } from '@/firebase';
-import { collection, query, where, limit } from 'firebase/firestore';
+import { collection, query, where, limit, orderBy } from 'firebase/firestore';
 import type { Order, User, Product, PurchaseRequest, CoaLedger, JournalVoucher, CoaGroup, Lead } from '@/lib/types';
 import { useRole } from '../../_components/role-provider';
 
@@ -58,7 +59,7 @@ export default function CeoDashboardPage() {
   const { currentRole } = useRole();
   const isAdminOrCEO = currentRole === 'Admin' || currentRole === 'CEO';
 
-  const ordersQuery = isAdminOrCEO ? collection(firestore, 'orders') : null;
+  const ordersQuery = isAdminOrCEO ? query(collection(firestore, 'orders'), orderBy('date', 'desc')) : null;
   const { data: ordersData } = useCollection<Order>(ordersQuery);
   const { data: usersData } = useCollection<User>(collection(firestore, 'users'));
   const { data: productsData } = useCollection<Product>(collection(firestore, 'products'));
