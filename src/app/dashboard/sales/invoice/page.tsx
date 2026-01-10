@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -25,6 +24,7 @@ import {
   Receipt,
   Eye,
   Edit,
+  CircleDollarSign,
 } from 'lucide-react';
 
 import { PageHeader } from '@/components/page-header';
@@ -441,12 +441,10 @@ function InvoicePageContent() {
         if (!user || !currentRole) return null;
         const invoicesRef = collection(firestore, 'salesInvoices');
     
-        // 1. Admins see all
         if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
             return query(invoicesRef, orderBy('date', 'desc'));
         }
     
-        // 2. Partners see only assigned
         if (currentRole === 'Partner') {
             return query(
                 invoicesRef, 
@@ -455,7 +453,6 @@ function InvoicePageContent() {
             );
         }
     
-        // 3. Customers see only their own
         return query(
             invoicesRef, 
             where('customerId', '==', user.uid),
@@ -702,8 +699,4 @@ export default function InvoicePageWrapper() {
     return <InvoicePageContent />;
 }
 
-
-
-
-
-
+    
