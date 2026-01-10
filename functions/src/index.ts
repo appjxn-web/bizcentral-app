@@ -227,6 +227,7 @@ export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}", a
           createdByUid: invoice.assignedToUid || invoice.customerId,
         });
 
+        // --- Handle Stock Deduction & COGS ---
         let totalCost = 0;
         const cogsLedgerId = await getLedgerIdByName("COST OF GOODS SOLD (COGS)");
         const finishedGoodsLedgerId = await getLedgerIdByName("Stock-in-Hand – Finished Goods");
@@ -234,6 +235,7 @@ export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}", a
 
         if (cogsLedgerId && finishedGoodsLedgerId) {
             for (const item of invoice.items) {
+                // Determine stock location: partner's or main warehouse
                 const stockRef = partnerId
                     ? db.doc(`users/${partnerId}/stock/${item.productId}`)
                     : db.doc(`products/${item.productId}`);
@@ -244,8 +246,10 @@ export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}", a
 
                 const product = productSnap.data() as Product;
                 
+                const fieldToDecrement = partnerId ? 'quantity' : 'openingStock';
+
                 transaction.update(stockRef, {
-                    quantity: admin.firestore.FieldValue.increment(-item.quantity)
+                    [fieldToDecrement]: admin.firestore.FieldValue.increment(-item.quantity)
                 });
                 
                 const itemCost = (product?.cost || 0) * item.quantity;
