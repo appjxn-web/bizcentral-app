@@ -104,6 +104,7 @@ export type JournalVoucher = {
     credit?: number;
   }[];
   createdAt: Timestamp;
+  createdByUid?: string;
 };
 
 export interface CompanyInfo {
@@ -218,3 +219,5 @@ export interface StockTransferRequest {
 }
 
     
+
+  

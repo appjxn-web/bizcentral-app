@@ -515,13 +515,14 @@ export default function CreateInvoicePage() {
           { accountId: partyLedger.id, debit: 0, credit: amount }
         ],
         createdAt: serverTimestamp(),
+        createdByUid: authUser?.uid
       };
       
       await setDoc(doc(firestore, 'journalVouchers', newVoucherId), jvData);
   
       setBookingAmount(prev => prev + amount);
       const details = `Mode: ${bankLedger.name}, Ref: ${paymentRef}, Date: ${paymentDate}, Amount: ₹${amount.toFixed(2)}`;
-      setPaymentDetails(prev => prev ? `${prev}\\n${details}` : details);
+      setPaymentDetails(prev => prev ? `${prev}\n${details}` : details);
       
       const receiptData = {
         type: 'Receipt',
@@ -546,7 +547,7 @@ export default function CreateInvoicePage() {
       toast({ variant: 'destructive', title: 'Payment Failed', description: e.message });
     }
   };
-
+  
   const balanceDue = calculations.grandTotal - bookingAmount;
   const qrUpiString = companyInfo ? `upi://pay?pa=${companyInfo.primaryUpiId || 'your-upi-id@okhdfcbank'}&pn=${encodeURIComponent(companyInfo.companyName || 'Your Company')}&am=${balanceDue.toFixed(2)}&cu=INR` : '';
 
@@ -846,3 +847,6 @@ export default function CreateInvoicePage() {
 
 
 
+
+
+  

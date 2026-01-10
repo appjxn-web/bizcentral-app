@@ -78,6 +78,7 @@ const findOrCreateSpecificCustomerLedger = async (transaction: admin.firestore.T
 
 export const verifyUpiPaymentAndCreateOrder = onCall(async (request) => {
     const { order, upiTransactionId } = request.data;
+    const userId = order.userId;
 
     // --- 1. UPI Verification (Simulated) ---
     // In a real app, you would call your payment gateway's API here.
@@ -117,6 +118,7 @@ export const verifyUpiPaymentAndCreateOrder = onCall(async (request) => {
                     { accountId: customerLedgerId, debit: 0, credit: order.paymentReceived }, 
                 ],
                 createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                createdByUid: userId,
             });
 
             // b. Handle Referral Logic
@@ -222,7 +224,8 @@ export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}", a
           narration: `Sales Invoice ${invoice.invoiceNumber} to ${invoice.customerName}`,
           entries: salesEntries,
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
-          voucherType: "Sales Voucher"
+          voucherType: "Sales Voucher",
+          createdByUid: (invoice as any).assignedToUid || invoice.customerId,
         });
 
         // --- COGS Entry & Stock Deduction ---
@@ -266,7 +269,8 @@ export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}", a
                     narration: `COGS for Invoice ${invoice.invoiceNumber}`,
                     entries: cogsEntries,
                     createdAt: admin.firestore.FieldValue.serverTimestamp(),
-                    voucherType: "Journal Voucher"
+                    voucherType: "Journal Voucher",
+                    createdByUid: (invoice as any).assignedToUid || invoice.customerId,
                 });
             }
         }
@@ -556,6 +560,7 @@ export const handleOrderUpdates = onDocumentUpdated("orders/{orderId}", async (e
                     { accountId: customerLedgerId, debit: 0, credit: after.paymentReceived }, 
                 ],
                 createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                createdByUid: after.userId,
             });
         });
       }
@@ -647,3 +652,5 @@ export const onGoalUpdate = onDocumentCreated("goalUpdates/{updateId}", async ()
     
 
     
+
+  

@@ -746,156 +746,19 @@ export type CoaLedger = {
 };
 
 
-export type ReferralStatus = 'Pending' | 'Signed Up' | 'First Purchased' | 'Completed';
-
-export interface Referral {
-    id: string;
-    name: string;
-    mobile: string;
-    status: ReferralStatus;
-    referredBy: string; // user ID
-    createdAt: Timestamp;
-    earnings: number;
-    commission: number;
-}
-
-export type NotificationType = 'alert' | 'info' | 'update' | 'message';
-
-export interface Notification {
-  id: string;
-  type: NotificationType;
-  title: string;
-  description: string;
-  timestamp: Timestamp;
-  read: boolean;
-}
-
-interface SocialLinks {
-  youtube: string;
-  instagram: string;
-  facebook: string;
-  linkedin: string;
-  x: string;
-}
-
-interface TaxInfo {
-    id: string;
-    value: string;
-    fileUrl?: string;
-}
-
-export interface DocPrefixConfig {
-    id: string;
-    type: string;
-    prefix: string;
-    useDate: boolean;
-    startNumber: number;
-    digits: number;
-}
-
-interface Personnel {
-    id: string;
-    name: string;
-    designation: string;
-    shareholding: number;
-    pan?: string;
-    din?: string;
-    aadhar?: string;
-    phone?: string;
-    mobile?: string;
-}
-
-interface Faq {
-    id: string;
-    question: string;
-    answer: string;
-}
-
-export interface PayrollConfig {
-    monthly: {
-        basicPercent: number;
-        hraPercent: number;
-        pfContributionPercent: number;
-        professionalTax: number;
-    };
-    hourly: {
-        defaultRate: number;
-    };
-    overtime: {
-        slot1Multiplier: number;
-        slot2Multiplier: number;
-        slot3Multiplier: number;
-    };
-}
-
-export interface AttendanceConfig {
-    autoPunchOutForLunch: boolean;
-    punchInGracePeriod: number; // in minutes
-    lunchOutTime: string; // "HH:mm"
-    lunchInTime: string; // "HH:mm"
-}
-
-
-export interface CompanyInfo {
-  logo?: string;
-  companyName: string;
-  companyType: string;
-  incorporationDate: string;
-  website?: string;
-  contactEmail: string;
-  contactNumber: string;
-  aboutUs: string;
-  socials: Partial<SocialLinks>;
-  addresses: Address[];
-  taxInfo: Record<string, TaxInfo>;
-  docPrefixes: DocPrefixConfig[];
-  personnel: Personnel[];
-  referralAmount: string;
-  commissionPercent: string;
-  faqs: Faq[];
-  supportEmail: string;
-  supportPhone: string;
-  primaryUpiId?: string;
-  latitude?: number;
-  longitude?: number;
-  payrollConfig?: PayrollConfig;
-  attendanceConfig?: AttendanceConfig;
-  commissionMatrix?: {
-    effectiveDate: string;
-    matrix: {
-      category: string;
-      discountInternal: number;
-    }[];
-  };
-  customHomepageBanner?: {
-    desktopImageUrl: string;
-    mobileImageUrl: string;
-    headline: string;
-    subheadline: string;
-    headlineStyle?: {
-        bold?: boolean;
-        italic?: boolean;
-    };
-    subheadlineStyle?: {
-        bold?: boolean;
-        italic?: boolean;
-    };
-    textAlign?: 'left' | 'center' | 'right';
-    textPosition?: 'top' | 'center' | 'bottom';
-  };
-}
-
 export type JournalVoucher = {
   id: string;
   date: string;
   narration: string;
+  voucherType?: string;
   entries: {
     accountId: string;
     debit?: number;
     credit?: number;
   }[];
   createdAt: any;
-}
+  createdByUid?: string;
+};
 
 export interface PunchLog {
   inTime: Timestamp;
@@ -1183,4 +1046,5 @@ export interface SupportCallbackRequest {
   createdByUid: string;
 }
 
-```
+
+  
