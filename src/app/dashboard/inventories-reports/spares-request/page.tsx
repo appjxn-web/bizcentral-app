@@ -32,14 +32,15 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { PlusCircle, Save, Trash2, Check, ChevronsUpDown, Send } from 'lucide-react';
 import type { User, Product, SparesRequest, StockTransferRequest, UserProfile } from '@/lib/types';
-import { useFirestore, useCollection, useUser } from '@/firebase';
-import { collection, addDoc, serverTimestamp, query, where, orderBy } from 'firebase/firestore';
+import { useFirestore, useCollection, useUser, useDoc } from '@/firebase';
+import { collection, addDoc, serverTimestamp, query, where, orderBy, doc, setDoc } from 'firebase/firestore';
 import { cn } from '@/lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { useRole } from '../../_components/role-provider';
 import { format } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
+import { getNextDocNumber } from '@/lib/number-series';
 
 interface RequestItem {
   id: string;
@@ -62,47 +63,29 @@ export default function SparesRequestPage() {
   const { toast } = useToast();
   const firestore = useFirestore();
   const { user } = useUser();
+  const userProfileRef = user ? doc(firestore, 'users', user.uid) : null;
+  const { data: userProfile } = useDoc<UserProfile>(userProfileRef);
   const { currentRole } = useRole();
 
-  const { data: productsData, loading: productsLoading } = useCollection<Product>(collection(firestore, 'products'));
-  const { data: usersData, loading: usersLoading } = useCollection<User>(collection(firestore, 'users'));
+  const { data: partners } = useCollection<Party>(query(collection(firestore, 'parties'), where('type', '==', 'Partner')));
+  const { data: products } = useCollection<Product>(collection(firestore, 'products'));
+  const { data: stockTransferRequests, loading: requestsLoading } = useCollection<StockTransferRequest>(collection(firestore, 'stockTransferRequests'));
+  const { data: settingsData } = useDoc<any>(doc(firestore, 'company', 'settings'));
   
-  const userRequestsQuery = React.useMemo(() => {
-    if (!user || !currentRole) return null;
-    
-    const ref = collection(firestore, 'stockTransferRequests');
-  
-    if (['Admin', 'CEO', 'Inventory Manager'].includes(currentRole)) {
-      return query(ref, orderBy('createdAt', 'desc'));
-    }
-  
-    return query(
-      ref, 
-      where('requestingUserId', '==', user.uid),
-      orderBy('createdAt', 'desc')
-    );
-  }, [user, currentRole, firestore]);
-
-  const { data: userRequests, loading: requestsLoading } = useCollection<StockTransferRequest>(userRequestsQuery);
-
-
-  const [selectedEngineerId, setSelectedEngineerId] = React.useState<string | null>(null);
+  const [selectedPartnerId, setSelectedPartnerId] = React.useState<string | null>(null);
   const [items, setItems] = React.useState<RequestItem[]>([{ id: `item-${Date.now()}`, productId: '', productName: '', quantity: 1 }]);
-  const [openCombobox, setOpenCombobox] = React.useState(false);
+  const [notes, setNotes] = React.useState('');
+  const [isSubmitting, setIsSubmitting] = React.useState(false);
 
   const isPartner = currentRole === 'Partner';
 
-  const engineers = React.useMemo(() => usersData?.filter(u => u.role === 'Employee' || u.role === 'Service Manager') || [], [usersData]);
-  
   const availableProducts = React.useMemo(() => {
-    if (!productsData) return [];
+    if (!products) return [];
     if (isPartner) {
-        // Partners can request any saleable product.
-        return productsData.filter(p => p.saleable);
+        return products.filter(p => p.saleable);
     }
-    // Internal staff requesting spares.
-    return productsData.filter(p => p.type === 'Components' || p.type === 'Consumables' || p.source === 'Bought');
-  }, [productsData, isPartner]);
+    return products.filter(p => p.type === 'Components' || p.type === 'Consumables' || p.source === 'Bought');
+  }, [products, isPartner]);
 
   const handleAddItem = () => {
     setItems(prev => [...prev, { id: `item-${Date.now()}`, productId: '', productName: '', quantity: 1 }]);
@@ -119,9 +102,7 @@ export default function SparesRequestPage() {
           const updatedItem = { ...item, [field]: value };
           if (field === 'productId') {
             const product = availableProducts.find(p => p.id === value);
-            if (product) {
-              updatedItem.productName = product.name;
-            }
+            if (product) updatedItem.productName = product.name;
           }
           return updatedItem;
         }
@@ -131,126 +112,133 @@ export default function SparesRequestPage() {
   };
   
   const handleSubmitRequest = async () => {
-    const targetId = isPartner ? user?.uid : selectedEngineerId;
-    const targetUser = isPartner ? usersData?.find(u => u.id === user?.uid) : engineers.find(e => e.id === targetId);
+    const targetId = isPartner ? user?.uid : selectedPartnerId;
+    const targetUser = isPartner ? userProfile : partners?.find(p => p.id === targetId);
 
     if (!targetId || !targetUser || items.length === 0 || items.some(i => !i.productId || Number(i.quantity) <= 0)) {
         toast({ variant: 'destructive', title: 'Missing Information', description: 'Please select a recipient and add at least one valid item.' });
         return;
     }
+    if (!settingsData?.prefixes || !stockTransferRequests) {
+        toast({ variant: 'destructive', title: 'Error loading settings' });
+        return;
+    }
     
+    setIsSubmitting(true);
     try {
         const partnerName = (targetUser as UserProfile)?.businessName || targetUser.name || 'Unknown';
         
+        const newRequestId = getNextDocNumber('Stock Transfer', settingsData.prefixes, stockTransferRequests);
+        
         const requestData = {
+            id: newRequestId,
             requestingUserId: user?.uid,
-            requestingUserName: user?.displayName,
+            requestingUserName: userProfile?.businessName || userProfile?.name || user?.displayName,
             partnerId: targetId,
             partnerName: partnerName,
             items: items.map(({ id, ...rest }) => ({...rest, quantity: Number(rest.quantity)})),
-            status: 'Pending Approval',
+            status: 'Pending Approval' as 'Pending Approval',
             createdAt: serverTimestamp(),
-            notes: isPartner ? 'Partner stock request' : 'Engineer advance spares request',
+            notes,
         };
 
-        await addDoc(collection(firestore, 'stockTransferRequests'), requestData);
-
-        toast({ title: 'Success', description: 'Your stock request has been submitted for approval.' });
+        await setDoc(doc(firestore, 'stockTransferRequests', newRequestId), requestData);
+        toast({ title: 'Request Submitted', description: 'Stock transfer request has been sent for approval.' });
         
-        setSelectedEngineerId(null);
+        setSelectedPartnerId(null);
         setItems([{ id: `item-${Date.now()}`, productId: '', productName: '', quantity: 1 }]);
-    } catch(error) {
-        console.error("Error submitting request:", error);
+        setNotes('');
+    } catch(e) {
+        console.error("Failed to submit stock transfer request:", e);
         toast({ variant: 'destructive', title: 'Submission Failed' });
+    } finally {
+        setIsSubmitting(false);
     }
   };
 
+  const userRequestsQuery = React.useMemo(() => {
+    if (!user) return null;
+    const ref = collection(firestore, 'stockTransferRequests');
+    if (isPartner) {
+        return query(ref, where('partnerId', '==', user.uid), orderBy('createdAt', 'desc'));
+    }
+    return query(ref, orderBy('createdAt', 'desc'));
+  }, [user, isPartner, firestore]);
+
+  const { data: userRequests } = useCollection<StockTransferRequest>(userRequestsQuery);
+
   return (
     <>
-      <PageHeader title={isPartner ? "Request Stock" : "Advance Spares Request"}>
-        <Button onClick={handleSubmitRequest}><Send className="mr-2 h-4 w-4"/> Submit for Approval</Button>
+      <PageHeader title={isPartner ? "Request Stock" : "Create Stock Transfer"}>
+        <Button onClick={handleSubmitRequest} disabled={isSubmitting}><Send className="mr-2 h-4 w-4"/> Submit for Approval</Button>
       </PageHeader>
       
       <Card>
         <CardHeader>
-            <CardTitle>{isPartner ? "Create Stock Request" : "Create Spares Request"}</CardTitle>
+            <CardTitle>{isPartner ? "Create Stock Request" : "Create Stock Transfer"}</CardTitle>
             <CardDescription>
                 {isPartner 
                     ? "Request stock to be transferred to your inventory from the main warehouse." 
-                    : "Request a set of spare parts in advance for an engineer to carry for on-site service calls."
+                    : "Transfer stock from the main warehouse to a partner location."
                 }
             </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
             {!isPartner && (
-              <div className="max-w-sm space-y-2">
-                  <Label>Engineer</Label>
-                  <Popover open={openCombobox} onOpenChange={setOpenCombobox}>
-                      <PopoverTrigger asChild>
-                      <Button variant="outline" role="combobox" className="w-full justify-between" disabled={usersLoading}>
-                          {selectedEngineerId ? engineers.find(e => e.id === selectedEngineerId)?.name : "Select an engineer..."}
-                          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                      </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
-                      <Command>
-                          <CommandInput placeholder="Search engineer..." />
-                          <CommandList>
-                          <CommandEmpty>No engineer found.</CommandEmpty>
-                          <CommandGroup>
-                              {engineers.map((e) => (
-                              <CommandItem
-                                  key={e.id}
-                                  value={e.name}
-                                  onSelect={() => { setSelectedEngineerId(e.id); setOpenCombobox(false); }}
-                              >
-                                  <Check className={cn("mr-2 h-4 w-4", selectedEngineerId === e.id ? "opacity-100" : "opacity-0")} />
-                                  {e.name}
-                              </CommandItem>
-                              ))}
-                          </CommandGroup>
-                          </CommandList>
-                      </Command>
-                      </PopoverContent>
-                  </Popover>
+              <div className="max-w-md space-y-2">
+                  <Label>To Partner</Label>
+                  <Select onValueChange={setSelectedPartnerId} value={selectedPartnerId || ''}>
+                      <SelectTrigger><SelectValue placeholder="Select a partner..." /></SelectTrigger>
+                      <SelectContent>
+                          {partners?.map(p => <SelectItem key={p.id} value={p.id}>{(p as UserProfile).businessName || p.name}</SelectItem>)}
+                      </SelectContent>
+                  </Select>
               </div>
             )}
             
             <div>
-                <h3 className="text-lg font-medium mb-2">Requested Parts</h3>
-                <Table>
-                    <TableHeader><TableRow>
-                        <TableHead className="w-[60%]">Part / Spare</TableHead>
-                        <TableHead>Quantity</TableHead>
-                        <TableHead className="w-[50px]"><span className="sr-only">Remove</span></TableHead>
-                    </TableRow></TableHeader>
-                    <TableBody>
-                        {items.map((item, index) => (
-                            <TableRow key={item.id}>
-                                <TableCell>
-                                     <Select value={item.productId} onValueChange={(value) => handleItemChange(item.id, 'productId', value)}>
-                                        <SelectTrigger><SelectValue placeholder="Select a spare part" /></SelectTrigger>
-                                        <SelectContent>
-                                            {availableProducts.map(p => <SelectItem key={p.id} value={p.id}>{p.name} (Stock: {p.openingStock})</SelectItem>)}
-                                        </SelectContent>
-                                    </Select>
-                                </TableCell>
-                                <TableCell>
-                                    <Input type="number" value={item.quantity} onChange={(e) => handleItemChange(item.id, 'quantity', e.target.value)} />
-                                </TableCell>
-                                <TableCell>
-                                    <Button variant="ghost" size="icon" onClick={() => handleRemoveItem(item.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
-                                </TableCell>
+                <h3 className="text-lg font-medium mb-2">Items to Transfer</h3>
+                <div className="border rounded-md mt-2">
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead className="w-[60%]">Product</TableHead>
+                                <TableHead>Quantity</TableHead>
+                                <TableHead className="w-[50px]"><span className="sr-only">Remove</span></TableHead>
                             </TableRow>
-                        ))}
-                    </TableBody>
-                </Table>
-                 <Button variant="outline" size="sm" onClick={handleAddItem} className="mt-4 w-full">
-                    <PlusCircle className="mr-2 h-4 w-4" /> Add Part
-                </Button>
+                        </TableHeader>
+                        <TableBody>
+                            {items.map(item => (
+                                <TableRow key={item.id}>
+                                    <TableCell>
+                                         <Select value={item.productId} onValueChange={(value) => handleItemChange(item.id, 'productId', value)}>
+                                            <SelectTrigger><SelectValue placeholder="Select product..." /></SelectTrigger>
+                                            <SelectContent>
+                                                {availableProducts.map(p => <SelectItem key={p.id} value={p.id}>{p.name} (Stock: {p.openingStock})</SelectItem>)}
+                                            </SelectContent>
+                                        </Select>
+                                    </TableCell>
+                                    <TableCell>
+                                        <Input type="number" value={item.quantity} onChange={(e) => handleItemChange(item.id, 'quantity', e.target.value)} />
+                                    </TableCell>
+                                    <TableCell>
+                                        <Button variant="ghost" size="icon" onClick={() => handleRemoveItem(item.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                                    </TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                     <Button variant="outline" size="sm" onClick={handleAddItem} className="m-2">
+                        <PlusCircle className="mr-2 h-4 w-4" /> Add Item
+                    </Button>
+                </div>
             </div>
-        </CardContent>
-      </Card>
+            <div className="space-y-2">
+                <Label>Notes (Optional)</Label>
+                <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Add any notes for the approver..." />
+            </div>
+          </CardContent>
+        </Card>
       
       <Card className="mt-6">
         <CardHeader>
@@ -261,7 +249,8 @@ export default function SparesRequestPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Request Date</TableHead>
+                <TableHead>Request ID</TableHead>
+                <TableHead>Date</TableHead>
                 <TableHead>Recipient</TableHead>
                 <TableHead>Items</TableHead>
                 <TableHead>Status</TableHead>
@@ -269,10 +258,11 @@ export default function SparesRequestPage() {
             </TableHeader>
             <TableBody>
               {requestsLoading ? (
-                <TableRow><TableCell colSpan={4} className="h-24 text-center">Loading requests...</TableCell></TableRow>
+                <TableRow><TableCell colSpan={5} className="h-24 text-center">Loading requests...</TableCell></TableRow>
               ) : userRequests && userRequests.length > 0 ? (
                 userRequests.map(req => (
                   <TableRow key={req.id}>
+                    <TableCell className="font-mono">{req.id}</TableCell>
                     <TableCell>{req.createdAt ? format(req.createdAt.toDate(), 'dd/MM/yyyy') : 'Pending'}</TableCell>
                     <TableCell>{req.partnerName}</TableCell>
                     <TableCell>{req.items.length}</TableCell>
@@ -285,7 +275,7 @@ export default function SparesRequestPage() {
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center h-24 text-muted-foreground">
+                  <TableCell colSpan={5} className="text-center h-24 text-muted-foreground">
                     You have not made any requests yet.
                   </TableCell>
                 </TableRow>

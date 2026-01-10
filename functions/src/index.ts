@@ -13,6 +13,7 @@ import * as admin from "firebase-admin";
 import {getFirestore, FieldValue} from "firebase-admin/firestore";
 import type {Order, SalesInvoice, Party, Goal, UserProfile, CreditNote, DebitNote, RefundRequest, Product, StockTransferRequest} from "./types";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
+import { getNextDocNumber } from "./number-series";
 
 if (admin.apps.length === 0) { admin.initializeApp(); }
 const db = getFirestore();
@@ -162,36 +163,21 @@ export const handleOrderCreation = onDocumentCreated("orders/{orderId}", async (
     const snap = event.data;
     if (!snap) return;
 
-    const now = new Date();
-    const datePrefix = `SO-${now.getFullYear().toString().slice(-2)}${(now.getMonth() + 1).toString().padStart(2, "0")}-`;
-    let orderNumber;
+    const prefixesSnap = await db.doc('company/settings').get();
+    const prefixes = prefixesSnap.data()?.prefixes;
+    const allOrders = await db.collection('orders').get();
+    const allOrdersData = allOrders.docs.map(d => d.data());
 
-    try {
-        const lastDocSnapshot = await db.collection("orders")
-            .where("orderNumber", ">=", datePrefix)
-            .orderBy("orderNumber", "desc")
-            .limit(1)
-            .get();
-
-        let nextNum = 1;
-        if (!lastDocSnapshot.empty) {
-            const lastNumStr = lastDocSnapshot.docs[0].data().orderNumber;
-            const lastNumFromDb = parseInt(lastNumStr.split("-")[2], 10);
-            if (!isNaN(lastNumFromDb)) nextNum = lastNumFromDb + 1;
-        }
-        orderNumber = `${datePrefix}${nextNum.toString().padStart(4, "0")}`;
-    } catch (e) {
-        orderNumber = `${datePrefix}0001`;
-    }
-
+    const orderNumber = getNextDocNumber('Sales Order', prefixes, allOrdersData as any[]);
+    
     await snap.ref.update({ orderNumber });
 });
 
 export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}", async (event) => {
     const snap = event.data;
     if (!snap) return;
-    const invoice = snap.data() as SalesInvoice & { assignedToUid?: string };
-    const invoiceCreatorId = (snap.data() as any).createdByUid || invoice.assignedToUid || invoice.customerId;
+    const invoice = snap.data() as SalesInvoice & { assignedToUid?: string, createdByUid?: string };
+    const invoiceCreatorId = invoice.createdByUid || invoice.assignedToUid || invoice.customerId;
 
     try {
       await db.runTransaction(async (transaction) => {
@@ -236,7 +222,6 @@ export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}", a
 
         if (cogsLedgerId && finishedGoodsLedgerId) {
             for (const item of invoice.items) {
-                // Determine stock location: partner's or main warehouse
                 const stockRef = partnerId
                     ? db.doc(`users/${partnerId}/stock/${item.productId}`)
                     : db.doc(`products/${item.productId}`);
@@ -247,6 +232,7 @@ export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}", a
 
                 const product = productSnap.data() as Product;
                 
+                // For partners, decrement 'quantity'. For main inventory, decrement 'openingStock'.
                 const fieldToDecrement = partnerId ? 'quantity' : 'openingStock';
 
                 transaction.update(stockRef, {
@@ -310,7 +296,6 @@ export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}", a
             const customerInvoicesQuery = db.collection('salesInvoices').where('customerId', '==', invoice.customerId).limit(2);
             const customerInvoicesSnapshot = await transaction.get(customerInvoicesQuery);
             
-            // This is their first invoice if only one invoice document exists (the one just created).
             if (customerInvoicesSnapshot.size === 1) { 
                 const referralsQuery = db.collection('users').doc(customerData.referredBy).collection('referrals')
                     .where('mobile', '==', customerData.mobile)
@@ -459,6 +444,7 @@ export const onStockTransfer = onDocumentUpdated("stockTransferRequests/{request
 
                 // 2. Increment stock in partner's sub-collection
                 const partnerStockRef = db.doc(`users/${partnerId}/stock/${item.productId}`);
+                 // Use set with merge to create the document if it doesn't exist
                 transaction.set(partnerStockRef, {
                     quantity: admin.firestore.FieldValue.increment(item.quantity)
                 }, { merge: true });
@@ -467,7 +453,6 @@ export const onStockTransfer = onDocumentUpdated("stockTransferRequests/{request
         console.log(`Successfully transferred stock for request ${event.params.requestId} to partner ${partnerId}`);
     } catch (e) {
         console.error(`Stock transfer failed for request ${event.params.requestId}:`, e);
-        // Optional: Revert status or log error to Firestore for admin review
     }
 });
 
@@ -479,14 +464,13 @@ export const handleQuotationCreation = onDocumentCreated("quotations/{docId}", a
     const data = snapshot.data();
     if (data.quotationNumber) return;
     try {
-      const now = new Date();
-      const prefix = `QU-${now.getFullYear().toString().slice(-2)}${(now.getMonth() + 1).toString().padStart(2, "0")}-`;
-      const lastQ = await db.collection("quotations").where("quotationNumber", ">=", prefix).orderBy("quotationNumber", "desc").limit(1).get();
-      let nextNum = 1;
-      if (!lastQ.empty) {
-        nextNum = parseInt(lastQ.docs[0].data().quotationNumber.split("-")[2], 10) + 1;
-      }
-      return snapshot.ref.update({ quotationNumber: `${prefix}${nextNum.toString().padStart(4, "0")}`, id: FieldValue.delete() });
+      const prefixesSnap = await db.doc('company/settings').get();
+      const prefixes = prefixesSnap.data()?.prefixes;
+      const allDocs = await db.collection("quotations").get();
+      const allData = allDocs.docs.map(d => d.data());
+      const newId = getNextDocNumber('Sales Quotation', prefixes, allData as any[]);
+      
+      return snapshot.ref.update({ quotationNumber: newId, id: FieldValue.delete() });
     } catch (error) { return null; }
 });
 
@@ -687,3 +671,4 @@ export const onGoalUpdate = onDocumentCreated("goalUpdates/{updateId}", async ()
     
 
   
+
