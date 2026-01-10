@@ -25,7 +25,6 @@ import {
   Receipt,
   Eye,
   Edit,
-  CircleDollarSign,
 } from 'lucide-react';
 
 import { PageHeader } from '@/components/page-header';
@@ -324,7 +323,7 @@ function OrderRow({ order, onGenerateInvoice, onUpdateStatus, pickupPoints, dyna
                         <DropdownMenuItem onClick={() => onViewInvoice(existingInvoice.invoiceNumber)}>
                            <Receipt className="mr-2 h-4 w-4" /> View Invoice
                         </DropdownMenuItem>
-                    ) : canGenerateInvoice && ['Awaiting Payment', 'Ready for Dispatch', 'Shipped', 'Delivered'].includes(dynamicStatus) && (
+                    ) : canGenerateInvoice && ['Awaiting Payment', 'Ready for Dispatch', 'Shipped', 'Delivered', 'Ordered', 'Manufacturing', 'Awaiting Payment Confirmation'].includes(dynamicStatus) && (
                         <DropdownMenuItem onClick={() => onGenerateInvoice(order)}>
                            <Receipt className="mr-2 h-4 w-4" /> Generate Invoice
                         </DropdownMenuItem>
@@ -442,17 +441,15 @@ function InvoicePageContent() {
         if (!user || !currentRole) return null;
         const invoicesRef = collection(firestore, 'salesInvoices');
     
-        if (['Admin', 'CEO', 'Accounts Manager', 'Sales Manager'].includes(currentRole)) {
-            return query(invoicesRef);
+        if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
+            return query(invoicesRef, orderBy('date', 'desc'));
         }
     
-        // For Partners, they should see invoices where they are assigned.
         if (['Partner', 'Franchisee', 'Sales Agent', 'Dealer'].includes(currentRole)) {
-            return query(invoicesRef, where('assignedToUid', '==', user.uid));
+            return query(invoicesRef, where('assignedToUid', '==', user.uid), orderBy('date', 'desc'));
         }
-    
-        // For Customers, they see invoices where they are the customer.
-        return query(invoicesRef, where('customerId', '==', user.uid));
+
+        return query(invoicesRef, where('customerId', '==', user.uid), orderBy('date', 'desc'));
     }, [user, currentRole, firestore]);
 
 
@@ -693,6 +690,7 @@ export default function InvoicePageWrapper() {
 
     return <InvoicePageContent />;
 }
+
 
 
 
