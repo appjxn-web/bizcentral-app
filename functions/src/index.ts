@@ -222,25 +222,26 @@ export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}", a
 
         if (cogsLedgerId && finishedGoodsLedgerId) {
             for (const item of invoice.items) {
-                const stockRef = partnerId
+                // Correctly determine if it's a partner sale and adjust stock reference and field name.
+                const isPartnerSale = !!partnerId;
+                const stockRef = isPartnerSale
                     ? db.doc(`users/${partnerId}/stock/${item.productId}`)
                     : db.doc(`products/${item.productId}`);
                     
-                const productRef = db.doc(`products/${item.productId}`);
-                const productSnap = await transaction.get(productRef);
-                if (!productSnap.exists) continue;
-
-                const product = productSnap.data() as Product;
+                const fieldToDecrement = isPartnerSale ? 'quantity' : 'openingStock';
                 
-                // For partners, decrement 'quantity'. For main inventory, decrement 'openingStock'.
-                const fieldToDecrement = partnerId ? 'quantity' : 'openingStock';
-
                 transaction.update(stockRef, {
                     [fieldToDecrement]: admin.firestore.FieldValue.increment(-item.quantity)
                 });
                 
-                const itemCost = (product?.cost || 0) * item.quantity;
-                totalCost += itemCost;
+                // Fetch product cost for COGS calculation from the main product document
+                const productRef = db.doc(`products/${item.productId}`);
+                const productSnap = await transaction.get(productRef);
+                if (productSnap.exists) {
+                    const product = productSnap.data() as Product;
+                    const itemCost = (product?.cost || 0) * item.quantity;
+                    totalCost += itemCost;
+                }
             }
 
             if (totalCost > 0) {
@@ -271,8 +272,8 @@ export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}", a
                     const rule = partnerData.partnerMatrix?.find(r => r.category === item.category);
                     if (rule) {
                         const itemTotal = item.price * item.quantity;
-                        const discountAmount = itemTotal * ((invoice.discount / invoice.subtotal) || 0);
-                        const commissionableValue = itemTotal - discountAmount;
+                        // Correctly calculate commissionable value *before* invoice-level discount
+                        const commissionableValue = itemTotal;
                         return acc + (commissionableValue * (rule.commissionRate / 100));
                     }
                     return acc;
@@ -296,6 +297,7 @@ export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}", a
             const customerInvoicesQuery = db.collection('salesInvoices').where('customerId', '==', invoice.customerId).limit(2);
             const customerInvoicesSnapshot = await transaction.get(customerInvoicesQuery);
             
+            // Check if this is the customer's very first invoice
             if (customerInvoicesSnapshot.size === 1) { 
                 const referralsQuery = db.collection('users').doc(customerData.referredBy).collection('referrals')
                     .where('mobile', '==', customerData.mobile)
@@ -305,7 +307,8 @@ export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}", a
                 if (!referralsSnapshot.empty) {
                     const referralDoc = referralsSnapshot.docs[0];
                     const commissionPercentage = referralDoc.data().commission || 0;
-                    const referralCommission = invoice.grandTotal * (commissionPercentage / 100);
+                    // Calculate commission on taxable amount, not grand total
+                    const referralCommission = invoice.taxableAmount * (commissionPercentage / 100);
 
                     if (referralCommission > 0) {
                         const referrerWalletRef = db.doc(`users/${customerData.referredBy}/wallet/main`);
@@ -676,3 +679,4 @@ export const onGoalUpdate = onDocumentCreated("goalUpdates/{updateId}", async ()
 
 
     
+
