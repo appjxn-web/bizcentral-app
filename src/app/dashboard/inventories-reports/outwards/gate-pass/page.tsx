@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -19,7 +20,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Download, Loader2, ArrowLeft, Printer } from 'lucide-react';
+import { Download, Loader2, ArrowLeft, Printer, Phone, MapPin } from 'lucide-react';
 import { format } from 'date-fns';
 import { QRCodeSVG } from 'qrcode.react';
 import { useFirestore, useDoc, useCollection } from '@/firebase';
@@ -121,26 +122,29 @@ export default function GatePassPage() {
                             </div>
                         </header>
                         
-                        <section className="my-6 grid grid-cols-2 gap-4">
-                             <div>
-                                <h3 className="font-semibold text-sm">Dispatch To:</h3>
-                                <p className="font-bold">{(partyData as UserProfile)?.businessName || partyData?.name || request.partnerName}</p>
-                                {customerAddress && (
-                                    <p className="text-sm">
-                                        {[customerAddress.line1, customerAddress.line2, customerAddress.city, customerAddress.state, customerAddress.pin].filter(Boolean).join(', ')}
-                                    </p>
-                                )}
-                                {partyData?.contactPerson && (
-                                  <p className="text-sm"><strong>Attn:</strong> {partyData.contactPerson}</p>
-                                )}
-                                {partyData?.phone && (
-                                  <p className="text-sm"><strong>Phone:</strong> {partyData.phone}</p>
-                                )}
-                            </div>
-                            <div className="text-right">
-                                <h3 className="font-semibold text-sm">Shipping Details:</h3>
-                                <p className="text-sm"><strong>Vehicle:</strong> {shippingDetails?.vehicleNo}</p>
-                                <p className="text-sm"><strong>Driver:</strong> {shippingDetails?.driverName} ({shippingDetails?.driverPhone})</p>
+                        <section className="my-6">
+                             <h2 className="text-right text-lg font-bold mb-4 underline">GATE PASS / STOCK TRANSFER</h2>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <h3 className="font-semibold text-sm">Dispatch To:</h3>
+                                    <p className="font-bold">{(partyData as UserProfile)?.businessName || partyData?.name || request.partnerName}</p>
+                                    {customerAddress && (
+                                        <p className="text-sm">
+                                            {[customerAddress.line1, customerAddress.line2, customerAddress.city, customerAddress.state, customerAddress.pin].filter(Boolean).join(', ')}
+                                        </p>
+                                    )}
+                                    {partyData?.contactPerson && (
+                                    <p className="text-sm"><strong>Attn:</strong> {partyData.contactPerson}</p>
+                                    )}
+                                    {partyData?.phone && (
+                                    <p className="text-sm"><strong>Phone:</strong> {partyData.phone}</p>
+                                    )}
+                                </div>
+                                <div className="text-right">
+                                    <h3 className="font-semibold text-sm">Shipping Details:</h3>
+                                    <p className="text-sm"><strong>Vehicle:</strong> {shippingDetails?.vehicleNo}</p>
+                                    <p className="text-sm"><strong>Driver:</strong> {shippingDetails?.driverName} ({shippingDetails?.driverPhone})</p>
+                                </div>
                             </div>
                         </section>
 
