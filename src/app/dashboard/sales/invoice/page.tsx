@@ -28,7 +28,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Button, buttonVariants } from '@/components/ui/button';
-import { MoreHorizontal, FileText, CircleDollarSign, Receipt, Edit, Trash2 } from 'lucide-react';
+import { MoreHorizontal, FileText, CircleDollarSign, Receipt, Edit, Trash2, CheckCircle } from 'lucide-react';
 import type { SalesInvoice, UserRole } from '@/lib/types';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
