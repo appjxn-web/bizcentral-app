@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -117,16 +118,19 @@ export default function CreateInvoicePage() {
   const invoicesQuery = React.useMemo(() => {
     if (!authUser || !currentRole) return null;
     const invoicesRef = collection(firestore, 'salesInvoices');
+    
     if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
       return query(invoicesRef);
     }
+  
     if (currentRole === 'Partner') {
       return query(invoicesRef, where('assignedToUid', '==', authUser.uid));
     }
+  
     return query(invoicesRef, where('customerId', '==', authUser.uid));
   }, [authUser, currentRole, firestore]);
 
-  const { data: allSalesInvoices } = useCollection<SalesInvoice>(invoicesQuery);
+  const { data: allSalesInvoices, loading: invoicesLoading } = useCollection<SalesInvoice>(invoicesQuery);
   const { data: allProducts, loading: productsLoading } = useCollection<Product>(query(collection(firestore, 'products'), where('saleable', '==', true)));
   const { data: settingsData } = useDoc<any>(doc(firestore, 'company', 'settings'));
 
@@ -387,6 +391,8 @@ export default function CreateInvoicePage() {
     }
 
     try {
+      const finalAssignedToUid = currentRole === 'Partner' ? authUser?.uid : assignedToUid;
+      
       const invoiceData: Omit<SalesInvoice, 'id' | 'invoiceNumber'> = {
           orderId: orderDocumentId || '',
           orderNumber: salesOrderNumber,
@@ -406,7 +412,7 @@ export default function CreateInvoicePage() {
           balanceDue: calculations.grandTotal - bookingAmount,
           status: 'Unpaid',
           appliedCoupons: appliedCoupons,
-          assignedToUid: assignedToUid,
+          assignedToUid: finalAssignedToUid,
       };
       
       if (isEditMode && invoiceIdToEdit) {
@@ -506,6 +512,15 @@ export default function CreateInvoicePage() {
   const balanceDue = calculations.grandTotal - bookingAmount;
   const qrUpiString = companyInfo ? `upi://pay?pa=${companyInfo.primaryUpiId || 'your-upi-id@okhdfcbank'}&pn=${encodeURIComponent(companyInfo.companyName || 'Your Company')}&am=${balanceDue.toFixed(2)}&cu=INR` : '';
 
+  const loading = productsLoading || partiesLoading || ledgersLoading || invoicesLoading;
+
+  if(loading) {
+    return (
+        <div className="flex items-center justify-center h-full">
+            <Loader2 className="h-8 w-8 animate-spin" />
+        </div>
+    )
+  }
 
   return (
     <>
@@ -788,4 +803,3 @@ export default function CreateInvoicePage() {
   );
 }
 
-    
