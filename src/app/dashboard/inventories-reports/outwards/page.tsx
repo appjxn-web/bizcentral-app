@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -542,9 +543,9 @@ function StockTransferTab() {
         
         const requestData = {
             requestingUserId: user?.uid,
-            requestingUserName: requestingUser?.businessName || user?.displayName,
+            requestingUserName: requestingUser?.businessName || requestingUser?.displayName || user?.displayName,
             partnerId: selectedPartnerId,
-            partnerName: (partner as UserProfile)?.businessName || partner?.name,
+            partnerName: (partner as any)?.businessName || partner?.name,
             items: items.map(({ id, ...rest }) => ({...rest, quantity: Number(rest.quantity)})),
             status: 'Pending Approval',
             createdAt: serverTimestamp(),
@@ -1048,3 +1049,4 @@ export default function OutwardsPage() {
     </>
   );
 }
+```
