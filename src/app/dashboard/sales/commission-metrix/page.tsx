@@ -1,3 +1,4 @@
+
 'use client';
 
 import * as React from 'react';
@@ -168,94 +169,95 @@ function CommissionMetrixPageContent() {
   return (
     <>
       <PageHeader title="Discount Matrix">
-        div className="flex items-center gap-4">
-            div className="flex items-center gap-2">
-                Label htmlFor="effective-date" className="whitespace-nowrap">Effective From:Label>
-                Input
+        <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+                <Label htmlFor="effective-date" className="whitespace-nowrap">Effective From:</Label>
+                <Input
                     id="effective-date"
                     type="date"
                     value={effectiveDate}
                     onChange={(e) => setEffectiveDate(e.target.value)}
                     className="w-40"
                 />
-            div>
-            div className="flex items-center gap-2">
-                DropdownMenu>
-                DropdownMenuTrigger asChild>
-                    Button variant="outline" size="sm" className="h-9 gap-1">
-                    ListFilter className="h-3.5 w-3.5" />
-                    span className="sr-only sm:not-sr-only sm:whitespace-nowrap">Filterspan>
-                    Button>
-                DropdownMenuTrigger>
-                DropdownMenuContent align="end">
-                    DropdownMenuLabel>Filter by CategoryDropdownMenuLabel>
-                    DropdownMenuSeparator />
-                    ScrollArea className="h-32">
+            </div>
+            <div className="flex items-center gap-2">
+                <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="sm" className="h-9 gap-1">
+                    <ListFilter className="h-3.5 w-3.5" />
+                    <span className="sr-only sm:not-sr-only sm:whitespace-nowrap">Filter</span>
+                    </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                    <DropdownMenuLabel>Filter by Category</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    <ScrollArea className="h-32">
                     {allCategories.map(cat => (
-                        DropdownMenuCheckboxItem key={cat} checked={categoryFilters.includes(cat)} onCheckedChange={() => handleFilterChange(setCategoryFilters)(cat)}>
+                        <DropdownMenuCheckboxItem key={cat} checked={categoryFilters.includes(cat)} onCheckedChange={() => handleFilterChange(setCategoryFilters)(cat)}>
                         {cat}
-                        DropdownMenuCheckboxItem>
+                        </DropdownMenuCheckboxItem>
                     ))}
-                    ScrollArea>
-                DropdownMenuContent>
-                DropdownMenu>
-                Button onClick={handleSaveChanges}>
-                    Save className="mr-2 h-4 w-4"/>
+                    </ScrollArea>
+                </DropdownMenuContent>
+                </DropdownMenu>
+                <Button onClick={handleSaveChanges}>
+                    <Save className="mr-2 h-4 w-4"/>
                     Save Changes
-                Button>
-            div>
-        div>
-      PageHeader>
+                </Button>
+            </div>
+        </div>
+      </PageHeader>
       
-       div className="grid gap-4 md:grid-cols-1">
-        Card>
-          CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            CardTitle className="text-sm font-medium">Avg. Discount RateCardTitle>
-            Percent className="h-4 w-4 text-muted-foreground" />
-          CardHeader>
-          CardContent>
-            div className="text-2xl font-bold">{kpis.avgDiscount.toFixed(1)}%div>
-            p className="text-xs text-muted-foreground">Average discount for internal salesp>
-          CardContent>
-        Card>
-      div>
+       <div className="grid gap-4 md:grid-cols-1">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Avg. Discount Rate</CardTitle>
+            <Percent className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{kpis.avgDiscount.toFixed(1)}%</div>
+            <p className="text-xs text-muted-foreground">Average discount for internal sales</p>
+          </CardContent>
+        </Card>
+      </div>
 
-      Card>
-        CardHeader>
-          CardTitle>Category Discount MatrixCardTitle>
-          CardDescription>
+      <Card>
+        <CardHeader>
+          <CardTitle>Category Discount Matrix</CardTitle>
+          <CardDescription>
             A detailed matrix of discounts for all product categories.
-          CardDescription>
-        CardHeader>
-        CardContent>
-          Table>
-            TableHeader>
-              TableRow>
-                TableHead>CategoryTableHead>
-                TableHead>Disc. (Internal)TableHead>
-              TableRow>
-            TableHeader>
-            TableBody>
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Category</TableHead>
+                <TableHead>Disc. (Internal)</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {productsLoading || companyInfoLoading ? (
-                TableRow>
-                  TableCell colSpan={2} className="h-24 text-center">
+                <TableRow>
+                  <TableCell colSpan={2} className="h-24 text-center">
                     Loading matrix...
-                  TableCell>
-                TableRow>
+                  </TableCell>
+                </TableRow>
               ) : filteredMetrics.map((metric) => (
-                TableRow key={metric.category}>
-                  TableCell>
-                     div className="font-medium">{metric.category}div>
-                  TableCell>
-                    Input type="number" value={metric.discountInternal} onChange={(e) => handleMetricChange(metric.category, 'discountInternal', Number(e.target.value))} className="w-24" />
-                  TableCell>
-                TableRow>
+                <TableRow key={metric.category}>
+                  <TableCell>
+                     <div className="font-medium">{metric.category}</div>
+                  </TableCell>
+                    <TableCell>
+                    <Input type="number" value={metric.discountInternal} onChange={(e) => handleMetricChange(metric.category, 'discountInternal', Number(e.target.value))} className="w-24" />
+                  </TableCell>
+                </TableRow>
               ))}
-            TableBody>
-          Table>
-        CardContent>
-      Card>
-    >
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+    </>
   );
 }
 
@@ -268,21 +270,21 @@ export default function CommissionMetrixWrapper() {
     if (!isClient) {
         return (
              <>
-                PageHeader title="Discount Matrix" />
-                Card>
-                    CardHeader>
-                        CardTitle>Product Discount MatrixCardTitle>
-                        CardDescription>
+                <PageHeader title="Discount Matrix" />
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Product Discount Matrix</CardTitle>
+                        <CardDescription>
                             Loading data...
-                        CardDescription>
-                    CardHeader>
-                    CardContent>
-                        div className="flex items-center justify-center h-48">Loading matrix...div>
-                    CardContent>
-                Card>
-            >
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="flex items-center justify-center h-48">Loading matrix...</div>
+                    </CardContent>
+                </Card>
+            </>
         )
     }
 
-    return CommissionMetrixPageContent />;
+    return <CommissionMetrixPageContent />;
 }
