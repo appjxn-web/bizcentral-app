@@ -441,12 +441,12 @@ function InvoicePageContent() {
         if (!user || !currentRole) return null;
         const invoicesRef = collection(firestore, 'salesInvoices');
     
-        // 1. Admins see all invoices.
+        // 1. Admins see all
         if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
             return query(invoicesRef, orderBy('date', 'desc'));
         }
     
-        // 2. Partners see invoices where they are the assigned agent.
+        // 2. Partners see only assigned
         if (currentRole === 'Partner') {
             return query(
                 invoicesRef, 
@@ -455,7 +455,7 @@ function InvoicePageContent() {
             );
         }
     
-        // 3. Customers see invoices where they are the customer.
+        // 3. Customers see only their own
         return query(
             invoicesRef, 
             where('customerId', '==', user.uid),
@@ -701,6 +701,7 @@ export default function InvoicePageWrapper() {
 
     return <InvoicePageContent />;
 }
+
 
 
 

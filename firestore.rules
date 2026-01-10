@@ -74,15 +74,18 @@ service cloud.firestore {
 
     // --- GLOBAL ORDERS (Main Sales) ---
     match /orders/{orderId} {
+      // Allows listing if the user is Admin, or if the query results are 
+      // restricted to their own ID or their assigned orders.
       allow read, list: if signedIn() && (
         isAdmin() || 
         resource.data.userId == request.auth.uid || 
         resource.data.assignedToUid == request.auth.uid
       );
+
+      allow create: if signedIn();
       
-      allow create: if signedIn() && (request.resource.data.userId == request.auth.uid || isAdmin() || isPartner());
-      
-      allow update: if isAdmin() || (
+      // Partners can update status for orders assigned to them
+      allow update: if isAdmin() || (isPartner() && resource.data.assignedToUid == request.auth.uid) || (
           signedIn() && 
           resource.data.userId == request.auth.uid && 
           request.resource.data.status == 'Cancellation Requested'
@@ -148,14 +151,16 @@ service cloud.firestore {
           ))
         );
         
+        // Partners can CREATE invoices for their assigned orders
         allow create: if signedIn() && (
           isAdmin() || 
-          isPartner() && request.resource.data.assignedToUid == request.auth.uid
+          request.resource.data.assignedToUid == request.auth.uid
         );
         
+        // Partners can EDIT invoices they are assigned to
         allow update: if signedIn() && (
           isAdmin() || 
-          isPartner() && resource.data.assignedToUid == request.auth.uid
+          resource.data.assignedToUid == request.auth.uid
         );
         
         allow delete: if isAdmin();
@@ -256,3 +261,4 @@ service cloud.firestore {
     }
   }
 }
+
