@@ -28,7 +28,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Button, buttonVariants } from '@/components/ui/button';
-import { MoreHorizontal, FileText, CircleDollarSign, Receipt, Edit, Trash2, CheckCircle } from 'lucide-react';
+import { MoreHorizontal, FileText, CircleDollarSign, Receipt, Edit, Trash2, CheckCircle, PlusCircle } from 'lucide-react';
 import type { SalesInvoice, UserRole } from '@/lib/types';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
@@ -111,10 +111,18 @@ function InvoicePageContent() {
     await deleteDoc(doc(firestore, 'salesInvoices', invoiceId));
     toast({ title: "Invoice Deleted" });
   };
+  
+  const canCreateInvoice = ['Admin', 'CEO', 'Sales Manager', 'Partner'].includes(currentRole);
 
   return (
     <>
-      <PageHeader title="Sales Invoices" />
+      <PageHeader title="Sales Invoices">
+        {canCreateInvoice && (
+          <Button onClick={() => router.push('/dashboard/sales/create-invoice')}>
+            <PlusCircle className="mr-2 h-4 w-4" /> Create New Invoice
+          </Button>
+        )}
+      </PageHeader>
       <div className="grid gap-4 md:grid-cols-3">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -237,4 +245,5 @@ export default function InvoicePageWrapper() {
 
   return <InvoicePageContent />;
 }
+
 
