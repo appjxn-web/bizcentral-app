@@ -11,7 +11,7 @@ import {
 } from "firebase-functions/v2/firestore";
 import * as admin from "firebase-admin";
 import {getFirestore, FieldValue} from "firebase-admin/firestore";
-import type {Order, SalesInvoice, Party, Goal, UserProfile, CreditNote, DebitNote, RefundRequest, Product} from "./types";
+import type {Order, SalesInvoice, Party, Goal, UserProfile, CreditNote, DebitNote, RefundRequest, Product, StockTransferRequest} from "./types";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 
 if (admin.apps.length === 0) { admin.initializeApp(); }
@@ -366,8 +366,40 @@ export const onDebitNoteCreated = onDocumentCreated("debitNotes/{noteId}", async
     await jvRef.set(jvData);
 });
 
-export const onStockTransfer = onDocumentUpdated("stockTransferRequests/{requestId}", (event: FirestoreEvent<Change<DocumentSnapshot> | undefined, {requestId: string}>) => {
-    // Placeholder for future implementation
+export const onStockTransfer = onDocumentUpdated("stockTransferRequests/{requestId}", async (event: FirestoreEvent<Change<DocumentSnapshot> | undefined, {requestId: string}>) => {
+    if (!event.data) return;
+
+    const before = event.data.before.data() as StockTransferRequest;
+    const after = event.data.after.data() as StockTransferRequest;
+
+    // Trigger only when status changes to "Shipped"
+    if (before.status === 'Shipped' || after.status !== 'Shipped') {
+        return;
+    }
+
+    const partnerId = after.partnerId;
+    const itemsToTransfer = after.items;
+
+    try {
+        await db.runTransaction(async (transaction) => {
+            for (const item of itemsToTransfer) {
+                // 1. Decrement stock from main warehouse (products collection)
+                const mainProductRef = db.doc(`products/${item.productId}`);
+                transaction.update(mainProductRef, { 
+                    openingStock: admin.firestore.FieldValue.increment(-item.quantity) 
+                });
+
+                // 2. Increment stock in partner's sub-collection
+                const partnerStockRef = db.doc(`users/${partnerId}/stock/${item.productId}`);
+                transaction.set(partnerStockRef, {
+                    quantity: admin.firestore.FieldValue.increment(item.quantity)
+                }, { merge: true });
+            }
+        });
+        console.log(`Successfully transferred stock for request ${event.params.requestId} to partner ${partnerId}`);
+    } catch (e) {
+        console.error(`Stock transfer failed for request ${event.params.requestId}:`, e);
+    }
 });
 
 // Quotation and other functions remain as standard...
@@ -567,6 +599,7 @@ export const onGoalUpdate = onDocumentCreated("goalUpdates/{updateId}", async ()
     
 
       
+
 
 
 
