@@ -269,6 +269,7 @@ export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}", a
             }
         }
         
+        // --- 1. Partner Commission ---
         if (partnerId) {
             const partnerRef = db.doc(`users/${partnerId}`);
             const partnerSnap = await transaction.get(partnerRef);
@@ -291,6 +292,36 @@ export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}", a
                     transaction.set(walletRef, { 
                         commissionPayable: admin.firestore.FieldValue.increment(commissionTotal) 
                     }, { merge: true });
+                }
+            }
+        }
+        
+        // --- 2. Referral Commission ---
+        const customerRef = db.doc(`users/${invoice.customerId}`);
+        const customerSnap = await transaction.get(customerRef);
+        const customerData = customerSnap.data() as UserProfile | undefined;
+
+        if (customerData?.referredBy) {
+            const customerInvoicesQuery = db.collection('salesInvoices').where('customerId', '==', invoice.customerId).limit(2);
+            const customerInvoicesSnapshot = await transaction.get(customerInvoicesQuery);
+            
+            // This is their first invoice if only one invoice document exists (the one just created).
+            if (customerInvoicesSnapshot.size === 1) { 
+                const referralsQuery = db.collection('users').doc(customerData.referredBy).collection('referrals')
+                    .where('mobile', '==', customerData.mobile)
+                    .where('status', '==', 'Signed Up');
+                const referralsSnapshot = await transaction.get(referralsQuery);
+                
+                if (!referralsSnapshot.empty) {
+                    const referralDoc = referralsSnapshot.docs[0];
+                    const commissionPercentage = referralDoc.data().commission || 0;
+                    const referralCommission = invoice.grandTotal * (commissionPercentage / 100);
+
+                    if (referralCommission > 0) {
+                        const referrerWalletRef = db.doc(`users/${customerData.referredBy}/wallet/main`);
+                        transaction.set(referrerWalletRef, { commissionPayable: admin.firestore.FieldValue.increment(referralCommission) }, { merge: true });
+                        transaction.update(referralDoc.ref, { status: 'First Purchased', commission: referralCommission });
+                    }
                 }
             }
         }
