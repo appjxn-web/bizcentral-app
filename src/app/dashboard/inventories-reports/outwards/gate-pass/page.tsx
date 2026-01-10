@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -10,6 +11,7 @@ import html2canvas from 'html2canvas';
 import { PageHeader } from '@/components/page-header';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { Separator } from '@/components/ui/separator';
 import {
   Table,
   TableBody,
@@ -46,8 +48,8 @@ export default function GatePassPage() {
     const requestRef = requestId ? doc(firestore, 'stockTransferRequests', requestId) : null;
     const { data: request, loading: requestLoading } = useDoc<StockTransferRequest>(requestRef);
 
-    const { data: partnerData, loading: partnerLoading } = useDoc<UserProfile>(
-        request?.partnerId ? doc(firestore, 'users', request.partnerId) : null
+    const { data: partnerData, loading: partnerLoading } = useDoc<Party>(
+        request?.partnerId ? doc(firestore, 'parties', request.partnerId) : null
     );
 
     const handleDownloadPdf = async () => {
@@ -84,7 +86,7 @@ export default function GatePassPage() {
     }
     
     const { shippingDetails, items } = request as any;
-    const customerAddress = partnerData?.addresses?.[0];
+    const customerAddress = partnerData?.address;
 
     return (
         <>
@@ -116,11 +118,17 @@ export default function GatePassPage() {
                         <section className="my-6 grid grid-cols-2 gap-4">
                              <div>
                                 <h3 className="font-semibold text-sm">Dispatch To:</h3>
-                                <p className="font-bold">{partnerData?.businessName || request.partnerName}</p>
+                                <p className="font-bold">{partnerData?.name || request.partnerName}</p>
                                 {customerAddress && (
                                      <p className="text-sm">
                                         {[customerAddress.line1, customerAddress.line2, customerAddress.city, customerAddress.state, customerAddress.pin].filter(Boolean).join(', ')}
                                     </p>
+                                )}
+                                {partnerData?.contactPerson && (
+                                  <p className="text-sm"><strong>Attn:</strong> {partnerData.contactPerson}</p>
+                                )}
+                                {partnerData?.phone && (
+                                  <p className="text-sm"><strong>Phone:</strong> {partnerData.phone}</p>
                                 )}
                             </div>
                             <div className="text-right">
