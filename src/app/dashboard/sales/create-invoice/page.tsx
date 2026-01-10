@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -32,7 +31,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { PlusCircle, Save, Trash2, Check, ChevronsUpDown, CalendarClock, Loader2, DollarSign } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import type { Party, Product, UserRole, SalesOrder, Quotation, CoaLedger, SalesInvoice, CompanyInfo, PartyType, CoaNature, Offer } from '@/lib/types';
+import type { Party, Product, UserRole, SalesOrder, Quotation, CoaLedger, SalesInvoice, CompanyInfo, PartyType, CoaNature, Offer, UserProfile } from '@/lib/types';
 import { format, startOfMonth } from 'date-fns';
 import { Separator } from '@/components/ui/separator';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -88,29 +87,6 @@ const formatIndianCurrency = (num: number) => {
   }).format(num);
 };
 
-const getMaxDiscount = (role: UserRole, category: string): number => {
-    if (role === 'Admin' || role === 'CEO') {
-        return 100;
-    }
-    if (role === 'Sales Manager') {
-        return 20;
-    }
-    if (role === 'Partner') {
-        return 15;
-    }
-    if (role === 'Manager') { 
-        if (category === 'Electronics') return 12;
-        if (category === 'Furniture') return 15;
-        return 10;
-    }
-    if (role === 'Employee') { 
-        if (category === 'Electronics') return 10;
-        if (category === 'Furniture') return 13;
-        return 8;
-    }
-    return 5;
-};
-
 interface PartnerStockItem {
   id: string;
   quantity: number;
@@ -124,6 +100,8 @@ export default function CreateInvoicePage() {
   const { currentRole } = useRole();
   const firestore = useFirestore();
   const { user: authUser } = useUser();
+  const userProfileRef = authUser ? doc(firestore, 'users', authUser.uid) : null;
+  const { data: userProfile } = useDoc<UserProfile>(userProfileRef);
   
   const [selectedPartyId, setSelectedPartyId] = React.useState<string | null>(null);
   const [invoiceDate, setInvoiceDate] = React.useState(format(new Date(), 'yyyy-MM-dd'));
@@ -152,6 +130,7 @@ export default function CreateInvoicePage() {
   const [openProductCombobox, setOpenProductCombobox] = React.useState<string | null>(null);
   const [isEditMode, setIsEditMode] = React.useState(false);
   const [invoiceIdToEdit, setInvoiceIdToEdit] = React.useState<string | null>(null);
+  const [isFromSalesOrder, setIsFromSalesOrder] = React.useState(false);
 
   const { data: parties, loading: partiesLoading } = useCollection<Party>(collection(firestore, 'parties'));
   const { data: coaLedgers, loading: ledgersLoading } = useCollection<CoaLedger>(collection(firestore, 'coa_ledgers'));
@@ -206,6 +185,7 @@ export default function CreateInvoicePage() {
     } else {
       const rawData = localStorage.getItem('invoiceDataToCreate');
       if (rawData && allProducts && allProducts.length > 0) {
+          setIsFromSalesOrder(true);
           const data = JSON.parse(rawData);
           setSelectedPartyId(data.customerId);
           setOrderDocumentId(data.id); // Set the document ID
@@ -307,18 +287,22 @@ export default function CreateInvoicePage() {
   }, [items, isInterstate, overallDiscount]);
   
   const maxAllowedDiscount = React.useMemo(() => {
-    if (appliedCoupons && appliedCoupons.length > 0) {
-        return 100; // Allow any discount if a coupon was applied from the sales order
+    if (isFromSalesOrder) {
+        return overallDiscount; // Lock discount to what came from the sales order
     }
-    if (!items.length) return getMaxDiscount(currentRole, '');
+    if (currentRole === 'Partner' && userProfile?.partnerMatrix) {
+        if (!items.length) return 0;
+        const maxDiscounts = items.map(item => {
+            const rule = userProfile.partnerMatrix?.find(r => r.category === item.category);
+            return rule?.maxDiscount ?? 0;
+        });
+        return Math.min(...maxDiscounts);
+    }
+    if (!items.length) return 100;
     
-    const maxDiscounts = items.map(item => {
-        const product = saleableProducts.find(p => p.id === item.productId);
-        return getMaxDiscount(currentRole, product?.category || '');
-    });
-
-    return Math.min(...maxDiscounts);
-  }, [items, currentRole, saleableProducts, appliedCoupons]);
+    // Fallback for other roles (this can be expanded)
+    return 100;
+  }, [items, currentRole, userProfile, isFromSalesOrder, overallDiscount]);
 
   const isSaveDisabled = React.useMemo(() => {
     return overallDiscount > maxAllowedDiscount;
@@ -738,7 +722,7 @@ export default function CreateInvoicePage() {
                <div className="flex justify-between items-center">
                   <Label htmlFor="overall-discount" className="text-sm">Discount (%)</Label>
                   <div className="w-24">
-                      <Input id="overall-discount" type="number" value={overallDiscount} onChange={(e) => setOverallDiscount(Number(e.target.value))} className="text-right" placeholder="%" />
+                      <Input id="overall-discount" type="number" value={overallDiscount} onChange={(e) => setOverallDiscount(Number(e.target.value))} className="text-right" placeholder="%" disabled={isFromSalesOrder} />
                       <p className="text-xs text-muted-foreground mt-1">Max: {maxAllowedDiscount}%</p>
                   </div>
               </div>
@@ -792,7 +776,4 @@ export default function CreateInvoicePage() {
   );
 }
 
-  
-
-
-
+    
