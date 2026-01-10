@@ -133,7 +133,6 @@ export default function PartnerDashboardPage() {
       }));
   }, [orders]);
 
-
   return (
     <>
       <PageHeader title="Partner Dashboard" />
