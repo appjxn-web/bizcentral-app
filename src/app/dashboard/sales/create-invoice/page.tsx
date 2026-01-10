@@ -114,8 +114,20 @@ export default function CreateInvoicePage() {
   const [orderDocumentId, setOrderDocumentId] = React.useState<string | null>(null);
   const [assignedToUid, setAssignedToUid] = React.useState<string | null>(null);
   
+  const invoicesQuery = React.useMemo(() => {
+    if (!authUser || !currentRole) return null;
+    const invoicesRef = collection(firestore, 'salesInvoices');
+    if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
+      return query(invoicesRef);
+    }
+    if (currentRole === 'Partner') {
+      return query(invoicesRef, where('assignedToUid', '==', authUser.uid));
+    }
+    return query(invoicesRef, where('customerId', '==', authUser.uid));
+  }, [authUser, currentRole, firestore]);
+
+  const { data: allSalesInvoices } = useCollection<SalesInvoice>(invoicesQuery);
   const { data: allProducts, loading: productsLoading } = useCollection<Product>(query(collection(firestore, 'products'), where('saleable', '==', true)));
-  const { data: allSalesInvoices } = useCollection<SalesInvoice>(collection(firestore, 'salesInvoices'));
   const { data: settingsData } = useDoc<any>(doc(firestore, 'company', 'settings'));
 
   const [paymentDate, setPaymentDate] = React.useState(format(new Date(), 'yyyy-MM-dd'));

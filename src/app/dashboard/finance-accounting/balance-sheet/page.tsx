@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -58,9 +57,17 @@ function BalanceSheetContent() {
   const { data: products, loading: productsLoading } = useCollection<Product>(collection(firestore, 'products'));
   const { data: workOrders, loading: workOrdersLoading } = useCollection<WorkOrder>(collection(firestore, 'workOrders'));
   const { data: allOrders, loading: ordersLoading } = useCollection<Order>(collection(firestore, 'orders'));
-  const { data: salesInvoices, loading: invoicesLoading } = useCollection<SalesInvoice>(
-    user && ['Admin', 'CEO', 'Accounts Manager'].includes(currentRole) ? collection(firestore, 'salesInvoices') : null
-  );
+  
+  const invoicesQuery = React.useMemo(() => {
+    if (!user || !currentRole) return null;
+    const invoicesRef = collection(firestore, 'salesInvoices');
+    if (['Admin', 'CEO', 'Accounts Manager'].includes(currentRole)) {
+      return query(invoicesRef);
+    }
+    return query(invoicesRef, where('customerId', '==', user.uid));
+  }, [user, currentRole, firestore]);
+  const { data: salesInvoices, loading: invoicesLoading } = useCollection<SalesInvoice>(invoicesQuery);
+
   const { data: parties, loading: partiesLoading } = useCollection<Party>(collection(firestore, 'parties'));
   
   const jvQuery = React.useMemo(() => {
@@ -396,7 +403,8 @@ const { assets, liabilities, equity, pnl, loading, kpis } = React.useMemo(() => 
 export default function BalanceSheetPage() {
     const [isClient, setIsClient] = React.useState(false);
     React.useEffect(() => { setIsClient(true); }, []);
-    return isClient ? <BalanceSheetContent /> : null;
+    if (!isClient) return null;
+    return <BalanceSheetContent />;
 }
 
     

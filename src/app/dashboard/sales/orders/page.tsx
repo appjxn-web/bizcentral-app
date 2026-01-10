@@ -28,7 +28,7 @@ import {
 
 import { PageHeader } from '@/components/page-header';
 import { cn } from '@/lib/utils';
-import type { Order, OrderStatus, UserProfile, UserRole, WorkOrder, PickupPoint, SalesOrder, RefundRequest, SalesInvoice } from '@/lib/types';
+import type { Order, OrderStatus, UserProfile, UserRole, WorkOrder, PickupPoint, SalesOrder, RefundRequest, SalesInvoice, Party, CompanyInfo } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -440,7 +440,7 @@ function OrdersPageContent() {
         if (!user || !currentRole) return null;
         const invoicesRef = collection(firestore, 'salesInvoices');
     
-        if (['Admin', 'CEO', 'Accounts Manager', 'Sales Manager'].includes(currentRole)) {
+        if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
             return query(invoicesRef);
         }
     
@@ -644,13 +644,5 @@ export default function OrdersPage() {
 
     return <OrdersPageContent />;
 }
-
-    
-
-  
-
-
-
-
 
     
