@@ -300,7 +300,7 @@ export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}", a
             }
         }
 
-        // Update the original Sales Order status to "Ready for Dispatch"
+        // Update the original Sales Order status if it exists
         if (invoice.orderId) {
             const orderRef = db.collection('orders').doc(invoice.orderId);
             transaction.update(orderRef, { status: 'Ready for Dispatch' });

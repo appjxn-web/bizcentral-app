@@ -416,6 +416,7 @@ export default function CreateInvoicePage() {
 
     try {
       const finalAssignedToUid = currentRole === 'Partner' ? authUser?.uid : assignedToUid;
+      const finalBalanceDue = calculations.grandTotal - bookingAmount;
       
       const invoiceData: Omit<SalesInvoice, 'id' | 'invoiceNumber'> = {
           orderId: orderDocumentId || '',
@@ -433,8 +434,8 @@ export default function CreateInvoicePage() {
           taxableAmount: calculations.taxableAmount,
           grandTotal: calculations.grandTotal,
           amountPaid: bookingAmount,
-          balanceDue: calculations.grandTotal - bookingAmount,
-          status: 'Unpaid',
+          balanceDue: finalBalanceDue,
+          status: finalBalanceDue <= 0 ? 'Paid' : 'Unpaid',
           appliedCoupons: appliedCoupons,
           assignedToUid: finalAssignedToUid,
       };
@@ -848,5 +849,3 @@ export default function CreateInvoicePage() {
 
 
 
-
-  
