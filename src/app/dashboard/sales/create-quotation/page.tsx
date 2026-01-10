@@ -19,7 +19,6 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-  TableFooter,
 } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -84,16 +83,22 @@ const formatIndianCurrency = (num: number) => {
     }).format(num);
 };
 
+interface PartnerStockItem {
+  id: string;
+  quantity: number;
+}
+
 export default function CreateQuotationPage() {
   const { toast } = useToast();
   const router = useRouter();
   const searchParams = useSearchParams();
   const editId = searchParams.get('id');
+  const { currentRole } = useRole();
   const { user: authUser } = useUser();
   const firestore = useFirestore();
   
   const { data: parties, loading: partiesLoading } = useCollection<Party>(collection(firestore, 'parties'));
-  const { data: products, loading: productsLoading } = useCollection<Product>(query(collection(firestore, 'products'), where('saleable', '==', true)));
+  const { data: allProducts, loading: productsLoading } = useCollection<Product>(query(collection(firestore, 'products'), where('saleable', '==', true)));
   
   const [loading, setLoading] = React.useState(!!editId);
   const [isSaving, setIsSaving] = React.useState(false);
@@ -107,6 +112,26 @@ export default function CreateQuotationPage() {
 
   const [dispatchEstimate, setDispatchEstimate] = React.useState<EstimateDispatchDateOutput | null>(null);
   const [isEstimating, setIsEstimating] = React.useState(false);
+
+  // Stock logic for Partners
+  const partnerStockQuery = (currentRole === 'Partner' && authUser) ? query(collection(firestore, 'users', authUser.uid, 'stock')) : null;
+  const { data: partnerStock, loading: partnerStockLoading } = useCollection<PartnerStockItem>(partnerStockQuery);
+
+  const saleableProducts = React.useMemo(() => {
+    if (!allProducts) return [];
+    
+    if (currentRole === 'Partner' && partnerStock) {
+      const partnerStockMap = new Map(partnerStock.map(item => [item.id, item.quantity]));
+      return allProducts
+        .filter(p => partnerStockMap.has(p.id))
+        .map(p => ({
+          ...p,
+          openingStock: partnerStockMap.get(p.id) || 0,
+        }));
+    }
+    
+    return allProducts;
+  }, [allProducts, partnerStock, currentRole]);
 
   React.useEffect(() => {
     if (editId && firestore) {
@@ -395,9 +420,9 @@ export default function CreateQuotationPage() {
                                   variant="outline"
                                   role="combobox"
                                   className="w-full justify-between"
-                                  disabled={productsLoading}
+                                  disabled={productsLoading || partnerStockLoading}
                                 >
-                                  {item.productId ? products?.find(p => p.id === item.productId)?.name : "Select Item..."}
+                                  {item.productId ? saleableProducts.find(p => p.id === item.productId)?.name : "Select Item..."}
                                   <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                               </Button>
                           </PopoverTrigger>
@@ -407,14 +432,15 @@ export default function CreateQuotationPage() {
                                   <CommandList>
                                       <CommandEmpty>No product found.</CommandEmpty>
                                       <CommandGroup>
-                                          {products?.map(p => (
+                                          {saleableProducts.map(p => (
                                               <CommandItem
                                                   key={p.id}
                                                   value={p.name}
                                                   onSelect={() => { handleItemChange(item.id, 'productId', p.id); setOpenProductCombobox(null); }}
                                               >
                                                   <Check className={cn("mr-2 h-4 w-4", item.productId === p.id ? "opacity-100" : "opacity-0")} />
-                                                  {p.name}
+                                                  <span className="flex-1">{p.name}</span>
+                                                  <span className="text-xs text-muted-foreground">(Stock: {p.openingStock})</span>
                                               </CommandItem>
                                           ))}
                                       </CommandGroup>

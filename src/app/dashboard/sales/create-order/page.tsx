@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -94,6 +95,9 @@ const getMaxDiscount = (role: UserRole, category: string): number => {
     if (role === 'Sales Manager') {
         return 20;
     }
+    if (role === 'Partner') {
+        return 15;
+    }
     if (role === 'Manager') { 
         if (category === 'Electronics') return 12;
         if (category === 'Furniture') return 15;
@@ -106,6 +110,11 @@ const getMaxDiscount = (role: UserRole, category: string): number => {
     }
     return 5;
 };
+
+interface PartnerStockItem {
+  id: string;
+  quantity: number;
+}
 
 export default function CreateSalesOrderPage() {
   const { toast } = useToast();
@@ -146,7 +155,26 @@ export default function CreateSalesOrderPage() {
   const { data: parties, loading: partiesLoading } = useCollection<Party>(collection(firestore, 'parties'));
   const { data: coaLedgers, loading: ledgersLoading } = useCollection<CoaLedger>(collection(firestore, 'coa_ledgers'));
   const { data: companyInfo } = useDoc<any>(doc(firestore, 'company', 'info'));
-  const saleableProducts = allProducts || [];
+  
+  // Stock logic for Partners
+  const partnerStockQuery = (currentRole === 'Partner' && authUser) ? query(collection(firestore, 'users', authUser.uid, 'stock')) : null;
+  const { data: partnerStock, loading: partnerStockLoading } = useCollection<PartnerStockItem>(partnerStockQuery);
+
+  const saleableProducts = React.useMemo(() => {
+    if (!allProducts) return [];
+    
+    if (currentRole === 'Partner' && partnerStock) {
+      const partnerStockMap = new Map(partnerStock.map(item => [item.id, item.quantity]));
+      return allProducts
+        .filter(p => partnerStockMap.has(p.id))
+        .map(p => ({
+          ...p,
+          openingStock: partnerStockMap.get(p.id) || 0,
+        }));
+    }
+    
+    return allProducts;
+  }, [allProducts, partnerStock, currentRole]);
   
   const paymentAccounts = React.useMemo(() => {
     if (!coaLedgers) return [];
@@ -542,7 +570,7 @@ export default function CreateSalesOrderPage() {
                                   variant="outline"
                                   role="combobox"
                                   className="w-full justify-between"
-                                  disabled={productsLoading}
+                                  disabled={productsLoading || partnerStockLoading}
                                 >
                                   {item.productId ? saleableProducts.find(p => p.id === item.productId)?.name : "Select Item..."}
                                   <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
@@ -561,7 +589,8 @@ export default function CreateSalesOrderPage() {
                                                   onSelect={() => { handleItemChange(item.id, 'productId', p.id); setOpenProductCombobox(null); }}
                                               >
                                                   <Check className={cn("mr-2 h-4 w-4", item.productId === p.id ? "opacity-100" : "opacity-0")} />
-                                                  {p.name}
+                                                  <span className="flex-1">{p.name}</span>
+                                                  <span className="text-xs text-muted-foreground">(Stock: {p.openingStock})</span>
                                               </CommandItem>
                                           ))}
                                       </CommandGroup>
@@ -693,3 +722,8 @@ export default function CreateSalesOrderPage() {
     </>
   );
 }
+
+  
+
+
+
