@@ -230,18 +230,24 @@ export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}", a
         const cogsEntries = [];
         const cogsLedgerId = await getLedgerIdByName("COST OF GOODS SOLD (COGS)");
         const finishedGoodsLedgerId = await getLedgerIdByName("Stock-in-Hand – Finished Goods");
+        const partnerId = (invoice as any).assignedToUid;
 
         if (cogsLedgerId && finishedGoodsLedgerId) {
             for (const item of invoice.items) {
-                const productRef = db.collection('products').doc(item.productId);
+                 // Determine where to deduct stock from
+                const stockRef = partnerId
+                    ? db.doc(`users/${partnerId}/stock/${item.productId}`)
+                    : db.doc(`products/${item.productId}`);
+                    
+                const productRef = db.doc(`products/${item.productId}`);
                 const productSnap = await transaction.get(productRef);
                 if (!productSnap.exists) continue;
 
                 const product = productSnap.data() as Product;
                 
                 // 1. Decrement Stock
-                transaction.update(productRef, {
-                    openingStock: admin.firestore.FieldValue.increment(-item.quantity)
+                transaction.update(stockRef, {
+                    quantity: admin.firestore.FieldValue.increment(-item.quantity)
                 });
                 
                 // 2. Calculate COGS
@@ -262,6 +268,31 @@ export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}", a
                     createdAt: admin.firestore.FieldValue.serverTimestamp(),
                     voucherType: "Journal Voucher"
                 });
+            }
+        }
+        
+        // --- Partner Commission Calculation ---
+        if (partnerId) {
+            const partnerRef = db.doc(`users/${partnerId}`);
+            const partnerSnap = await transaction.get(partnerRef);
+            const partnerData = partnerSnap.data() as UserProfile | undefined;
+            
+            if (partnerData && partnerData.partnerMatrix) {
+                let commissionTotal = invoice.items.reduce((acc, item) => {
+                    const rule = partnerData.partnerMatrix?.find(r => r.category === item.category);
+                    if (rule) {
+                        const itemTotal = item.price * item.quantity;
+                        return acc + (itemTotal * (rule.commissionRate / 100));
+                    }
+                    return acc;
+                }, 0);
+
+                if (commissionTotal > 0) {
+                    const walletRef = db.doc(`users/${partnerId}/wallet/main`);
+                    transaction.set(walletRef, { 
+                        commissionPayable: admin.firestore.FieldValue.increment(commissionTotal) 
+                    }, { merge: true });
+                }
             }
         }
 
@@ -612,5 +643,7 @@ export const onGoalUpdate = onDocumentCreated("goalUpdates/{updateId}", async ()
 
 
 
+
+    
 
     
