@@ -1,4 +1,5 @@
 
+
 import type { UserRole } from './types';
 
 // =================================================================================
@@ -48,6 +49,7 @@ const permissions: Partial<Record<UserRole, string[]>> = {
     'wishlist',
     'my-products',
     'my-account',
+    'my-cash-account',
     'referrals',
     'deals-offers',
     'parties',
@@ -76,6 +78,7 @@ const permissions: Partial<Record<UserRole, string[]>> = {
     'command-center-leaderboard',
     'notifications',
     'my-account',
+    'my-cash-account',
     'referrals',
     'deals-offers',
     'parties',
@@ -165,6 +168,7 @@ const permissions: Partial<Record<UserRole, string[]>> = {
   'Sales Manager': [
     'notifications',
     'my-account',
+    'my-cash-account',
     'referrals',
     'deals-offers',
     'parties',
@@ -195,6 +199,7 @@ const permissions: Partial<Record<UserRole, string[]>> = {
   'Production Manager': [
     'notifications',
     'my-account',
+    'my-cash-account',
     'referrals',
     'deals-offers',
     'parties',
@@ -227,6 +232,7 @@ const permissions: Partial<Record<UserRole, string[]>> = {
   'Purchase Manager': [
     'notifications',
     'my-account',
+    'my-cash-account',
     'referrals',
     'deals-offers',
     'parties',
@@ -257,6 +263,7 @@ const permissions: Partial<Record<UserRole, string[]>> = {
   'Service Manager': [
     'notifications',
     'my-account',
+    'my-cash-account',
     'referrals',
     'deals-offers',
     'parties',
@@ -282,6 +289,7 @@ const permissions: Partial<Record<UserRole, string[]>> = {
   'Accounts Manager': [
     'notifications',
     'my-account',
+    'my-cash-account',
     'referrals',
     'deals-offers',
     'parties',
@@ -352,6 +360,7 @@ const permissions: Partial<Record<UserRole, string[]>> = {
   'HR Manager': [
     'notifications',
     'my-account',
+    'my-cash-account',
     'referrals',
     'deals-offers',
     'parties',
@@ -379,6 +388,7 @@ const permissions: Partial<Record<UserRole, string[]>> = {
   'Gate Keeper': [
     'notifications',
     'my-account',
+    'my-cash-account',
     'referrals',
     'deals-offers',
     'parties',
@@ -395,6 +405,7 @@ const permissions: Partial<Record<UserRole, string[]>> = {
   'Inventory Manager': [
     'notifications',
     'my-account',
+    'my-cash-account',
     'referrals',
     'deals-offers',
     'parties',
@@ -417,6 +428,7 @@ const permissions: Partial<Record<UserRole, string[]>> = {
   'Employee': [
     'notifications',
     'my-account',
+    'my-cash-account',
     'referrals',
     'deals-offers',
     'my-task',
