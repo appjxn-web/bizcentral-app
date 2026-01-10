@@ -77,8 +77,8 @@ service cloud.firestore {
       // restricted to their own ID or their assigned orders.
       allow read, list: if signedIn() && (
         isAdmin() || 
-        (exists(resource.data.userId) && resource.data.userId == request.auth.uid) || 
-        (exists(resource.data.assignedToUid) && resource.data.assignedToUid == request.auth.uid)
+        resource.data.userId == request.auth.uid || 
+        resource.data.assignedToUid == request.auth.uid
       );
 
       allow create: if signedIn();
@@ -134,8 +134,8 @@ service cloud.firestore {
         // Partners can view the list if they are the assigned agent
         allow read, list: if signedIn() && (
           isAdmin() ||
-          (exists(resource.data.customerId) && resource.data.customerId == request.auth.uid) ||
-          (exists(resource.data.assignedToUid) && resource.data.assignedToUid == request.auth.uid)
+          resource.data.customerId == request.auth.uid ||
+          resource.data.assignedToUid == request.auth.uid
         );
         
         // Partners can CREATE invoices for their assigned orders
