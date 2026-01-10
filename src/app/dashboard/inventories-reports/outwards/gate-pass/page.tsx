@@ -23,7 +23,7 @@ import { format } from 'date-fns';
 import { QRCodeSVG } from 'qrcode.react';
 import { useFirestore, useDoc, useCollection } from '@/firebase';
 import { collection, query, where, doc, getDocs, limit, getDoc } from 'firebase/firestore';
-import type { StockTransferRequest, CompanyInfo, Party, Address } from '@/lib/types';
+import type { StockTransferRequest, CompanyInfo, Party, Address, UserProfile } from '@/lib/types';
 
 
 const formatIndianCurrency = (num: number) => {
@@ -46,8 +46,8 @@ export default function GatePassPage() {
     const requestRef = requestId ? doc(firestore, 'stockTransferRequests', requestId) : null;
     const { data: request, loading: requestLoading } = useDoc<StockTransferRequest>(requestRef);
 
-    const { data: partnerData, loading: partnerLoading } = useDoc<Party>(
-        request?.partnerId ? doc(firestore, 'parties', request.partnerId) : null
+    const { data: partnerData, loading: partnerLoading } = useDoc<UserProfile>(
+        request?.partnerId ? doc(firestore, 'users', request.partnerId) : null
     );
 
     const handleDownloadPdf = async () => {
@@ -84,7 +84,7 @@ export default function GatePassPage() {
     }
     
     const { shippingDetails, items } = request as any;
-    const customerAddress = partnerData?.address;
+    const customerAddress = partnerData?.addresses?.[0];
 
     return (
         <>
@@ -116,7 +116,7 @@ export default function GatePassPage() {
                         <section className="my-6 grid grid-cols-2 gap-4">
                              <div>
                                 <h3 className="font-semibold text-sm">Dispatch To:</h3>
-                                <p className="font-bold">{(partnerData as any)?.businessName || request.partnerName}</p>
+                                <p className="font-bold">{partnerData?.businessName || request.partnerName}</p>
                                 {customerAddress && (
                                      <p className="text-sm">
                                         {[customerAddress.line1, customerAddress.line2, customerAddress.city, customerAddress.state, customerAddress.pin].filter(Boolean).join(', ')}
