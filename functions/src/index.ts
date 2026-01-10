@@ -1,5 +1,4 @@
 
-
 'use server';
 import {
   onDocumentCreated,
@@ -49,7 +48,8 @@ const findOrCreateSpecificCustomerLedger = async (transaction: admin.firestore.T
     }
 
     // 2. Try to find an existing ledger by Name (e.g. "Kartik Kumawat")
-    const ledgerSearch = await db.collection('coa_ledgers').where('name', '==', customerName).limit(1).get();
+    const ledgerSearchQuery = db.collection('coa_ledgers').where('name', '==', customerName).limit(1);
+    const ledgerSearch = await transaction.get(ledgerSearchQuery);
     if (!ledgerSearch.empty) {
         const existingId = ledgerSearch.docs[0].id;
         transaction.set(partyRef, { coaLedgerId: existingId }, { merge: true });
@@ -104,7 +104,8 @@ export const verifyUpiPaymentAndCreateOrder = onCall(async (request) => {
             let bankAccountId = "L-1.1.1-2"; // Default Current Account
             
             if (primaryUpi) {
-                const ledgerSearch = await db.collection("coa_ledgers").where("bank.upiId", "==", primaryUpi).limit(1).get();
+                const ledgerSearchQuery = db.collection("coa_ledgers").where("bank.upiId", "==", primaryUpi).limit(1);
+                const ledgerSearch = await transaction.get(ledgerSearchQuery);
                 if (!ledgerSearch.empty) bankAccountId = ledgerSearch.docs[0].id;
             }
         
@@ -177,20 +178,24 @@ export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}", a
     const snap = event.data;
     if (!snap) return;
     const invoice = snap.data() as SalesInvoice & { assignedToUid?: string, createdByUid?: string };
-    const invoiceCreatorId = invoice.createdByUid || invoice.assignedToUid || invoice.customerId;
+    
+    // Determine the ID of the person who gets the commission
+    const partnerId = invoice.assignedToUid;
 
     try {
       await db.runTransaction(async (transaction) => {
         const customerLedgerId = await findOrCreateSpecificCustomerLedger(transaction, invoice);
         
+        // Helper specifically for use INSIDE this transaction
         const getLedgerIdByName = async (name: string): Promise<string | null> => {
-            const query = db.collection('coa_ledgers').where('name', '==', name).limit(1);
-            const res = await transaction.get(query);
+            const ledgerQuery = db.collection('coa_ledgers').where('name', '==', name).limit(1);
+            const res = await transaction.get(ledgerQuery); // MUST use transaction.get
             return res.empty ? null : res.docs[0].id;
         };
 
         const salesLedgerId = await getLedgerIdByName("Sales – Domestic") || "L-4.1-1";
 
+        // --- 1. Generate Sales Journal Voucher ---
         const salesEntries = [
           { accountId: customerLedgerId, debit: invoice.grandTotal, credit: 0 },
           { accountId: salesLedgerId, credit: invoice.taxableAmount, debit: 0 },
@@ -211,57 +216,58 @@ export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}", a
           entries: salesEntries,
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
           voucherType: "Sales Voucher",
-          createdByUid: invoiceCreatorId,
+          createdByUid: invoice.createdByUid || 'system',
         });
 
-        // --- Handle Stock Deduction & COGS ---
+        // --- 2. Handle Stock Deduction & COGS ---
         let totalCost = 0;
         const cogsLedgerId = await getLedgerIdByName("COST OF GOODS SOLD (COGS)");
         const finishedGoodsLedgerId = await getLedgerIdByName("Stock-in-Hand – Finished Goods");
-        const partnerId = invoice.assignedToUid;
 
-        if (cogsLedgerId && finishedGoodsLedgerId) {
-            for (const item of invoice.items) {
-                // Correctly determine if it's a partner sale and adjust stock reference and field name.
-                const isPartnerSale = !!partnerId;
-                const stockRef = isPartnerSale
-                    ? db.doc(`users/${partnerId}/stock/${item.productId}`)
-                    : db.doc(`products/${item.productId}`);
-                    
-                const fieldToDecrement = isPartnerSale ? 'quantity' : 'openingStock';
+        for (const item of invoice.items) {
+            // DEDUCT STOCK
+            // If assignedToUid exists, it's a Partner sale: deduct from their sub-collection
+            // Otherwise, deduct from main warehouse
+            const isPartnerSale = !!partnerId;
+            const stockRef = isPartnerSale
+                ? db.doc(`users/${partnerId}/stock/${item.productId}`)
+                : db.doc(`products/${item.productId}`);
                 
-                transaction.update(stockRef, {
-                    [fieldToDecrement]: admin.firestore.FieldValue.increment(-item.quantity)
-                });
-                
-                // Fetch product cost for COGS calculation from the main product document
-                const productRef = db.doc(`products/${item.productId}`);
-                const productSnap = await transaction.get(productRef);
-                if (productSnap.exists) {
-                    const product = productSnap.data() as Product;
-                    const itemCost = (product?.cost || 0) * item.quantity;
-                    totalCost += itemCost;
-                }
-            }
-
-            if (totalCost > 0) {
-                const cogsJvRef = db.collection("journalVouchers").doc();
-                transaction.set(cogsJvRef, {
-                    id: cogsJvRef.id,
-                    date: invoice.date,
-                    narration: `COGS for Invoice ${invoice.invoiceNumber}`,
-                    entries: [
-                        { accountId: cogsLedgerId, debit: totalCost, credit: 0 },
-                        { accountId: finishedGoodsLedgerId, debit: 0, credit: totalCost }
-                    ],
-                    createdAt: admin.firestore.FieldValue.serverTimestamp(),
-                    voucherType: "Journal Voucher",
-                    createdByUid: invoiceCreatorId,
-                });
+            const fieldToDecrement = isPartnerSale ? 'quantity' : 'openingStock';
+            
+            // FIX: Use transaction.set with merge: true instead of update.
+            // This ensures that if the partner stock doc doesn't exist yet, it is created with a negative value
+            // instead of crashing the function.
+            transaction.set(stockRef, {
+                [fieldToDecrement]: admin.firestore.FieldValue.increment(-item.quantity)
+            }, { merge: true });
+            
+            // Fetch product cost for COGS
+            const productRef = db.doc(`products/${item.productId}`);
+            const productSnap = await transaction.get(productRef);
+            if (productSnap.exists) {
+                const product = productSnap.data() as Product;
+                totalCost += (product?.cost || 0) * item.quantity;
             }
         }
+
+        // Record COGS JV
+        if (totalCost > 0 && cogsLedgerId && finishedGoodsLedgerId) {
+            const cogsJvRef = db.collection("journalVouchers").doc();
+            transaction.set(cogsJvRef, {
+                id: cogsJvRef.id,
+                date: invoice.date,
+                narration: `COGS for Invoice ${invoice.invoiceNumber}`,
+                entries: [
+                    { accountId: cogsLedgerId, debit: totalCost, credit: 0 },
+                    { accountId: finishedGoodsLedgerId, debit: 0, credit: totalCost }
+                ],
+                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                voucherType: "Journal Voucher",
+            });
+        }
         
-        // --- 1. Partner Commission ---
+        // --- 3. Partner Commission Logic ---
         if (partnerId) {
             const partnerRef = db.doc(`users/${partnerId}`);
             const partnerSnap = await transaction.get(partnerRef);
@@ -271,10 +277,7 @@ export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}", a
                 let commissionTotal = invoice.items.reduce((acc, item) => {
                     const rule = partnerData.partnerMatrix?.find(r => r.category === item.category);
                     if (rule) {
-                        const itemTotal = item.price * item.quantity;
-                        // Correctly calculate commissionable value *before* invoice-level discount
-                        const commissionableValue = itemTotal;
-                        return acc + (commissionableValue * (rule.commissionRate / 100));
+                        return acc + ((item.price * item.quantity) * (rule.commissionRate / 100));
                     }
                     return acc;
                 }, 0);
@@ -288,7 +291,7 @@ export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}", a
             }
         }
         
-        // --- 2. Referral Commission ---
+        // --- 4. Referral Commission ---
         const customerRef = db.doc(`users/${invoice.customerId}`);
         const customerSnap = await transaction.get(customerRef);
         const customerData = customerSnap.data() as UserProfile | undefined;
@@ -319,13 +322,16 @@ export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}", a
             }
         }
 
+        // Close out the order if applicable
         if (invoice.orderId) {
-            const orderRef = db.collection('orders').doc(invoice.orderId);
-            transaction.update(orderRef, { status: 'Ready for Dispatch' });
+            transaction.update(db.collection('orders').doc(invoice.orderId), { status: 'Ready for Dispatch' });
         }
       });
-    } catch (e) { console.error(e); }
+    } catch (e) { 
+        console.error("Invoice logic failed:", e); 
+    }
 });
+
 
 export const onCreditNoteCreated = onDocumentCreated("creditNotes/{noteId}", async (event) => {
     const snap = event.data;
@@ -565,7 +571,8 @@ export const handleOrderUpdates = onDocumentUpdated("orders/{orderId}", async (e
             let bankAccountId = "L-1.1.1-2"; // Default Current Account
             
             if (primaryUpi) {
-                const ledgerSearch = await db.collection("coa_ledgers").where("bank.upiId", "==", primaryUpi).limit(1).get();
+                const ledgerSearchQuery = db.collection("coa_ledgers").where("bank.upiId", "==", primaryUpi).limit(1);
+                const ledgerSearch = await transaction.get(ledgerSearchQuery);
                 if (!ledgerSearch.empty) bankAccountId = ledgerSearch.docs[0].id;
             }
         
@@ -680,3 +687,6 @@ export const onGoalUpdate = onDocumentCreated("goalUpdates/{updateId}", async ()
 
     
 
+
+
+    

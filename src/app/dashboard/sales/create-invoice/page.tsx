@@ -71,6 +71,7 @@ interface OrderItem {
   unit: string;
   discount: number;
   rate: number;
+  price: number;
   gstRate: number;
   amount: number;
   category?: string;
@@ -123,8 +124,6 @@ export default function CreateInvoicePage() {
   const { currentRole } = useRole();
   const firestore = useFirestore();
   const { user: authUser } = useUser();
-  const userProfileRef = authUser ? doc(firestore, 'users', authUser.uid) : null;
-  const { data: userProfile } = useDoc<UserProfile>(userProfileRef);
   
   const [selectedPartyId, setSelectedPartyId] = React.useState<string | null>(null);
   const [invoiceDate, setInvoiceDate] = React.useState(format(new Date(), 'yyyy-MM-dd'));
@@ -137,25 +136,9 @@ export default function CreateInvoicePage() {
   const [orderDocumentId, setOrderDocumentId] = React.useState<string | null>(null);
   const [assignedToUid, setAssignedToUid] = React.useState<string | null>(null);
   
-  const invoicesQuery = React.useMemo(() => {
-    if (!authUser || !currentRole) return null;
-    const invoicesRef = collection(firestore, 'salesInvoices');
-    
-    if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
-      return query(invoicesRef);
-    }
-  
-    if (currentRole === 'Partner') {
-      return query(invoicesRef, where('assignedToUid', '==', authUser.uid));
-    }
-  
-    return query(invoicesRef, where('customerId', '==', authUser.uid));
-  }, [authUser, currentRole, firestore]);
-
-  const { data: allSalesInvoices, loading: invoicesLoading } = useCollection<SalesInvoice>(invoicesQuery);
   const { data: allProducts, loading: productsLoading } = useCollection<Product>(query(collection(firestore, 'products'), where('saleable', '==', true)));
+  const { data: allSalesInvoices } = useCollection<SalesInvoice>(collection(firestore, 'salesInvoices'));
   const { data: settingsData } = useDoc<any>(doc(firestore, 'company', 'settings'));
-  const { data: allJournalVouchers } = useCollection<JournalVoucher>(collection(firestore, 'journalVouchers'));
 
   const [paymentDate, setPaymentDate] = React.useState(format(new Date(), 'yyyy-MM-dd'));
   const [paymentMode, setPaymentMode] = React.useState('UPI');
@@ -175,7 +158,7 @@ export default function CreateInvoicePage() {
   const { data: coaLedgers, loading: ledgersLoading } = useCollection<CoaLedger>(collection(firestore, 'coa_ledgers'));
   const { data: companyInfo } = useDoc<CompanyInfo>(doc(firestore, 'company', 'info'));
   const [appliedCoupons, setAppliedCoupons] = React.useState<Offer[]>([]);
-
+  
   // Stock logic for Partners
   const partnerStockQuery = (currentRole === 'Partner' && authUser) ? query(collection(firestore, 'users', authUser.uid, 'stock')) : null;
   const { data: partnerStock, loading: partnerStockLoading } = useCollection<PartnerStockItem>(partnerStockQuery);
@@ -243,6 +226,7 @@ export default function CreateInvoicePage() {
                   quantity: quantity,
                   unit: product?.unit || item.unit || 'pcs',
                   rate: rate,
+                  price: rate,
                   gstRate: (product as any)?.gstRate || item.gstRate || 18,
                   amount: rate * quantity,
                   category: product?.category || item.category,
@@ -365,6 +349,7 @@ export default function CreateInvoicePage() {
       unit: 'pcs',
       discount: 0,
       rate: 0,
+      price: 0,
       gstRate: 18,
       amount: 0,
     };
@@ -384,6 +369,7 @@ export default function CreateInvoicePage() {
                         updatedItem.name = product.name;
                         updatedItem.hsn = product.hsn || product.id.slice(0,4).toUpperCase();
                         updatedItem.rate = product.price;
+                        updatedItem.price = product.price;
                         updatedItem.gstRate = 18; 
                         updatedItem.category = product.category;
                     }
@@ -741,7 +727,7 @@ export default function CreateInvoicePage() {
              <div className="space-y-4">
                 <div className="space-y-2">
                     <Label htmlFor="terms">Terms & Conditions</Label>
-                    <Textarea id="terms" value={terms} onChange={e => setTerms(e.target.value)} rows={3} />
+                    <Textarea id="terms" value={terms} onChange={e => setTerms(e.target.value)} rows={5} />
                 </div>
                 <div className="space-y-2">
                     <Label htmlFor="payment-details">Payment Details</Label>
@@ -847,6 +833,7 @@ export default function CreateInvoicePage() {
 }
 
   
+
 
 
 
