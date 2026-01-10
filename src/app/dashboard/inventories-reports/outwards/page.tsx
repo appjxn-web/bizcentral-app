@@ -1,4 +1,3 @@
-
 'use client';
 
 import * as React from 'react';
@@ -33,7 +32,7 @@ import { useToast } from '@/hooks/use-toast';
 import { PlusCircle, Trash2, Check, ChevronsUpDown, Send, Package, Wrench, PackageSearch, Loader2, ChevronRight, ChevronDown, MoreHorizontal, Eye, Edit, Printer } from 'lucide-react';
 import type { User, Product, SparesRequest, StockTransferRequest, UserProfile } from '@/lib/types';
 import { useFirestore, useCollection, useUser, useDoc } from '@/firebase';
-import { collection, addDoc, serverTimestamp, query, where, orderBy, getDoc, getDocs } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, query, where, orderBy, getDoc, getDocs, doc, setDoc } from 'firebase/firestore';
 import { cn } from '@/lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
@@ -41,7 +40,7 @@ import { useRole } from '../../_components/role-provider';
 import { format } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { writeBatch, doc, updateDoc } from 'firebase/firestore';
+import { writeBatch, updateDoc } from 'firebase/firestore';
 import { getNextDocNumber } from '@/lib/number-series';
 import type { BillOfMaterial, WorkOrder, IssuedItem, CoaLedger } from '@/lib/types';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -497,6 +496,9 @@ function StockTransferTab() {
   const { data: userProfile } = useDoc<UserProfile>(userProfileRef);
   const { data: partners } = useCollection<Party>(query(collection(firestore, 'parties'), where('type', '==', 'Partner')));
   const { data: products } = useCollection<Product>(collection(firestore, 'products'));
+  const { data: stockTransferRequests, loading: requestsLoading } = useCollection<StockTransferRequest>(collection(firestore, 'stockTransferRequests'));
+  const { data: settingsData } = useDoc<any>(doc(firestore, 'company', 'settings'));
+
   const [openRequestId, setOpenRequestId] = React.useState<string | null>(null);
   const router = useRouter();
 
@@ -535,12 +537,18 @@ function StockTransferTab() {
         toast({ variant: 'destructive', title: 'Missing Information' });
         return;
     }
+    if (!settingsData?.prefixes || !stockTransferRequests) {
+        toast({ variant: 'destructive', title: 'Error loading settings' });
+        return;
+    }
     
     setIsSubmitting(true);
     try {
         const partner = partners?.find(p => p.id === selectedPartnerId);
+        const newRequestId = getNextDocNumber('Stock Transfer', settingsData.prefixes, stockTransferRequests);
         
         const requestData = {
+            id: newRequestId,
             requestingUserId: user?.uid,
             requestingUserName: userProfile?.businessName || userProfile?.name || user?.displayName,
             partnerId: selectedPartnerId,
@@ -551,7 +559,7 @@ function StockTransferTab() {
             notes,
         };
 
-        await addDoc(collection(firestore, 'stockTransferRequests'), requestData);
+        await setDoc(doc(firestore, 'stockTransferRequests', newRequestId), requestData);
         toast({ title: 'Request Submitted', description: 'Stock transfer request has been sent for approval.' });
         
         setSelectedPartnerId(null);
@@ -589,7 +597,7 @@ function StockTransferTab() {
     );
   }, [user, firestore]);
 
-  const { data: userRequests, loading: requestsLoading } = useCollection<StockTransferRequest>(userRequestsQuery);
+  const { data: userRequests } = useCollection<StockTransferRequest>(userRequestsQuery);
 
   return (
     <>
@@ -1048,3 +1056,4 @@ export default function OutwardsPage() {
     </>
   );
 }
+
