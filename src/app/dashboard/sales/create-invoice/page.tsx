@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -157,6 +158,8 @@ export default function CreateInvoicePage() {
   const { data: parties, loading: partiesLoading } = useCollection<Party>(collection(firestore, 'parties'));
   const { data: coaLedgers, loading: ledgersLoading } = useCollection<CoaLedger>(collection(firestore, 'coa_ledgers'));
   const { data: companyInfo } = useDoc<CompanyInfo>(doc(firestore, 'company', 'info'));
+  const userProfileRef = authUser ? doc(firestore, 'users', authUser.uid) : null;
+  const { data: userProfile } = useDoc<UserProfile>(userProfileRef);
   const [appliedCoupons, setAppliedCoupons] = React.useState<Offer[]>([]);
   
   // Stock logic for Partners
@@ -324,8 +327,6 @@ export default function CreateInvoicePage() {
         });
         return Math.min(...maxDiscounts);
     }
-    if (!items.length) return 100;
-    
     // Fallback for other roles (this can be expanded)
     return 100;
   }, [items, currentRole, userProfile, isFromSalesOrder, overallDiscount]);
@@ -833,6 +834,7 @@ export default function CreateInvoicePage() {
 }
 
   
+
 
 
 
