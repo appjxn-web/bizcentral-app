@@ -143,6 +143,7 @@ export const navItems: NavItem[] = [
         { id: 'finance-record-purchase', href: '/dashboard/procurement/record-purchase', icon: Receipt, label: 'Record Purchase' },
         { id: 'finance-transactions', href: '/dashboard/finance-accounting/transactions', icon: ArrowLeftRight, label: 'Transactions' },
         { id: 'finance-party-statement', href: '/dashboard/finance-accounting/party-statement', icon: BookUser, label: 'Party / Ledger Statement' },
+        { id: 'my-cash-account', href: '/dashboard/my-cash-account', icon: Wallet, label: 'My Cash Account' },
         { id: 'finance-payment-approval', href: '/dashboard/finance-accounting/payment-approval', icon: CheckCheck, label: 'Payment Approval' },
         { id: 'finance-bank-cash', href: '/dashboard/finance-accounting/bank-cash', icon: Banknote, label: 'Bank & Cash' },
         { id: 'finance-gst', href: '/dashboard/finance-accounting/gst', icon: FileText, label: 'GST' },
