@@ -1,4 +1,5 @@
 
+
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -128,14 +129,35 @@ service cloud.firestore {
 
     // --- FINANCE & ACCOUNTING ---
     match /salesInvoices/{invoiceId} {
-        allow read, list: if signedIn() && (
+        // ALLOW GET: For individual document viewing
+        allow get: if signedIn() && (
           isAdmin() ||
           resource.data.customerId == request.auth.uid ||
           resource.data.assignedToUid == request.auth.uid
         );
+
+        // ALLOW LIST: For collection queries
+        // We split the checks so the query analyzer can match the frontend filter
+        allow list: if signedIn() && (
+          isAdmin() ||
+          (request.query.limit <= 100 && (
+            // Branch A: Matches the Partner's query filter
+            resource.data.assignedToUid == request.auth.uid || 
+            // Branch B: Matches the Customer's query filter
+            resource.data.customerId == request.auth.uid
+          ))
+        );
         
-        allow create: if isAdmin() || (isPartner() && request.resource.data.assignedToUid == request.auth.uid);
-        allow update: if isAdmin() || (isPartner() && resource.data.assignedToUid == request.auth.uid);
+        allow create: if signedIn() && (
+          isAdmin() || 
+          isPartner() && request.resource.data.assignedToUid == request.auth.uid
+        );
+        
+        allow update: if signedIn() && (
+          isAdmin() || 
+          isPartner() && resource.data.assignedToUid == request.auth.uid
+        );
+        
         allow delete: if isAdmin();
     }
     

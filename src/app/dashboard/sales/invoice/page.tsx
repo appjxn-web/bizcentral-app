@@ -436,20 +436,31 @@ function InvoicePageContent() {
             orderBy('date', 'desc')
         );
     }, [user, currentRole, firestore]);
-
+    
     const invoicesQuery = React.useMemo(() => {
         if (!user || !currentRole) return null;
         const invoicesRef = collection(firestore, 'salesInvoices');
     
+        // 1. Admins see all invoices.
         if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
             return query(invoicesRef, orderBy('date', 'desc'));
         }
     
-        if (['Partner', 'Franchisee', 'Sales Agent', 'Dealer'].includes(currentRole)) {
-            return query(invoicesRef, where('assignedToUid', '==', user.uid), orderBy('date', 'desc'));
+        // 2. Partners see invoices where they are the assigned agent.
+        if (currentRole === 'Partner') {
+            return query(
+                invoicesRef, 
+                where('assignedToUid', '==', user.uid),
+                orderBy('date', 'desc')
+            );
         }
-
-        return query(invoicesRef, where('customerId', '==', user.uid), orderBy('date', 'desc'));
+    
+        // 3. Customers see invoices where they are the customer.
+        return query(
+            invoicesRef, 
+            where('customerId', '==', user.uid),
+            orderBy('date', 'desc')
+        );
     }, [user, currentRole, firestore]);
 
 
@@ -690,6 +701,7 @@ export default function InvoicePageWrapper() {
 
     return <InvoicePageContent />;
 }
+
 
 
 
