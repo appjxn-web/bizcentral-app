@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -458,6 +459,9 @@ function MyOrdersPageContent() {
         const nonAdminRoles: UserRole[] = ['Customer', 'Partner', 'Franchisee', 'Sales Agent', 'Dealer', 'Employee'];
         
         if (nonAdminRoles.includes(currentRole)) {
+            if (currentRole === 'Partner') {
+                return query(ordersRef, where('assignedToUid', '==', user.uid), orderBy('date', 'desc'));
+            }
              return query(
                 ordersRef, 
                 where('userId', '==', user.uid), 
@@ -472,26 +476,17 @@ function MyOrdersPageContent() {
         if (!user || !currentRole) return null;
         const invoicesRef = collection(firestore, 'salesInvoices');
     
-        // 1. Admins see all
         if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
-            return query(invoicesRef, orderBy('date', 'desc'));
+            return query(invoicesRef);
         }
     
-        // 2. Partners see only assigned
+        // For Partners, they should see invoices where they are assigned.
         if (['Partner', 'Franchisee', 'Sales Agent', 'Dealer'].includes(currentRole)) {
-            return query(
-                invoicesRef, 
-                where('assignedToUid', '==', user.uid),
-                orderBy('date', 'desc')
-            );
+            return query(invoicesRef, where('assignedToUid', '==', user.uid));
         }
     
-        // 3. Customers see only their own
-        return query(
-            invoicesRef, 
-            where('customerId', '==', user.uid),
-            orderBy('date', 'desc')
-        );
+        // For Customers, they see invoices where they are the customer.
+        return query(invoicesRef, where('customerId', '==', user.uid));
     }, [user, currentRole, firestore]);
 
 

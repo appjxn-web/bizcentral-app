@@ -31,6 +31,7 @@ import type { UserProfile, Order, Lead, ServiceRequest, RegisteredProduct, Offer
 import { collection, doc, query, where, orderBy } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
+import { useRole } from '../../_components/role-provider';
 
 const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(amount);
@@ -39,20 +40,28 @@ const formatCurrency = (amount: number) => {
 export default function PartnerDashboardPage() {
   const { user } = useUser();
   const firestore = useFirestore();
+  const { currentRole } = useRole();
 
   const userDocRef = user ? doc(firestore, 'users', user.uid) : null;
   const { data: userProfile } = useDoc<UserProfile>(userDocRef);
-
+  
   const walletDocRef = user ? doc(firestore, 'users', user.uid, 'wallet', 'main') : null;
   const { data: walletData } = useDoc<UserWallet>(walletDocRef);
   
   const ordersQuery = React.useMemo(() => {
-    if (!user || !firestore) return null;
-    return query(
-        collection(firestore, 'orders'),
-        where('assignedToUid', '==', user.uid)
-    );
-  }, [user, firestore]);
+    if (!user || !currentRole) return null;
+    const ordersRef = collection(firestore, 'orders');
+
+    if (['Partner', 'Franchisee', 'Sales Agent', 'Dealer'].includes(currentRole)) {
+        return query(
+            ordersRef,
+            where('assignedToUid', '==', user.uid),
+            orderBy('date', 'desc')
+        );
+    }
+    
+    return null;
+  }, [user, currentRole, firestore]);
 
   const { data: orders } = useCollection<Order>(ordersQuery);
 
@@ -136,7 +145,7 @@ export default function PartnerDashboardPage() {
   return (
     <>
       <PageHeader title="Partner Dashboard" />
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-5">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Active Customers</CardTitle>

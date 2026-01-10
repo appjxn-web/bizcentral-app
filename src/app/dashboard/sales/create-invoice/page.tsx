@@ -327,6 +327,7 @@ export default function CreateInvoicePage() {
         });
         return Math.min(...maxDiscounts);
     }
+    // Fallback for other roles (this can be expanded)
     return 100;
   }, [items, currentRole, userProfile, isFromSalesOrder, overallDiscount]);
 
@@ -733,7 +734,7 @@ export default function CreateInvoicePage() {
                     <Label htmlFor="payment-details">Payment Details</Label>
                     <Textarea id="payment-details" value={paymentDetails} onChange={e => setPaymentDetails(e.target.value)} placeholder="e.g., Transaction ID, Cheque No." />
                 </div>
-                 <Dialog open={isPaymentDialogOpen} onOpenChange={setIsPaymentDialogOpen}>
+                <Dialog open={isPaymentDialogOpen} onOpenChange={setIsPaymentDialogOpen}>
                     <DialogTrigger asChild>
                         <Button variant="outline">Record Payment Received</Button>
                     </DialogTrigger>
@@ -833,3 +834,6 @@ export default function CreateInvoicePage() {
 }
 
   
+
+
+

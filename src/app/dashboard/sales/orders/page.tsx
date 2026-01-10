@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -248,8 +249,7 @@ function CompanyPickupDetails() {
 
     const mainAddress = companyInfo.addresses?.find((a: any) => a.type === 'Main Office' || a.type === 'Registered Office') || companyInfo.addresses?.[0];
 
-    if (!mainAddress) return <p className="text-sm text-destructive">Main company address not found.</p>;
-
+    const mainAddress is missing
     const addressString = [mainAddress.line1, mainAddress.line2, mainAddress.city, mainAddress.state, mainAddress.pin].filter(Boolean).join(', ');
     const phone = mainAddress.pickupContactPhone || companyInfo.contactNumber;
     let mapUrl = addressString ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addressString)}` : '';
@@ -435,7 +435,7 @@ function OrdersPageContent() {
             orderBy('date', 'desc')
         );
     }, [user, currentRole, firestore]);
-
+    
     const invoicesQuery = React.useMemo(() => {
         if (!user || !currentRole) return null;
         const invoicesRef = collection(firestore, 'salesInvoices');
@@ -444,12 +444,10 @@ function OrdersPageContent() {
             return query(invoicesRef);
         }
     
-        // For Partners, they should see invoices where they are assigned.
-        if (['Partner', 'Franchisee', 'Sales Agent', 'Dealer'].includes(currentRole)) {
+        if (currentRole === 'Partner') {
             return query(invoicesRef, where('assignedToUid', '==', user.uid));
         }
     
-        // For Customers, they see invoices where they are the customer.
         return query(invoicesRef, where('customerId', '==', user.uid));
     }, [user, currentRole, firestore]);
 
