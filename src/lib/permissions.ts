@@ -38,7 +38,6 @@ const permissions: Partial<Record<UserRole, string[]>> = {
     'finance-transactions',
     'finance-chart-of-accounts',
     'sales',
-    'sales-partners-management',
     'finance-payouts'
   ],
   'Partner': [
@@ -178,7 +177,6 @@ const permissions: Partial<Record<UserRole, string[]>> = {
     'sales-invoice',
     'sales-credit-note',
     'sales-debit-note',
-    'sales-partners-management',
     'service-warranty',
     'service-warranty-warranty',
     'service-warranty-service',
@@ -296,7 +294,6 @@ const permissions: Partial<Record<UserRole, string[]>> = {
     'sales-invoice',
     'sales-credit-note',
     'sales-debit-note',
-    'sales-partners-management',
     'production',
     'production-products',
     'production-categories',

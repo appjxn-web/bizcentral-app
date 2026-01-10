@@ -119,7 +119,6 @@ export const navItems: NavItem[] = [
         { id: 'sales-credit-note', href: '/dashboard/sales/credit-note', icon: FileMinus, label: 'Credit Note' },
         { id: 'sales-debit-note', href: '/dashboard/sales/debit-note', icon: FilePlus, label: 'Debit Note' },
         { id: 'sales-commission-report', href: '/dashboard/sales/commission-report', icon: PieChart, label: 'Commission Report' },
-        { id: 'sales-partners-management', href: '/dashboard/sales/partners-management', icon: Handshake, label: 'Partners Management' },
     ]
   },
   {
@@ -230,6 +229,7 @@ export const navItems: NavItem[] = [
     items: [
         { id: 'company-settings-company', href: '/dashboard/company', icon: Building, label: 'Company' },
         { id: 'company-settings-users', href: '/dashboard/users', icon: Users, label: 'Users' },
+        { id: 'sales-partners-management', href: '/dashboard/sales/partners-management', icon: Handshake, label: 'Partners Management' },
         { id: 'create-deals-offer', href: '/dashboard/create-deals-offer', icon: Tag, label: 'Create Deals & Offer' },
         { id: 'company-settings-commission', href: '/dashboard/sales/commission-metrix', icon: TrendingUp, label: 'Commission & Discount' },
         { id: 'settings.prefixes', href: '/dashboard/settings/prefixes', icon: SlidersHorizontal, label: 'Prefixes & Numbering' },
