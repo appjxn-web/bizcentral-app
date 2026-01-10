@@ -1,5 +1,4 @@
 
-
 import {
   Briefcase,
   Home,
@@ -120,6 +119,7 @@ export const navItems: NavItem[] = [
         { id: 'sales-credit-note', href: '/dashboard/sales/credit-note', icon: FileMinus, label: 'Credit Note' },
         { id: 'sales-debit-note', href: '/dashboard/sales/debit-note', icon: FilePlus, label: 'Debit Note' },
         { id: 'sales-commission-report', href: '/dashboard/sales/commission-report', icon: PieChart, label: 'Commission Report' },
+        { id: 'sales-partners-management', href: '/dashboard/sales/partners-management', icon: Handshake, label: 'Partners Management' },
     ]
   },
   {
