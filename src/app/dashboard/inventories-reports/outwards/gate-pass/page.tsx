@@ -18,7 +18,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Download, Loader2, ArrowLeft } from 'lucide-react';
+import { Download, Loader2, ArrowLeft, Printer } from 'lucide-react';
 import { format } from 'date-fns';
 import { QRCodeSVG } from 'qrcode.react';
 import { useFirestore, useDoc, useCollection } from '@/firebase';
@@ -91,7 +91,7 @@ export default function GatePassPage() {
             <PageHeader title={`Gate Pass for Request: ${requestId}`}>
                 <div className="flex gap-2">
                     <Button variant="outline" onClick={() => window.print()}>
-                        Print
+                        <Printer className="mr-2 h-4 w-4" /> Print
                     </Button>
                     <Button onClick={handleDownloadPdf} disabled={isDownloading}>
                         {isDownloading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
@@ -116,10 +116,10 @@ export default function GatePassPage() {
                         <section className="my-6 grid grid-cols-2 gap-4">
                              <div>
                                 <h3 className="font-semibold text-sm">Dispatch To:</h3>
-                                <p className="font-bold">{request.partnerName}</p>
+                                <p className="font-bold">{(partnerData as any)?.businessName || request.partnerName}</p>
                                 {customerAddress && (
                                      <p className="text-sm">
-                                        {[customerAddress.line1, customerAddress.line2, customerAddress.city].filter(Boolean).join(', ')}
+                                        {[customerAddress.line1, customerAddress.line2, customerAddress.city, customerAddress.state, customerAddress.pin].filter(Boolean).join(', ')}
                                     </p>
                                 )}
                             </div>
