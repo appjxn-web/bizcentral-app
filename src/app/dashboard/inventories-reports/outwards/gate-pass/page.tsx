@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -120,7 +119,7 @@ export default function GatePassPage() {
                                 <h3 className="font-semibold text-sm">Dispatch To:</h3>
                                 <p className="font-bold">{(partnerData as UserProfile)?.businessName || partnerData?.name || request.partnerName}</p>
                                 {customerAddress && (
-                                     <p className="text-sm">
+                                    <p className="text-sm">
                                         {[customerAddress.line1, customerAddress.line2, customerAddress.city, customerAddress.state, customerAddress.pin].filter(Boolean).join(', ')}
                                     </p>
                                 )}
