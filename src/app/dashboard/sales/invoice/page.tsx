@@ -235,7 +235,7 @@ function PartnerPickupDetails({ userId }: { userId: string }) {
             <p className="text-xs text-muted-foreground">Partner</p>
             {addressString && <p className="mt-2 text-sm">{addressString}</p>}
             <div className="flex gap-4 mt-2">
-                {partner.mobile && <a href={`tel:${partner.mobile}`} className="flex items-center gap-1 text-primary hover:underline text-sm"><Phone className="h-4 w-4" /> Call</a>}
+                {partner.mobile && <a href={`tel:${partner.mobile}`} className="flex items-center gap-1 text-primary hover:underline text-sm"><Phone className="mr-2 h-4 w-4" /> Call</a>}
                 {mapUrl && <a href={mapUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-primary hover:underline text-sm"><MapPin className="h-4 w-4" /> Get Directions</a>}
             </div>
         </>
@@ -529,12 +529,6 @@ function InvoicePageContent() {
         }
     };
     
-    const handleInvoicePaymentStatus = async (invoiceId: string, status: 'Paid' | 'Unpaid') => {
-      const invoiceRef = doc(firestore, 'salesInvoices', invoiceId);
-      await updateDoc(invoiceRef, { status: status });
-      toast({ title: "Status Updated", description: `Invoice marked as ${status}.`});
-    }
-    
     const onViewInvoice = (invoiceId: string) => {
         router.push(`/dashboard/sales/invoice/view?id=${invoiceId}`);
     };
@@ -646,25 +640,19 @@ function InvoicePageContent() {
                 <TableHead>Invoice #</TableHead>
                 <TableHead>Customer</TableHead>
                 <TableHead>Date</TableHead>
-                <TableHead>Status</TableHead>
                 <TableHead className="text-right">Amount</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
               <TableBody>
               {invoicesLoading ? (
-                 <TableRow><TableCell colSpan={6} className="h-24 text-center">Loading invoices...</TableCell></TableRow>
+                 <TableRow><TableCell colSpan={5} className="h-24 text-center">Loading invoices...</TableCell></TableRow>
               ) : allSalesInvoices && allSalesInvoices.length > 0 ? (
                 allSalesInvoices.map((invoice) => (
                     <TableRow key={invoice.id}>
                         <TableCell className="font-mono">{invoice.invoiceNumber}</TableCell>
                         <TableCell>{invoice.customerName}</TableCell>
                         <TableCell>{format(new Date(invoice.date), 'dd/MM/yyyy')}</TableCell>
-                        <TableCell>
-                            <Badge className={cn('text-xs', getStatusBadgeVariant(invoice.status))} variant="outline">
-                                {invoice.status}
-                            </Badge>
-                        </TableCell>
                         <TableCell className="text-right font-mono">{formatIndianCurrency(invoice.grandTotal)}</TableCell>
                         <TableCell className="text-right">
                            <DropdownMenu>
@@ -676,18 +664,13 @@ function InvoicePageContent() {
                                      <DropdownMenuItem onClick={() => handleEditInvoice(invoice.invoiceNumber)}>
                                         <Edit className="mr-2 h-4 w-4"/> Edit
                                     </DropdownMenuItem>
-                                    {invoice.status !== 'Paid' && (
-                                        <DropdownMenuItem onClick={() => handleInvoicePaymentStatus(invoice.invoiceNumber, 'Paid')}>
-                                            <CheckCircle className="mr-2 h-4 w-4"/> Mark as Paid
-                                        </DropdownMenuItem>
-                                    )}
                                 </DropdownMenuContent>
                            </DropdownMenu>
                         </TableCell>
                     </TableRow>
                   ))
               ) : (
-                 <TableRow><TableCell colSpan={6} className="h-24 text-center">No invoices created yet.</TableCell></TableRow>
+                 <TableRow><TableCell colSpan={5} className="h-24 text-center">No invoices created yet.</TableCell></TableRow>
               )}
               </TableBody>
           </Table>
@@ -710,5 +693,6 @@ export default function InvoicePageWrapper() {
 
     return <InvoicePageContent />;
 }
+
 
 
