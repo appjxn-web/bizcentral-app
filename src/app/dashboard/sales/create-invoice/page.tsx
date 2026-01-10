@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -326,7 +327,6 @@ export default function CreateInvoicePage() {
         });
         return Math.min(...maxDiscounts);
     }
-    // Fallback for other roles (this can be expanded)
     return 100;
   }, [items, currentRole, userProfile, isFromSalesOrder, overallDiscount]);
 
@@ -425,7 +425,7 @@ export default function CreateInvoicePage() {
           balanceDue: finalBalanceDue,
           status: finalBalanceDue <= 0 ? 'Paid' : 'Unpaid',
           appliedCoupons: appliedCoupons,
-          assignedToUid: finalAssignedToUid,
+          assignedToUid: finalAssignedToUid || null,
           createdByUid: authUser?.uid,
       };
       
@@ -482,8 +482,8 @@ export default function CreateInvoicePage() {
   const handleRecordPayment = async () => {
     const amount = Number(paymentAmount);
     if (!amount || amount <= 0 || !bankAccountId || !selectedParty || !settingsData?.prefixes || !allJournalVouchers) {
-        toast({ variant: 'destructive', title: 'Invalid Payment', description: 'Please enter a valid amount, select a customer and a payment account.' });
-        return;
+      toast({ variant: 'destructive', title: 'Invalid Payment', description: 'Please enter a valid amount, select a customer and a payment account.' });
+      return;
     }
   
     const bankLedger = paymentAccounts.find(acc => acc.id === bankAccountId);
@@ -833,12 +833,3 @@ export default function CreateInvoicePage() {
 }
 
   
-
-
-
-
-
-
-
-
-

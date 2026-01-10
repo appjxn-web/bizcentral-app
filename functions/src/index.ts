@@ -148,6 +148,7 @@ export const verifyUpiPaymentAndCreateOrder = onCall(async (request) => {
             const newOrderData = {
               ...order,
               id: orderRef.id, // Ensure ID is consistent
+              assignedToUid: order.assignedToUid || null,
               commission: referralCommission,
             };
             transaction.set(orderRef, newOrderData);

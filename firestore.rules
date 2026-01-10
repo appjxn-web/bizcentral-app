@@ -1,5 +1,4 @@
 
-
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -78,8 +77,8 @@ service cloud.firestore {
       // restricted to their own ID or their assigned orders.
       allow read, list: if signedIn() && (
         isAdmin() || 
-        resource.data.userId == request.auth.uid || 
-        resource.data.assignedToUid == request.auth.uid
+        (exists(resource.data.userId) && resource.data.userId == request.auth.uid) || 
+        (exists(resource.data.assignedToUid) && resource.data.assignedToUid == request.auth.uid)
       );
 
       allow create: if signedIn();
@@ -140,21 +139,16 @@ service cloud.firestore {
         );
 
         // ALLOW LIST: For collection queries
-        // We split the checks so the query analyzer can match the frontend filter
         allow list: if signedIn() && (
           isAdmin() ||
-          (request.query.limit <= 100 && (
-            // Branch A: Matches the Partner's query filter
-            resource.data.assignedToUid == request.auth.uid || 
-            // Branch B: Matches the Customer's query filter
-            resource.data.customerId == request.auth.uid
-          ))
+          (exists(resource.data.customerId) && resource.data.customerId == request.auth.uid) ||
+          (exists(resource.data.assignedToUid) && resource.data.assignedToUid == request.auth.uid)
         );
         
         // Partners can CREATE invoices for their assigned orders
         allow create: if signedIn() && (
           isAdmin() || 
-          request.resource.data.assignedToUid == request.auth.uid
+          (exists(request.resource.data.assignedToUid) && request.resource.data.assignedToUid == request.auth.uid)
         );
         
         // Partners can EDIT invoices they are assigned to
@@ -261,4 +255,3 @@ service cloud.firestore {
     }
   }
 }
-
