@@ -110,11 +110,9 @@ export default function GatePassPage() {
                             </div>
                             <div className="text-right">
                                 <h1 className="text-2xl font-bold text-primary">{companyInfo?.companyName}</h1>
-                                {companyInfo?.addresses?.[0] && (
-                                    <p className="text-sm text-muted-foreground">
-                                    {[companyInfo.addresses[0].line1, companyInfo.addresses[0].line2, companyInfo.addresses[0].city, companyInfo.addresses[0].pin].filter(Boolean).join(', ')}
-                                    </p>
-                                )}
+                                <p className="text-sm text-muted-foreground">
+                                    {[companyInfo?.addresses?.[0]?.line1, companyInfo?.addresses?.[0]?.line2, companyInfo?.addresses?.[0]?.city, companyInfo?.addresses?.[0]?.pin].filter(Boolean).join(', ')}
+                                </p>
                                 <div className="text-xs mt-2">
                                     {companyInfo?.taxInfo?.gstin?.value && <p><strong>GSTIN:</strong> {companyInfo.taxInfo.gstin.value}</p>}
                                     {companyInfo?.taxInfo?.cin?.value && <p><strong>CIN:</strong> {companyInfo.taxInfo.cin.value}</p>}
@@ -123,12 +121,18 @@ export default function GatePassPage() {
                         </header>
                         
                         <section className="my-6">
-                             <h2 className="text-right text-lg font-bold mb-4 underline">GATE PASS / STOCK TRANSFER</h2>
+                             <div className="text-center mb-4">
+                                <h2 className="text-lg font-bold underline">GATE PASS / STOCK TRANSFER</h2>
+                                <div className="flex justify-between text-sm mt-2">
+                                    <p><strong>Document No:</strong> {request.id}</p>
+                                    <p><strong>Date:</strong> {format(new Date(request.shippedAt?.toDate() || new Date()), 'dd/MM/yyyy')}</p>
+                                </div>
+                            </div>
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <h3 className="font-semibold text-sm">Dispatch To:</h3>
                                     <p className="font-bold">{(partyData as UserProfile)?.businessName || partyData?.name || request.partnerName}</p>
-                                    {customerAddress && (
+                                     {customerAddress && (
                                         <p className="text-sm">
                                             {[customerAddress.line1, customerAddress.line2, customerAddress.city, customerAddress.state, customerAddress.pin].filter(Boolean).join(', ')}
                                         </p>
