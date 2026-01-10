@@ -2,6 +2,15 @@
 
 import type {Timestamp} from "firebase/firestore";
 
+export type DocPrefixConfig = {
+    id: string;
+    type: string;
+    prefix: string;
+    useDate: boolean;
+    startNumber: number;
+    digits: number;
+};
+
 export type CoaNature = "ASSET" | "LIABILITY" | "EQUITY" | "INCOME" | "EXPENSE";
 
 export type CoaLedger = {
@@ -221,4 +230,5 @@ export interface StockTransferRequest {
     
 
   
+
 
