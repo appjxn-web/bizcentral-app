@@ -49,21 +49,25 @@ export default function PartnerDashboardPage() {
   const { data: walletData } = useDoc<UserWallet>(walletDocRef);
   
   const ordersQuery = React.useMemo(() => {
-    if (!user || !currentRole) return null;
-    const ordersRef = collection(firestore, 'orders');
+    if (!user || !firestore) return null;
+    return query(
+        collection(firestore, 'orders'),
+        where('assignedToUid', '==', user.uid),
+        orderBy('date', 'desc') // CRITICAL: Matches your CIDAgJiUpoMK index
+    );
+  }, [user, firestore]);
 
-    if (['Partner', 'Franchisee', 'Sales Agent', 'Dealer'].includes(currentRole)) {
-        return query(
-            ordersRef,
-            where('assignedToUid', '==', user.uid),
-            orderBy('date', 'desc')
-        );
-    }
-    
-    return null;
-  }, [user, currentRole, firestore]);
+  const invoicesQuery = React.useMemo(() => {
+      if (!user || !firestore) return null;
+      return query(
+          collection(firestore, 'salesInvoices'),
+          where('assignedToUid', '==', user.uid),
+          orderBy('date', 'desc')
+      );
+  }, [user, firestore]);
 
   const { data: orders } = useCollection<Order>(ordersQuery);
+  const { data: salesInvoices } = useCollection<SalesInvoice>(invoicesQuery);
 
   const leadsQuery = user ? query(collection(firestore, 'leads'), where('ownerId', '==', user.uid)) : null;
   const { data: leads } = useCollection<Lead>(leadsQuery);
