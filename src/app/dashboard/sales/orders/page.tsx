@@ -40,14 +40,6 @@ import {
   CardFooter,
 } from '@/components/ui/card';
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -249,7 +241,7 @@ function CompanyPickupDetails() {
 
     const mainAddress = companyInfo.addresses?.find((a: any) => a.type === 'Main Office' || a.type === 'Registered Office') || companyInfo.addresses?.[0];
 
-    const mainAddress is missing
+    if (!mainAddress) return <p className="text-sm text-destructive">Main company address not found.</p>;
     const addressString = [mainAddress.line1, mainAddress.line2, mainAddress.city, mainAddress.state, mainAddress.pin].filter(Boolean).join(', ');
     const phone = mainAddress.pickupContactPhone || companyInfo.contactNumber;
     let mapUrl = addressString ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addressString)}` : '';
@@ -417,23 +409,20 @@ function OrdersPageContent() {
         if (!user || !currentRole) return null;
         const ordersRef = collection(firestore, 'orders');
 
-        if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
-            return query(ordersRef, orderBy('date', 'desc'));
-        }
-
-        if (['Partner', 'Franchisee', 'Sales Agent', 'Dealer'].includes(currentRole)) {
-            return query(
+        const nonAdminRoles: UserRole[] = ['Customer', 'Partner', 'Franchisee', 'Sales Agent', 'Dealer', 'Employee'];
+        
+        if (nonAdminRoles.includes(currentRole)) {
+            if (currentRole === 'Partner') {
+                return query(ordersRef, where('assignedToUid', '==', user.uid), orderBy('date', 'desc'));
+            }
+             return query(
                 ordersRef, 
-                where('assignedToUid', '==', user.uid), 
+                where('userId', '==', user.uid), 
                 orderBy('date', 'desc')
             );
         }
-
-        return query(
-            ordersRef, 
-            where('userId', '==', user.uid), 
-            orderBy('date', 'desc')
-        );
+        
+        return query(ordersRef, orderBy('date', 'desc'));
     }, [user, currentRole, firestore]);
     
     const invoicesQuery = React.useMemo(() => {
