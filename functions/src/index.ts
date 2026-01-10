@@ -367,13 +367,14 @@ export const onDebitNoteCreated = onDocumentCreated("debitNotes/{noteId}", async
 });
 
 export const onStockTransfer = onDocumentUpdated("stockTransferRequests/{requestId}", async (event: FirestoreEvent<Change<DocumentSnapshot> | undefined, {requestId: string}>) => {
-    if (!event.data) return;
+    if (!event.data?.after) return;
 
     const before = event.data.before.data() as StockTransferRequest;
     const after = event.data.after.data() as StockTransferRequest;
 
-    // Trigger only when status changes to "Shipped"
-    if (before.status === 'Shipped' || after.status !== 'Shipped') {
+    // Trigger only when status changes to "Shipped" and was not "Shipped" before
+    if (after.status !== 'Shipped' || before.status === 'Shipped') {
+        console.log(`Stock transfer for ${event.params.requestId} not processed. Status: '${after.status}', Before: '${before.status}'.`);
         return;
     }
 
@@ -399,8 +400,10 @@ export const onStockTransfer = onDocumentUpdated("stockTransferRequests/{request
         console.log(`Successfully transferred stock for request ${event.params.requestId} to partner ${partnerId}`);
     } catch (e) {
         console.error(`Stock transfer failed for request ${event.params.requestId}:`, e);
+        // Optional: Revert status or log error to Firestore for admin review
     }
 });
+
 
 // Quotation and other functions remain as standard...
 export const handleQuotationCreation = onDocumentCreated("quotations/{docId}", async (event) => {
@@ -608,3 +611,6 @@ export const onGoalUpdate = onDocumentCreated("goalUpdates/{updateId}", async ()
 
 
 
+
+
+    
