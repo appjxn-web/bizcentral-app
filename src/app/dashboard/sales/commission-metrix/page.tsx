@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -192,11 +193,11 @@ function CommissionMetrixPageContent() {
                     <DropdownMenuLabel>Filter by Category</DropdownMenuLabel>
                     <DropdownMenuSeparator />
                     <ScrollArea className="h-32">
-                    {allCategories.map(cat => (
-                        <DropdownMenuCheckboxItem key={cat} checked={categoryFilters.includes(cat)} onCheckedChange={() => handleFilterChange(setCategoryFilters)(cat)}>
-                        {cat}
-                        </DropdownMenuCheckboxItem>
-                    ))}
+                        {allCategories.map(cat => (
+                            <DropdownMenuCheckboxItem key={cat} checked={categoryFilters.includes(cat)} onCheckedChange={() => handleFilterChange(setCategoryFilters)(cat)}>
+                            {cat}
+                            </DropdownMenuCheckboxItem>
+                        ))}
                     </ScrollArea>
                 </DropdownMenuContent>
                 </DropdownMenu>
