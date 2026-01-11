@@ -55,7 +55,7 @@ import {
 } from '@/components/ui/tooltip';
 import { useRouter } from 'next/navigation';
 import { useFirestore, useCollection, useUser } from '@/firebase';
-import { collection, addDoc, doc, setDoc } from 'firebase/firestore';
+import { collection, addDoc, doc, setDoc, query, where } from 'firebase/firestore';
 
 const allStatuses: LeadStatus[] = ['New', 'Contacted', 'Qualified', 'Proposal Sent', 'Converted', 'Lost'];
 const allSources: LeadSource[] = ['Website', 'Referral', 'Cold Call', 'Event', 'Social media', 'Other'];
@@ -79,7 +79,16 @@ export default function LeadPage() {
   const { user: authUser } = useUser();
   const firestore = useFirestore();
   
-  const { data: leads, loading: leadsLoading } = useCollection<Lead>(collection(firestore, 'leads'));
+  const leadsQuery = React.useMemo(() => {
+    if (!authUser || !currentRole) return null;
+    const leadsRef = collection(firestore, 'leads');
+    if (['Admin', 'CEO', 'Sales Manager'].includes(currentRole)) {
+      return query(leadsRef);
+    }
+    return query(leadsRef, where('ownerId', '==', authUser.uid));
+  }, [authUser, currentRole, firestore]);
+
+  const { data: leads, loading: leadsLoading } = useCollection<Lead>(leadsQuery);
   const { data: allUsers } = useCollection<any>(collection(firestore, 'users'));
 
   const [statusFilters, setStatusFilters] = React.useState<LeadStatus[]>([]);
@@ -91,23 +100,22 @@ export default function LeadPage() {
   
   const filteredLeads = React.useMemo(() => {
     if (!leads) return [];
-    const userLeads = isEmployee ? leads : leads.filter(lead => lead.ownerId === loggedInUserId);
     
-    return userLeads.filter(lead => {
+    return leads.filter(lead => {
       const statusMatch = statusFilters.length === 0 || statusFilters.includes(lead.status);
       const sourceMatch = sourceFilters.length === 0 || sourceFilters.includes(lead.source);
       return statusMatch && sourceMatch;
     });
-  }, [leads, statusFilters, sourceFilters, isEmployee, loggedInUserId]);
+  }, [leads, statusFilters, sourceFilters]);
 
   const kpis = React.useMemo(() => {
     if (!leads) return { total: 0, converted: 0, conversionRate: 0 };
-    const relevantLeads = isEmployee ? leads : leads.filter(lead => lead.ownerId === loggedInUserId);
+    const relevantLeads = leads; // The query is already filtered by role
     const total = relevantLeads.length;
     const converted = relevantLeads.filter(l => l.status === 'Converted').length;
     const conversionRate = total > 0 ? (converted / total) * 100 : 0;
     return { total, converted, conversionRate };
-  }, [leads, isEmployee, loggedInUserId]);
+  }, [leads]);
 
   const handleSaveLead = async (newLeadData: Omit<Lead, 'id' | 'createdAt' | 'ownerId' | 'status'>) => {
     if (!loggedInUserId) {
@@ -315,5 +323,3 @@ export default function LeadPage() {
     </>
   );
 }
-
-    
