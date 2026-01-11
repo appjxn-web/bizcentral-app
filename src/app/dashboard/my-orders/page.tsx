@@ -1,5 +1,5 @@
 
-
+      
 'use client';
 
 import * as React from 'react';
@@ -75,7 +75,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { ref, uploadBytes, getDownloadURL, getStorage } from 'firebase/storage';
 import { Loader2 } from 'lucide-react';
 
 function getStatusBadgeVariant(status: Order['status'] | 'Refund Pending' | 'Refund Complete' | SalesInvoice['status']) {
@@ -150,6 +150,7 @@ function PayBalanceDialog({ order, companyInfo }: { order: Order; companyInfo: a
         userId: user.uid,
         customerName: order.customerName,
         orderId: order.id,
+        assignedToUid: order.assignedToUid || null,
         amount: Number(amountToPay),
         paymentMethod: 'UPI / Online',
         transactionDetails: transactionId,
@@ -161,7 +162,7 @@ function PayBalanceDialog({ order, companyInfo }: { order: Order; companyInfo: a
       const newSubmissionRef = await addDoc(collection(firestore, 'paymentSubmissions'), submissionData);
 
       if (paymentProofFile) {
-        const storage = useStorage();
+        const storage = getStorage();
         const proofStorageRef = ref(storage, `payment_proofs/${user.uid}/${order.id}/${newSubmissionRef.id}-${paymentProofFile.name}`);
         const snapshot = await uploadBytes(proofStorageRef, paymentProofFile);
         const proofUrl = await getDownloadURL(snapshot.ref);
@@ -760,4 +761,6 @@ export default function MyOrdersPage() {
 
     
 
+    
+      
     

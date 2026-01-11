@@ -1,5 +1,5 @@
 
-
+      
 'use client';
 
 import type { Timestamp } from 'firebase/firestore';
@@ -135,7 +135,7 @@ export interface PaymentSubmission {
   userId: string;
   customerName: string;
   orderId: string;
-  orderNumber: string;
+  assignedToUid: string | null;
   amount: number;
   paymentMethod: string;
   transactionDetails?: string;
@@ -1062,6 +1062,5 @@ export interface SupportCallbackRequest {
   createdAt: Timestamp;
   createdByUid: string;
 }
-
-
-  
+      
+    

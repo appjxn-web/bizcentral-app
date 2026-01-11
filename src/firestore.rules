@@ -1,4 +1,5 @@
 
+      
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -37,9 +38,8 @@ service cloud.firestore {
     // --- USERS & ACCOUNT HISTORY ---
     match /users/{userId} {
       allow get: if signedIn();
-      allow list: if signedIn();
-      allow create, update: if isOwner(userId) || isAdmin();
-      allow delete: if isAdmin();
+      allow list: if isAdmin();
+      allow write: if isOwner(userId) || isAdmin();
       
       match /wallet/main {
         allow read, write: if isOwner(userId) || isAdmin();
@@ -71,23 +71,32 @@ service cloud.firestore {
       }
     }
 
-    // --- GLOBAL ORDERS (Main Sales) ---
+    // --- LEADS (Fixes KPI Permission Error) ---
+    match /leads/{id} {
+      allow read, list: if signedIn() && (isAdmin() || resource.data.ownerId == request.auth.uid);
+      allow create: if signedIn();
+      allow write: if signedIn() && (isAdmin() || resource.data.ownerId == request.auth.uid);
+    }
+    
+    // --- GLOBAL ORDERS ---
     match /orders/{orderId} {
-      allow read, list: if signedIn() && (
+      allow get, list: if signedIn() && (
         isAdmin() || 
         resource.data.userId == request.auth.uid || 
         resource.data.assignedToUid == request.auth.uid
       );
-
       allow create: if signedIn();
-      
-      allow update: if isAdmin() || (isPartner() && resource.data.assignedToUid == request.auth.uid) || (
-          signedIn() && 
-          resource.data.userId == request.auth.uid && 
-          request.resource.data.status == 'Cancellation Requested'
+      allow update: if isAdmin() || (signedIn() && (resource.data.userId == request.auth.uid || resource.data.assignedToUid == request.auth.uid));
+    }
+    
+    // --- SALES INVOICES ---
+    match /salesInvoices/{invoiceId} {
+        allow get, list: if signedIn() && (
+          isAdmin() ||
+          resource.data.customerId == request.auth.uid ||
+          resource.data.assignedToUid == request.auth.uid
         );
-        
-      allow delete: if isAdmin();
+        allow create, update: if signedIn() && (isAdmin() || request.resource.data.assignedToUid == request.auth.uid);
     }
     
     // --- PAYMENT SUBMISSIONS ---
@@ -96,14 +105,8 @@ service cloud.firestore {
       
       allow list: if signedIn() && (
         isAdmin() ||
-        (request.query.keys().hasAny(['userId']) && request.query.userId == request.auth.uid) ||
-        (
-          request.query.keys().hasAny(['orderId']) &&
-          (
-            get(/databases/$(database)/documents/orders/$(request.query.orderId)).data.userId == request.auth.uid ||
-            get(/databases/$(database)/documents/orders/$(request.query.orderId)).data.assignedToUid == request.auth.uid
-          )
-        )
+        resource.data.userId == request.auth.uid ||
+        resource.data.assignedToUid == request.auth.uid
       );
       
       allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
@@ -120,11 +123,6 @@ service cloud.firestore {
       allow read, list: if true; 
       allow write: if isAdmin();
     }
-    match /leads/{id} { 
-      allow list: if isAdmin() || request.query.where.ownerId == request.auth.uid;
-      allow get, write: if signedIn() && (isAdmin() || resource.data.ownerId == request.auth.uid); 
-      allow create: if signedIn();
-    }
     match /quotations/{id} { allow read, write: if signedIn(); }
     match /coupons/{id} { allow read, list: if true; allow write: if isAdmin(); }
     
@@ -140,21 +138,6 @@ service cloud.firestore {
     }
 
     // --- FINANCE & ACCOUNTING ---
-    match /salesInvoices/{invoiceId} {
-        allow read, list: if signedIn() && (
-          isAdmin() ||
-          resource.data.customerId == request.auth.uid ||
-          resource.data.assignedToUid == request.auth.uid
-        );
-        
-        allow create, update: if signedIn() && (
-          isAdmin() || 
-          (exists(request.resource.data.assignedToUid) && request.resource.data.assignedToUid == request.auth.uid)
-        );
-        
-        allow delete: if isAdmin();
-    }
-    
     match /creditNotes/{noteId} {
       allow read, list, create, update, delete: if isAdmin();
     }
@@ -245,10 +228,9 @@ service cloud.firestore {
     
     // --- FINAL GLOBAL SAFETY NET ---
     match /{path=**} {
-      allow read: if isAdmin();
-      allow write: if isAdmin();
+      allow read, write: if isAdmin();
     }
   }
 }
-
+      
     
