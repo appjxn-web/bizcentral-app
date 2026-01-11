@@ -76,6 +76,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
+import { useMemo } from 'react';
 
 function getStatusBadgeVariant(status: Order['status'] | 'Refund Pending' | 'Refund Complete' | SalesInvoice['status']) {
   const variants: Record<string, string> = {
@@ -90,6 +91,7 @@ function getStatusBadgeVariant(status: Order['status'] | 'Refund Pending' | 'Ref
     Manufacturing: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300',
     'Ready for Dispatch': 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-300',
     'Awaiting Payment': 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300',
+    'Awaiting Payment Confirmation': 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300',
     Unpaid: 'bg-orange-100 text-orange-800',
     Overdue: 'bg-red-100 text-red-800',
     Canceled: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300',
@@ -234,33 +236,32 @@ function PartnerPickupDetails({ userId }: { userId: string }) {
 }
 
 function CompanyPickupDetails() {
-    const { data: companyInfo, loading } = useDoc<any>(doc(useFirestore(), 'company', 'info'));
-    
-    if (loading) return <p className="text-sm text-muted-foreground">Loading details...</p>;
-    if (!companyInfo) return <p className="text-sm text-destructive">Could not load company details.</p>;
+  const { data: companyInfo, loading } = useDoc<any>(doc(useFirestore(), 'company', 'info'));
+  if (loading) return <p className="text-sm text-muted-foreground">Loading details...</p>;
+  if (!companyInfo) return <p className="text-sm text-destructive">Could not load company details.</p>;
 
-    const mainAddress = companyInfo.addresses?.find((a: any) => a.type === 'Main Office' || a.type === 'Registered Office') || companyInfo.addresses?.[0];
+  const mainAddress = companyInfo.addresses?.find((a: any) => a.type === 'Main Office' || a.type === 'Registered Office') || companyInfo.addresses?.[0];
 
-    if (!mainAddress) return <p className="text-sm text-destructive">Main company address not found.</p>;
-    
-    const addressString = [mainAddress.line1, mainAddress.line2, mainAddress.city, mainAddress.state, mainAddress.pin].filter(Boolean).join(', ');
-    const phone = mainAddress.pickupContactPhone || companyInfo.contactNumber;
-    let mapUrl = addressString ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addressString)}` : '';
-    if (mainAddress.latitude && mainAddress.longitude) {
-      mapUrl = `https://www.google.com/maps/search/?api=1&query=${mainAddress.latitude},${mainAddress.longitude}`;
-    }
-    
-    return (
-        <>
-            <p className="font-medium">{mainAddress.pickupContactName || companyInfo.companyName}</p>
-            <p className="text-xs text-muted-foreground">Main Office / Factory</p>
-            {addressString && <p className="mt-2 text-sm">{addressString}</p>}
-            <div className="flex gap-4 mt-2">
-                {phone && <a href={`tel:${phone}`} className="flex items-center gap-1 text-primary hover:underline text-sm"><Phone className="h-4 w-4" /> Call</a>}
-                {mapUrl && <a href={mapUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-primary hover:underline text-sm"><MapPin className="h-4 w-4" /> Get Directions</a>}
-            </div>
-        </>
-    );
+  if (!mainAddress) return <p className="text-sm text-destructive">Main company address not found.</p>;
+  
+  const addressString = [mainAddress.line1, mainAddress.line2, mainAddress.city, mainAddress.state, mainAddress.pin].filter(Boolean).join(', ');
+  const phone = mainAddress.pickupContactPhone || companyInfo.contactNumber;
+  let mapUrl = addressString ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addressString)}` : '';
+  if (mainAddress.latitude && mainAddress.longitude) {
+    mapUrl = `https://www.google.com/maps/search/?api=1&query=${mainAddress.latitude},${mainAddress.longitude}`;
+  }
+  
+  return (
+      <>
+          <p className="font-medium">{mainAddress.pickupContactName || companyInfo.companyName}</p>
+          <p className="text-xs text-muted-foreground">Main Office / Factory</p>
+          {addressString && <p className="mt-2 text-sm">{addressString}</p>}
+          <div className="flex gap-4 mt-2">
+              {phone && <a href={`tel:${phone}`} className="flex items-center gap-1 text-primary hover:underline text-sm"><Phone className="h-4 w-4" /> Call</a>}
+              {mapUrl && <a href={mapUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-primary hover:underline text-sm"><MapPin className="h-4 w-4" /> Get Directions</a>}
+          </div>
+      </>
+  );
 }
 
 function OrderCard({ order, allSalesInvoices }: { order: Order, allSalesInvoices: SalesInvoice[] | null }) {
@@ -350,7 +351,7 @@ function OrderCard({ order, allSalesInvoices }: { order: Order, allSalesInvoices
         'Manufacturing': ['Ready for Dispatch', 'Canceled'],
         'Ready for Dispatch': ['Shipped'],
         'Shipped': ['Delivered'],
-        'Awaiting PaymentConfirmation': ['Ordered', 'Canceled'],
+        'Awaiting Payment Confirmation': ['Ordered', 'Canceled'],
         'Cancellation Requested': ['Canceled', 'Ordered'],
         'Delivered': [],
         'Canceled': [],
@@ -371,40 +372,21 @@ function OrderCard({ order, allSalesInvoices }: { order: Order, allSalesInvoices
                                 Placed on {format(new Date(order.date), 'PPP')}
                             </CardDescription>
                         </div>
-                        {canChangeStatus ? (
-                            <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                    <div onDoubleClick={(e) => e.stopPropagation()}>
-                                    <Badge
-                                        className={cn('text-sm w-fit h-fit cursor-pointer', getStatusBadgeVariant(displayStatus))}
-                                        variant="outline"
-                                    >
-                                        {statusBadgeText}
-                                    </Badge>
-                                    </div>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent>
-                                    <DropdownMenuLabel>Change Status</DropdownMenuLabel>
-                                    <DropdownMenuSeparator />
-                                    {availableStatuses.map(status => (
-                                        <DropdownMenuItem key={status} onSelect={() => handleStatusChange(status)}>
-                                            {status}
-                                        </DropdownMenuItem>
-                                    ))}
-                                </DropdownMenuContent>
-                            </DropdownMenu>
-                        ) : (
-                            <Badge
-                                className={cn('text-sm w-fit h-fit', getStatusBadgeVariant(displayStatus))}
-                                variant="outline"
-                            >
-                                {statusBadgeText}
-                            </Badge>
-                        )}
+                        <Badge
+                            className={cn('text-sm w-fit h-fit', getStatusBadgeVariant(displayStatus))}
+                            variant="outline"
+                        >
+                            {statusBadgeText}
+                        </Badge>
                     </div>
                 </CardHeader>
                 <CardContent className="space-y-6">
-                    <OrderStatusTracker currentStatus={order.status} />
+                    <OrderStatusTracker 
+                        currentStatus={order.status}
+                        canChangeStatus={canChangeStatus}
+                        availableNextStatuses={availableStatuses}
+                        onStatusChange={handleStatusChange}
+                    />
                     <CollapsibleTrigger asChild>
                          <Button variant="outline" size="sm" className="w-full">
                             {isOpen ? 'Hide' : 'Show'} Order Details <ChevronDown className={cn("h-4 w-4 ml-2 transition-transform", isOpen && "rotate-180")} />
@@ -515,53 +497,51 @@ function OrdersPageContent() {
     const { user } = useUser();
     const { currentRole } = useRole();
     
-    const invoicesQuery = React.useMemo(() => {
+    const ordersQuery = useMemo(() => {
+        if (!user || !currentRole) return null;
+
+        const ordersRef = collection(firestore, 'orders');
+
+        if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
+            return query(ordersRef, orderBy('date', 'desc'));
+        }
+
+        if (currentRole === 'Partner') {
+            return query(ordersRef, where('assignedToUid', '==', user.uid), orderBy('date', 'desc'));
+        }
+        
+        return query(
+            ordersRef, 
+            where('userId', '==', user.uid), 
+            orderBy('date', 'desc')
+        );
+    }, [user, currentRole, firestore]);
+
+    const invoicesQuery = useMemo(() => {
         if (!user || !currentRole) return null;
         const invoicesRef = collection(firestore, 'salesInvoices');
     
         if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
-            return query(invoicesRef);
+            return query(invoicesRef, orderBy('date', 'desc'));
         }
     
-        // For Partners, they should see invoices where they are assigned.
-        if (['Partner', 'Franchisee', 'Sales Agent', 'Dealer'].includes(currentRole)) {
-            return query(invoicesRef, where('assignedToUid', '==', user.uid));
+        if (currentRole === 'Partner') {
+            return query(invoicesRef, where('assignedToUid', '==', user.uid), orderBy('date', 'desc'));
         }
     
-        // For Customers, they see invoices where they are the customer.
-        return query(invoicesRef, where('customerId', '==', user.uid));
+        return query(invoicesRef, where('customerId', '==', user.uid), orderBy('date', 'desc'));
     }, [user, currentRole, firestore]);
 
-    const { data: allSalesInvoices, loading: invoicesLoading } = useCollection<SalesInvoice>(invoicesQuery);
-    
-    const ordersQuery = React.useMemo(() => {
-        if (!user || !currentRole) return null;
-        const ordersRef = collection(firestore, 'orders');
 
-        const nonAdminRoles: UserRole[] = ['Customer', 'Partner', 'Franchisee', 'Sales Agent', 'Dealer', 'Employee'];
-        
-        if (nonAdminRoles.includes(currentRole)) {
-            if (currentRole === 'Partner') {
-                return query(ordersRef, where('assignedToUid', '==', user.uid), orderBy('date', 'desc'));
-            }
-             return query(
-                ordersRef, 
-                where('userId', '==', user.uid), 
-                orderBy('date', 'desc')
-            );
-        }
-        
-        return query(ordersRef, orderBy('date', 'desc'));
-    }, [user, currentRole, firestore]);
-    
     const { data: orders, loading: ordersLoading } = useCollection<Order>(ordersQuery);
+    const { data: allSalesInvoices, loading: invoicesLoading } = useCollection<SalesInvoice>(invoicesQuery);
 
 
     const kpis = React.useMemo(() => {
         if (!orders) return { total: 0, inProcess: 0, shipped: 0, delivered: 0 };
         
         const total = orders.length;
-        const inProcess = orders.filter(o => ['Ordered', 'Manufacturing', 'Ready for Dispatch', 'Awaiting Payment', 'Cancellation Requested', 'Awaiting Payment Confirmation'].includes(o.status)).length;
+        const inProcess = orders.filter(o => ['Ordered', 'Manufacturing', 'Ready for Dispatch', 'Awaiting Payment', 'Awaiting Payment Confirmation', 'Cancellation Requested'].includes(o.status)).length;
         const shipped = orders.filter(o => o.status === 'Shipped').length;
         const delivered = orders.filter(o => o.status === 'Delivered').length;
 

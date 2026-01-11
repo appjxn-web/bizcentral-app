@@ -1,11 +1,16 @@
 
-
 'use client';
 
 import * as React from 'react';
 import { CheckCircle, Factory, CreditCard, Truck, Package, PackageCheck, FileText } from 'lucide-react';
-import type { OrderStatus } from '@/lib/types';
+import type { OrderStatus, UserRole } from '@/lib/types';
 import { cn } from '@/lib/utils';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 const steps: { status: OrderStatus; icon: React.ElementType; label: string }[] = [
   { status: 'Ordered', icon: PackageCheck, label: 'Ordered' },
@@ -19,9 +24,79 @@ const steps: { status: OrderStatus; icon: React.ElementType; label: string }[] =
 
 interface OrderStatusProps {
   currentStatus: OrderStatus;
+  canChangeStatus: boolean;
+  availableNextStatuses: OrderStatus[];
+  onStatusChange: (newStatus: OrderStatus) => void;
 }
 
-export function OrderStatusTracker({ currentStatus }: OrderStatusProps) {
+function StatusStep({
+  step,
+  isCompleted,
+  isCurrent,
+  isFuture,
+  canChange,
+  availableNextStatuses,
+  onStatusChange,
+}: {
+  step: typeof steps[0];
+  isCompleted: boolean;
+  isCurrent: boolean;
+  isFuture: boolean;
+  canChange: boolean;
+  availableNextStatuses: OrderStatus[];
+  onStatusChange: (newStatus: OrderStatus) => void;
+}) {
+  const isClickable = canChange && (isCurrent || isCompleted);
+  const possibleNextSteps = isCurrent ? availableNextStatuses : [step.status];
+
+  const content = (
+    <div className="flex flex-col items-center">
+      <div
+        className={cn(
+          'w-8 h-8 rounded-full flex items-center justify-center transition-all',
+          isCompleted ? 'bg-green-500 text-white' : '',
+          isCurrent ? 'bg-primary text-primary-foreground' : '',
+          isFuture ? 'bg-muted border' : ''
+        )}
+      >
+        <step.icon className="w-5 h-5" />
+      </div>
+      <p
+        className={cn(
+          "text-xs mt-1 text-center",
+          isCurrent ? "font-bold text-primary" : "text-muted-foreground",
+          isCompleted ? "font-medium" : ""
+        )}
+      >
+        {step.label}
+      </p>
+    </div>
+  );
+
+  if (isClickable && availableNextStatuses.length > 0) {
+    return (
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <div className="cursor-pointer">
+            {content}
+          </div>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent>
+          {availableNextStatuses.map(status => (
+            <DropdownMenuItem key={status} onSelect={() => onStatusChange(status)}>
+              Change to: {status}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    );
+  }
+
+  return content;
+}
+
+
+export function OrderStatusTracker({ currentStatus, canChangeStatus, availableNextStatuses, onStatusChange }: OrderStatusProps) {
   const currentStepIndex = steps.findIndex(step => step.status === currentStatus);
 
   return (
@@ -34,25 +109,15 @@ export function OrderStatusTracker({ currentStatus }: OrderStatusProps) {
 
         return (
           <React.Fragment key={step.status}>
-            <div className="flex flex-col items-center">
-              <div
-                className={cn(
-                  'w-8 h-8 rounded-full flex items-center justify-center transition-all',
-                  isCompleted ? 'bg-green-500 text-white' : '',
-                  isCurrent ? 'bg-primary text-primary-foreground' : '',
-                  isFuture ? 'bg-muted border' : ''
-                )}
-              >
-                <step.icon className="w-5 h-5" />
-              </div>
-              <p className={cn(
-                  "text-xs mt-1 text-center",
-                  isCurrent ? "font-bold text-primary" : "text-muted-foreground",
-                  isCompleted ? "font-medium" : ""
-              )}>
-                {step.label}
-              </p>
-            </div>
+            <StatusStep
+              step={step}
+              isCompleted={isCompleted}
+              isCurrent={isCurrent}
+              isFuture={isFuture}
+              canChange={canChangeStatus}
+              availableNextStatuses={availableNextStatuses}
+              onStatusChange={onStatusChange}
+            />
             {!isLastStep && (
               <div className={cn(
                   "flex-1 h-1 mx-2",
