@@ -146,11 +146,10 @@ function PayBalanceDialog({ order, companyInfo }: { order: Order; companyInfo: a
     
     setIsSubmitting(true);
     try {
-      const submissionData: Omit<PaymentSubmission, 'id'> = {
+      const submissionData: Omit<PaymentSubmission, 'id'|'orderNumber'> = {
         userId: user.uid,
         customerName: order.customerName,
         orderId: order.id,
-        orderNumber: (order as SalesOrder).orderNumber || order.id,
         amount: Number(amountToPay),
         paymentMethod: 'UPI / Online',
         transactionDetails: transactionId,
@@ -454,16 +453,16 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
     const canChangeStatus = ['Admin', 'Partner', 'Sales Manager', 'CEO'].includes(currentRole);
     
     const nextStatusOptions: Record<OrderStatus, OrderStatus[]> = {
+      'Awaiting Payment': ['Ordered', 'Canceled'],
+      'Awaiting Payment Confirmation': ['Ordered', 'Canceled'],
       'Ordered': ['Manufacturing', 'Ready for Dispatch', 'Shipped'],
-      'Manufacturing': ['Ready for Dispatch', 'Shipped'],
       'Ready for Dispatch': ['Invoice Sent', 'Shipped'],
       'Invoice Sent': ['Shipped', 'Delivered'],
       'Shipped': ['Delivered'],
-      'Awaiting Payment': ['Ordered', 'Canceled'],
-      'Awaiting Payment Confirmation': ['Ordered', 'Canceled'],
+      'Manufacturing': ['Ready for Dispatch', 'Shipped'],
       'Delivered': [],
       'Canceled': [],
-      'Cancellation Requested': ['Canceled', 'Ordered'],
+      'Cancellation Requested': ['Ordered', 'Canceled'],
     };
     
     const availableStatuses = nextStatusOptions[order.status] || [];
@@ -642,14 +641,14 @@ function OrdersPageContent() {
         const invoicesRef = collection(firestore, 'salesInvoices');
     
         if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
-            return query(invoicesRef, orderBy('date', 'desc'));
+            return query(invoicesRef);
         }
     
         if (currentRole === 'Partner') {
-            return query(invoicesRef, where('assignedToUid', '==', user.uid), orderBy('date', 'desc'));
+            return query(invoicesRef, where('assignedToUid', '==', user.uid));
         }
     
-        return query(invoicesRef, where('customerId', '==', user.uid), orderBy('date', 'desc'));
+        return query(invoicesRef, where('customerId', '==', user.uid));
     }, [user, currentRole, firestore]);
 
 
@@ -788,5 +787,6 @@ export default function OrdersPage() {
 
     return <OrdersPageContent />;
 }
+
 
 
