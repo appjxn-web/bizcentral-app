@@ -385,7 +385,7 @@ function CompanyPickupDetails() {
   );
 }
 
-function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, allSalesInvoices: SalesInvoice[] | null, onStatusChange: (order: Order, newStatus: OrderStatus) => void }) {
+function OrderCard({ order, allSalesInvoices }: { order: Order, allSalesInvoices: SalesInvoice[] | null }) {
     const { user } = useUser();
     const router = useRouter();
     const { currentRole } = useRole();
@@ -396,6 +396,40 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
     const { toast } = useToast();
     const userProfileRef = user ? doc(firestore, 'users', user.uid) : null;
     const { data: userProfile } = useDoc<UserProfile>(userProfileRef);
+
+    const paymentSubmissionsQuery = React.useMemo(() => {
+      if (!order.id) return null;
+      return query(collection(firestore, 'paymentSubmissions'), where('orderId', '==', order.id));
+    }, [order.id, firestore]);
+    const { data: paymentSubmissions } = useCollection<PaymentSubmission>(paymentSubmissionsQuery);
+    
+    const { totalPaid, balanceDue, paymentHistory } = React.useMemo(() => {
+        const initialPayment = {
+            amount: order.paymentReceived || 0,
+            date: order.createdAt?.toDate ? order.createdAt.toDate() : new Date(order.date),
+            details: order.paymentDetails || 'Initial Payment',
+            status: 'Approved'
+        };
+
+        const otherPayments = (paymentSubmissions || []).map(p => ({
+            amount: p.amount,
+            date: p.submittedAt.toDate(),
+            details: p.transactionDetails || `Via ${p.paymentMethod}`,
+            status: p.status,
+        }));
+        
+        const allPayments = [initialPayment, ...otherPayments].filter(p => p.amount > 0);
+
+        const approvedPayments = allPayments.filter(p => p.status === 'Approved');
+        const totalPaid = approvedPayments.reduce((sum, p) => sum + p.amount, 0);
+        const balance = order.grandTotal - totalPaid;
+
+        return {
+            totalPaid,
+            balanceDue: balance,
+            paymentHistory: allPayments
+        }
+    }, [order, paymentSubmissions]);
 
     const refundQuery = order.status === 'Canceled' && user
       ? query(collection(firestore, 'refundRequests'), where('customerId', '==', user.uid), where('orderId', '==', order.id))
@@ -456,9 +490,9 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
       'Awaiting Payment': ['Ordered', 'Canceled'],
       'Awaiting Payment Confirmation': ['Ordered', 'Canceled'],
       'Ordered': ['Manufacturing', 'Ready for Dispatch', 'Shipped'],
-      'Ready for Dispatch': ['Invoice Sent', 'Shipped'],
-      'Invoice Sent': ['Shipped', 'Delivered'],
-      'Shipped': ['Delivered'],
+      'Ready for Dispatch': balanceDue <= 0 ? ['Invoice Sent', 'Shipped'] : [],
+      'Invoice Sent': balanceDue <= 0 ? ['Shipped', 'Delivered'] : [],
+      'Shipped': balanceDue <= 0 ? ['Delivered'] : [],
       'Manufacturing': ['Ready for Dispatch', 'Shipped'],
       'Delivered': [],
       'Canceled': [],
@@ -492,7 +526,7 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
                         currentStatus={order.status}
                         canChangeStatus={canChangeStatus}
                         availableNextStatuses={availableStatuses}
-                        onStatusChange={(newStatus) => onStatusChange(order, newStatus)}
+                        onStatusChange={() => {}}
                     />
                     <CollapsibleTrigger asChild>
                          <Button variant="outline" size="sm" className="w-full">
@@ -526,15 +560,19 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
                                 <div className="flex justify-between"><span>Taxes (CGST+SGST):</span> <span className="font-mono">{formatIndianCurrency(order.cgst + order.sgst)}</span></div>
                                 <div className="flex justify-between font-bold text-foreground"><span>Grand Total:</span> <span className="font-mono">{formatIndianCurrency(order.grandTotal)}</span></div>
                                 <Separator/>
-                                <div className="flex justify-between font-medium text-green-600"><span>Paid:</span> <span className="font-mono">{formatIndianCurrency(order.paymentReceived || 0)}</span></div>
+                                <div className="flex justify-between font-medium text-green-600"><span>Paid:</span> <span className="font-mono">{formatIndianCurrency(totalPaid)}</span></div>
                                 {displayStatus !== 'Refund Complete' && (
-                                <div className="flex justify-between font-bold text-red-600"><span>Balance Due:</span> <span className="font-mono">{formatIndianCurrency(order.balance || 0)}</span></div>
+                                <div className="flex justify-between font-bold text-red-600"><span>Balance Due:</span> <span className="font-mono">{formatIndianCurrency(balanceDue)}</span></div>
                                 )}
                             </div>
-                            {order.paymentDetails && !refundRequest && (
+                            {paymentHistory && paymentHistory.length > 0 && !refundRequest && (
                                 <div>
-                                    <p className="text-xs font-semibold">Transaction Note:</p>
-                                    <p className="text-xs text-muted-foreground font-mono whitespace-pre-wrap">{order.paymentDetails}</p>
+                                    <p className="text-xs font-semibold">Payment History:</p>
+                                    {paymentHistory.map((p, i) => (
+                                        <p key={i} className="text-xs text-muted-foreground font-mono whitespace-pre-wrap">
+                                            {format(p.date, 'dd/MM/yy')}: ₹{p.amount.toFixed(2)} - {p.details} ({p.status})
+                                        </p>
+                                    ))}
                                 </div>
                             )}
                              {refundRequest && (
@@ -562,8 +600,8 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
                                 )}
                             </div>
                             <div className="flex flex-wrap gap-2">
-                                {order.balance && order.balance > 0 && userProfile && (
-                                    <PayBalanceDialog order={order} companyInfo={companyInfo} />
+                                {balanceDue > 0 && userProfile && (
+                                    <PayBalanceDialog order={{...order, balance: balanceDue}} companyInfo={companyInfo} />
                                 )}
                                 {canCancel && (
                                     <Button variant="destructive" size="sm" onClick={() => setIsCancelDialogOpen(true)}>
@@ -606,44 +644,34 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
 }
 
 function MyOrdersPageContent() {
-    const { user } = useUser();
-    const firestore = useFirestore();
+  const { user } = useUser();
+  const firestore = useFirestore();
 
-    const ordersQuery = React.useMemo(() => {
-        if (!user?.uid) return null;
-        return query(
-            collection(firestore, 'orders'), 
-            where('userId', '==', user.uid), 
-            orderBy('date', 'desc')
-        );
-    }, [user?.uid, firestore]);
+  const ordersQuery = React.useMemo(() => {
+    if (!user?.uid) return null;
+    return query(collection(firestore, 'orders'), where('userId', '==', user.uid), orderBy('date', 'desc'));
+  }, [user?.uid, firestore]);
+  
+  const invoicesQuery = React.useMemo(() => {
+    if (!user?.uid) return null;
+    return query(collection(firestore, 'salesInvoices'), where('customerId', '==', user.uid), orderBy('date', 'desc'));
+  }, [user?.uid, firestore]);
+
+  const { data: orders, loading: ordersLoading } = useCollection<Order>(ordersQuery);
+  const { data: allSalesInvoices, loading: invoicesLoading } = useCollection<SalesInvoice>(invoicesQuery);
+
+  const kpis = React.useMemo(() => {
+    if (!orders) return { total: 0, inProcess: 0, shipped: 0, delivered: 0 };
     
-    const invoicesQuery = React.useMemo(() => {
-        if (!user?.uid) return null;
-        return query(
-            collection(firestore, 'salesInvoices'), 
-            where('customerId', '==', user.uid),
-            orderBy('date', 'desc')
-        );
-    }, [user?.uid, firestore]);
+    const total = orders.length;
+    const inProcess = orders.filter(o => ['Ordered', 'Manufacturing', 'Ready for Dispatch', 'Awaiting Payment', 'Awaiting Payment Confirmation', 'Cancellation Requested'].includes(o.status)).length;
+    const shipped = orders.filter(o => o.status === 'Shipped').length;
+    const delivered = orders.filter(o => o.status === 'Delivered').length;
 
+    return { total, inProcess, shipped, delivered };
+  }, [orders]);
 
-    const { data: orders, loading: ordersLoading } = useCollection<Order>(ordersQuery);
-    const { data: allSalesInvoices, loading: invoicesLoading } = useCollection<SalesInvoice>(invoicesQuery);
-
-
-    const kpis = React.useMemo(() => {
-        if (!orders) return { total: 0, inProcess: 0, shipped: 0, delivered: 0 };
-        
-        const total = orders.length;
-        const inProcess = orders.filter(o => ['Ordered', 'Manufacturing', 'Ready for Dispatch', 'Awaiting Payment', 'Awaiting Payment Confirmation', 'Cancellation Requested'].includes(o.status)).length;
-        const shipped = orders.filter(o => o.status === 'Shipped').length;
-        const delivered = orders.filter(o => o.status === 'Delivered').length;
-
-        return { total, inProcess, shipped, delivered };
-    }, [orders]);
-
-    const loading = ordersLoading || invoicesLoading;
+  const loading = ordersLoading || invoicesLoading;
 
   return (
     <>
@@ -725,6 +753,5 @@ export default function MyOrdersPage() {
 
     return <MyOrdersPageContent />;
 }
-
 
     
