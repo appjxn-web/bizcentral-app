@@ -36,9 +36,11 @@ service cloud.firestore {
 
     // --- USERS & ACCOUNT HISTORY ---
     match /users/{userId} {
-      allow create, update: if signedIn() && request.auth.uid == userId;
-      allow get: if isOwner(userId) || isAdmin();
+      // Allow ANY signed-in user to GET a profile.
+      // This is required so customers can see Partner/Pickup info on their orders.
+      allow get: if signedIn();
       allow list: if isAdmin() || isPartner() || isHrManager();
+      allow create, update: if isOwner(userId);
       allow delete: if isAdmin();
       
       match /wallet/main {
@@ -73,18 +75,21 @@ service cloud.firestore {
 
     // --- GLOBAL ORDERS (Main Sales) ---
     match /orders/{orderId} {
-      // Allows listing if the user is Admin, or if the query results are 
-      // restricted to their own ID or their assigned orders.
-      allow read, list: if signedIn() && (
+      allow get: if signedIn() && (
         isAdmin() || 
         resource.data.userId == request.auth.uid || 
         resource.data.assignedToUid == request.auth.uid
       );
-
-      allow create: if signedIn();
       
-      // Partners can update status for orders assigned to them
-      allow update: if isAdmin() || (isPartner() && resource.data.assignedToUid == request.auth.uid) || (
+      allow list: if signedIn() && (
+        isAdmin() || 
+        (request.query.limit <= 100 && request.query.where.userId == request.auth.uid) ||
+        (request.query.limit <= 100 && request.query.where.assignedToUid == request.auth.uid)
+      );
+
+      allow create: if signedIn() && (request.resource.data.userId == request.auth.uid || isAdmin());
+      
+      allow update: if isAdmin() || isPartner() || (
           signedIn() && 
           resource.data.userId == request.auth.uid && 
           request.resource.data.status == 'Cancellation Requested'
@@ -95,7 +100,7 @@ service cloud.firestore {
     
     // --- PAYMENT SUBMISSIONS ---
     match /paymentSubmissions/{submissionId} {
-      allow read, list: if signedIn() && (isAdmin() || (resource.data.keys().hasAll(['userId']) && resource.data.userId == request.auth.uid));
+      allow read, list: if signedIn() && (isAdmin() || request.query.where.userId == request.auth.uid || resource.data.userId == request.auth.uid);
       allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
       allow update: if isAdmin();
     }

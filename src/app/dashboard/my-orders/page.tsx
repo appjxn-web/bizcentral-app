@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -55,7 +56,7 @@ import {
 import Image from 'next/image';
 import { Separator } from '@/components/ui/separator';
 import { useFirestore, useCollection, useUser, useDoc, useStorage } from '@/firebase';
-import { collection, query, orderBy, doc, where, or, updateDoc, writeBatch, serverTimestamp, addDoc, Timestamp } from 'firebase/firestore';
+import { collection, query, orderBy, doc, where, or, updateDoc, writeBatch, serverTimestamp, addDoc, Timestamp, getDoc } from 'firebase/firestore';
 import { OrderStatusTracker } from './_components/order-status';
 import {
   Dialog,
@@ -69,7 +70,7 @@ import {
 } from '@/components/ui/dialog';
 import { QRCodeSVG } from 'qrcode.react';
 import { Input } from '@/components/ui/input';
-import { useRole } from '@/app/dashboard/_components/role-provider';
+import { useRole } from '../../_components/role-provider';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
@@ -307,8 +308,27 @@ function CancelOrderDialog({ order, onConfirm, open, onOpenChange }: { order: Or
 
 function PartnerPickupDetails({ userId }: { userId: string }) {
     const firestore = useFirestore();
-    const userDocRef = userId ? doc(firestore, 'users', userId) : null;
-    const { data: partner, loading } = useDoc<UserProfile>(userDocRef);
+    const [partner, setPartner] = React.useState<UserProfile | null>(null);
+    const [loading, setLoading] = React.useState(true);
+
+    React.useEffect(() => {
+        if (!userId) return;
+        
+        const fetchPartner = async () => {
+            try {
+                const docSnap = await getDoc(doc(firestore, 'users', userId));
+                if (docSnap.exists()) {
+                    setPartner(docSnap.data() as UserProfile);
+                }
+            } catch (e) {
+                console.error("Error loading partner:", e);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchPartner();
+    }, [userId, firestore]);
 
     if (loading) return <p className="text-sm text-muted-foreground">Loading partner details...</p>;
     if (!partner) return <p className="text-sm text-destructive">Could not load partner details.</p>;
@@ -354,7 +374,7 @@ function CompanyPickupDetails() {
       <>
           <p className="font-medium">{mainAddress.pickupContactName || companyInfo.companyName}</p>
           <p className="text-xs text-muted-foreground">Main Office / Factory</p>
-          {addressString && <p className="mt-2 text-sm">{addressString}</p>}
+          {addressString && <p className="text-sm mt-2">{addressString}</p>}
           <div className="flex gap-4 mt-2">
               {phone && <a href={`tel:${phone}`} className="flex items-center gap-1 text-primary hover:underline text-sm"><Phone className="h-4 w-4" /> Call</a>}
               {mapUrl && <a href={mapUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-primary hover:underline text-sm"><MapPin className="h-4 w-4" /> Get Directions</a>}
@@ -649,7 +669,7 @@ function MyOrdersPageContent() {
            <Card><CardContent className="p-12 text-center">Loading your orders...</CardContent></Card>
         ) : orders && orders.length > 0 ? (
             orders.map((order) => (
-                <OrderCard key={order.id} order={order} allSalesInvoices={allSalesInvoices} onStatusChange={() => {}} />
+                <OrderCard key={order.id} order={order} allSalesInvoices={allSalesInvoices} />
             ))
         ) : (
             <Card>
