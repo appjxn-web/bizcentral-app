@@ -68,7 +68,14 @@ export default function PartnerDashboardPage() {
   const { data: orders } = useCollection<Order>(ordersQuery);
   const { data: salesInvoices } = useCollection<SalesInvoice>(invoicesQuery);
 
-  const leadsQuery = user ? query(collection(firestore, 'leads'), where('ownerId', '==', user.uid), orderBy('createdAt', 'desc')) : null;
+  const leadsQuery = React.useMemo(() => {
+    if (!user?.uid) return null;
+    return query(
+        collection(firestore, 'leads'),
+        where('ownerId', '==', user.uid),
+        orderBy('createdAt', 'desc')
+    );
+  }, [user?.uid, firestore]);
   const { data: leads } = useCollection<Lead>(leadsQuery);
 
   const serviceRequestsQuery = user ? query(collection(firestore, 'serviceRequests'), where('assignedToUid', '==', user.uid)) : null;
