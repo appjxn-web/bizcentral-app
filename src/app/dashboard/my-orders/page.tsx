@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -55,7 +54,7 @@ import {
 } from '@/components/ui/collapsible';
 import Image from 'next/image';
 import { Separator } from '@/components/ui/separator';
-import { useFirestore, useCollection, useUser, useDoc, useStorage } from '@/firebase';
+import { useFirestore, useCollection, useUser, useDoc } from '@/firebase';
 import { collection, query, orderBy, doc, where, or, updateDoc, writeBatch, serverTimestamp, addDoc, Timestamp, getDoc } from 'firebase/firestore';
 import { OrderStatusTracker } from './_components/order-status';
 import {
@@ -700,4 +699,3 @@ export default function MyOrdersPage() {
 
     return <MyOrdersPageContent />;
 }
-
