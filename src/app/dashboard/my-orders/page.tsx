@@ -524,8 +524,8 @@ function OrderCard({ order, allSalesInvoices }: { order: Order, allSalesInvoices
                 <CardContent className="space-y-6">
                     <OrderStatusTracker 
                         currentStatus={order.status}
-                        canChangeStatus={canChangeStatus}
-                        availableNextStatuses={availableStatuses}
+                        canChangeStatus={false}
+                        availableNextStatuses={[]}
                         onStatusChange={() => {}}
                     />
                     <CollapsibleTrigger asChild>
@@ -724,7 +724,7 @@ function MyOrdersPageContent() {
            <Card><CardContent className="p-12 text-center">Loading your orders...</CardContent></Card>
         ) : orders && orders.length > 0 ? (
             orders.map((order) => (
-                <OrderCard key={order.id} order={order} allSalesInvoices={allSalesInvoices} onStatusChange={() => {}} />
+                <OrderCard key={order.id} order={order} allSalesInvoices={allSalesInvoices} />
             ))
         ) : (
             <Card>
@@ -753,8 +753,6 @@ export default function MyOrdersPage() {
 
     return <MyOrdersPageContent />;
 }
-
-    
 
     
       
