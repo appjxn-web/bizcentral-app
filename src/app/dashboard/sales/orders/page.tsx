@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -347,8 +348,8 @@ function OrderCard({ order, allSalesInvoices }: { order: Order, allSalesInvoices
     
     const nextStatusOptions: Record<OrderStatus, OrderStatus[]> = {
       'Ordered': ['Manufacturing', 'Ready for Dispatch', 'Awaiting Payment', 'Shipped', 'Delivered', 'Canceled'],
-      'Manufacturing': ['Ready for Dispatch', 'Shipped', 'Delivered', 'Canceled'],
-      'Ready for Dispatch': ['Shipped', 'Invoice Sent', 'Delivered', 'Canceled'],
+      'Manufacturing': ['Ready for Dispatch', 'Awaiting Payment', 'Shipped', 'Delivered', 'Canceled'],
+      'Ready for Dispatch': ['Awaiting Payment', 'Shipped', 'Invoice Sent', 'Delivered', 'Canceled'],
       'Shipped': ['Delivered'],
       'Awaiting PaymentConfirmation': ['Ordered', 'Canceled'],
       'Awaiting Payment': ['Ordered', 'Canceled'],
@@ -641,6 +642,8 @@ export default function OrdersPage() {
 
     return <OrdersPageContent />;
 }
+
+    
 
     
 
