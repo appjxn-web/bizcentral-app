@@ -75,21 +75,18 @@ service cloud.firestore {
 
     // --- GLOBAL ORDERS (Main Sales) ---
     match /orders/{orderId} {
-      allow get: if signedIn() && (
+      // Allows listing if the user is Admin, or if the query results are 
+      // restricted to their own ID or their assigned orders.
+      allow read, list: if signedIn() && (
         isAdmin() || 
         resource.data.userId == request.auth.uid || 
         resource.data.assignedToUid == request.auth.uid
       );
-      
-      allow list: if signedIn() && (
-        isAdmin() || 
-        (request.query.where.userId == request.auth.uid) || 
-        (request.query.where.assignedToUid == request.auth.uid)
-      );
 
-      allow create: if signedIn() && (request.resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if signedIn();
       
-      allow update: if isAdmin() || isPartner() || (
+      // Partners can update status for orders assigned to them
+      allow update: if isAdmin() || (isPartner() && resource.data.assignedToUid == request.auth.uid) || (
           signedIn() && 
           resource.data.userId == request.auth.uid && 
           request.resource.data.status == 'Cancellation Requested'
@@ -100,7 +97,7 @@ service cloud.firestore {
     
     // --- PAYMENT SUBMISSIONS ---
     match /paymentSubmissions/{submissionId} {
-      allow read, list: if signedIn() && (isAdmin() || request.query.where.userId == request.auth.uid || resource.data.userId == request.auth.uid);
+      allow read, list: if signedIn() && (isAdmin() || (resource.data.keys().hasAll(['userId']) && resource.data.userId == request.auth.uid));
       allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
       allow update: if isAdmin();
     }
@@ -116,10 +113,9 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
     match /leads/{id} { 
-      allow get: if signedIn() && (isAdmin() || get(/databases/$(database)/documents/leads/$(id)).data.ownerId == request.auth.uid);
+      allow list: if signedIn() && (isAdmin() || resource.data.ownerId == request.auth.uid);
+      allow get, write: if signedIn() && (isAdmin() || resource.data.ownerId == request.auth.uid); 
       allow create: if signedIn();
-      allow list: if signedIn() && (isAdmin() || request.query.where.ownerId == request.auth.uid);
-      allow update: if signedIn() && (isAdmin() || get(/databases/$(database)/documents/leads/$(id)).data.ownerId == request.auth.uid);
     }
     match /quotations/{id} { allow read, write: if signedIn(); }
     match /coupons/{id} { allow read, list: if true; allow write: if isAdmin(); }
@@ -137,18 +133,11 @@ service cloud.firestore {
 
     // --- FINANCE & ACCOUNTING ---
     match /salesInvoices/{invoiceId} {
-        // Individual get
-        allow get: if signedIn() && (
+        // Partners can view the list if they are the assigned agent
+        allow read, list: if signedIn() && (
           isAdmin() ||
           resource.data.customerId == request.auth.uid ||
           resource.data.assignedToUid == request.auth.uid
-        );
-        
-        // Query listing - MUST use request.query.where for non-admins
-        allow list: if signedIn() && (
-          isAdmin() ||
-          request.query.where.customerId == request.auth.uid ||
-          request.query.where.assignedToUid == request.auth.uid
         );
         
         // Partners can CREATE invoices for their assigned orders
