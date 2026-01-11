@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import Link from 'next/link';
@@ -64,7 +63,7 @@ export function Header({ showSidebarTrigger = true }: { showSidebarTrigger?: boo
   const router = useRouter();
   const [userRole, setUserRole] = React.useState<UserRole | null>(null);
   
-  const companyInfoRef = firestore ? doc(firestore, 'company', 'info') : null;
+  const companyInfoRef = user ? doc(firestore, 'company', 'info') : null;
   const { data: companyInfo, loading: companyInfoLoading } = useDoc<{ logo?: string, companyName?: string }>(companyInfoRef);
 
   const logo = companyInfo?.logo;
