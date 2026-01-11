@@ -102,12 +102,22 @@ export const verifyUpiPaymentAndCreateOrder = onCall(async (request) => {
             const customerLedgerId = await findOrCreateSpecificCustomerLedger(transaction, order as Order);
             const companySnap = await transaction.get(db.doc("company/info"));
             const primaryUpi = companySnap.data()?.primaryUpiId;
-            let bankAccountId = "L-1.1.1-2"; // Default Current Account
+            let bankAccountId: string | null = null;
             
             if (primaryUpi) {
                 const ledgerSearchQuery = db.collection("coa_ledgers").where("bank.upiId", "==", primaryUpi).limit(1);
                 const ledgerSearch = await transaction.get(ledgerSearchQuery);
-                if (!ledgerSearch.empty) bankAccountId = ledgerSearch.docs[0].id;
+                if (!ledgerSearch.empty) {
+                    bankAccountId = ledgerSearch.docs[0].id;
+                } else {
+                    console.error(`No bank ledger found for primary UPI ID: ${primaryUpi}`);
+                }
+            } else {
+                console.error("Primary UPI ID not configured in company/info.");
+            }
+
+            if (!bankAccountId) {
+                throw new Error("Could not determine bank account for payment. Please set a primary UPI in company settings.");
             }
         
             const jvRef = db.collection("journalVouchers").doc();
@@ -570,12 +580,20 @@ export const handleOrderUpdates = onDocumentUpdated("orders/{orderId}", async (e
             const customerLedgerId = await findOrCreateSpecificCustomerLedger(transaction, after);
             const companySnap = await transaction.get(db.doc("company/info"));
             const primaryUpi = companySnap.data()?.primaryUpiId;
-            let bankAccountId = "L-1.1.1-2"; // Default Current Account
+            let bankAccountId: string | null = null;
             
             if (primaryUpi) {
                 const ledgerSearchQuery = db.collection("coa_ledgers").where("bank.upiId", "==", primaryUpi).limit(1);
                 const ledgerSearch = await transaction.get(ledgerSearchQuery);
-                if (!ledgerSearch.empty) bankAccountId = ledgerSearch.docs[0].id;
+                if (!ledgerSearch.empty) {
+                    bankAccountId = ledgerSearch.docs[0].id;
+                }
+            }
+
+            if (!bankAccountId) {
+                console.error("No bank account found for primary UPI. Cannot create JV for order:", after.id);
+                // Optionally throw an error or handle it gracefully
+                return;
             }
         
             const jvRef = db.collection("journalVouchers").doc();

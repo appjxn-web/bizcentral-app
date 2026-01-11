@@ -109,9 +109,6 @@ export const defaultCoaGroups: Omit<CoaGroup, 'createdAt' | 'updatedAt' | 'path'
 export const defaultCoaLedgers: Omit<CoaLedger, 'id' | 'createdAt' | 'updatedAt'>[] = [
   // ASSETS
   createLedger('L-1.1.1-1', 'Cash in Hand', '1.1.1', 'ASSET'),
-  createLedger('L-1.1.1-2', 'Bank – Current Account', '1.1.1', 'ASSET'),
-  createLedger('L-1.1.1-3', 'Bank – Savings Account', '1.1.1', 'ASSET'),
-  createLedger('L-1.1.1-4', 'Bank - OD - CC Account', '1.1.1', 'ASSET'),
   
   createLedger('L-1.1.2-1', 'Trade Debtors – Domestic', '1.1.2', 'ASSET'),
   createLedger('L-1.1.2-2', 'Trade Debtors – Export', '1.1.2', 'ASSET'),
@@ -172,6 +169,7 @@ export const defaultCoaLedgers: Omit<CoaLedger, 'id' | 'createdAt' | 'updatedAt'
   createLedger('L-2.1.3-1', 'Outstanding Expenses', '2.1.3', 'LIABILITY'),
   createLedger('L-2.1.3-2', 'Salary Payable', '2.1.3', 'LIABILITY'),
   createLedger('L-2.1.3-3', 'Interest Payable', '2.1.3', 'LIABILITY'),
+  createLedger('L-2.1.3-4', 'Customer Advances', '2.1.3', 'LIABILITY'),
   
   createLedger('L-2.2.1-1', 'Term Loan – Bank', '2.2.1', 'LIABILITY'),
   createLedger('L-2.2.1-2', 'Vehicle Loan', '2.2.1', 'LIABILITY'),
