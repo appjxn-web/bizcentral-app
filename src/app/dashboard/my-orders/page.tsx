@@ -27,7 +27,7 @@ import {
 
 import { PageHeader } from '@/components/page-header';
 import { cn } from '@/lib/utils';
-import type { Order, OrderStatus, UserProfile, UserRole, WorkOrder, PickupPoint, SalesOrder, RefundRequest, SalesInvoice } from '@/lib/types';
+import type { Order, OrderStatus, UserProfile, UserRole, WorkOrder, PickupPoint, SalesOrder, RefundRequest, SalesInvoice, Party, CompanyInfo } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -69,7 +69,6 @@ import {
 } from '@/components/ui/dialog';
 import { QRCodeSVG } from 'qrcode.react';
 import { Input } from '@/components/ui/input';
-import { useRole } from '../_components/role-provider';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
@@ -449,45 +448,22 @@ function OrderCard({ order, allSalesInvoices }: { order: Order, allSalesInvoices
 function MyOrdersPageContent() {
     const { user } = useUser();
     const firestore = useFirestore();
-    const { currentRole } = useRole();
 
     const ordersQuery = React.useMemo(() => {
-        if (!user || !currentRole) return null;
-
+        if (!user) return null;
         const ordersRef = collection(firestore, 'orders');
-
-        const nonAdminRoles: UserRole[] = ['Customer', 'Partner', 'Franchisee', 'Sales Agent', 'Dealer', 'Employee'];
-        
-        if (nonAdminRoles.includes(currentRole)) {
-            if (currentRole === 'Partner') {
-                return query(ordersRef, where('assignedToUid', '==', user.uid), orderBy('date', 'desc'));
-            }
-             return query(
-                ordersRef, 
-                where('userId', '==', user.uid), 
-                orderBy('date', 'desc')
-            );
-        }
-        
-        return query(ordersRef, orderBy('date', 'desc'));
-    }, [user, currentRole, firestore]);
+        return query(
+            ordersRef, 
+            where('userId', '==', user.uid), 
+            orderBy('date', 'desc')
+        );
+    }, [user, firestore]);
     
     const invoicesQuery = React.useMemo(() => {
-        if (!user || !currentRole) return null;
+        if (!user) return null;
         const invoicesRef = collection(firestore, 'salesInvoices');
-    
-        if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
-            return query(invoicesRef);
-        }
-    
-        // For Partners, they should see invoices where they are assigned.
-        if (['Partner', 'Franchisee', 'Sales Agent', 'Dealer'].includes(currentRole)) {
-            return query(invoicesRef, where('assignedToUid', '==', user.uid));
-        }
-    
-        // For Customers, they see invoices where they are the customer.
         return query(invoicesRef, where('customerId', '==', user.uid));
-    }, [user, currentRole, firestore]);
+    }, [user, firestore]);
 
 
     const { data: orders, loading: ordersLoading } = useCollection<Order>(ordersQuery);
