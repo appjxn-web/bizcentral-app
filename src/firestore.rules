@@ -8,24 +8,24 @@ service cloud.firestore {
     
     function isFunction() { return request.auth == null; }
 
-    function getRole(userId) {
-      return get(/databases/$(database)/documents/users/$(userId)).data.role;
+    function getRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
     }
 
     function isAdmin() {
-      return signedIn() && getRole(request.auth.uid) in ['Admin', 'CEO', 'Sales Manager', 'Accounts Manager', 'Manager', 'Staff', 'Accountant'];
+      return signedIn() && getRole() in ['Admin', 'CEO', 'Sales Manager', 'Accounts Manager', 'Manager', 'Staff', 'Accountant'];
     }
 
     function isHrManager() {
-      return signedIn() && getRole(request.auth.uid) in ['Admin', 'CEO', 'HR Manager'];
+      return signedIn() && getRole() in ['Admin', 'CEO', 'HR Manager'];
     }
 
     function isPartner() {
-      return signedIn() && getRole(request.auth.uid) in ['Partner', 'Franchisee', 'Sales Agent', 'Dealer'];
+      return signedIn() && getRole() in ['Partner', 'Franchisee', 'Sales Agent', 'Dealer'];
     }
     
     function isInventoryManager() {
-      return signedIn() && getRole(request.auth.uid) in ['Inventory Manager', 'Admin', 'CEO'];
+      return signedIn() && getRole() in ['Inventory Manager', 'Admin', 'CEO'];
     }
 
     function isOwner(userId) {
@@ -34,6 +34,8 @@ service cloud.firestore {
 
     // --- USERS & ACCOUNT HISTORY ---
     match /users/{userId} {
+      // Allow ANY signed-in user to GET a profile.
+      // This is required so customers can see Partner/Pickup info on their orders.
       allow get: if signedIn(); 
       allow list: if isAdmin();
       allow write: if isOwner(userId) || isAdmin();
@@ -77,10 +79,12 @@ service cloud.firestore {
         resource.data.assignedToUid == request.auth.uid
       );
       
-      allow list: if signedIn() && (
-        isAdmin() || 
-        (request.query.where.userId == request.auth.uid) ||
-        (request.query.where.assignedToUid == request.auth.uid)
+      allow list: if isAdmin() || (
+        signedIn() && 
+        (
+            (request.query.where.userId is string && request.query.where.userId == request.auth.uid) ||
+            (request.query.where.assignedToUid is string && request.query.where.assignedToUid == request.auth.uid)
+        )
       );
 
       allow create: if signedIn() && (request.resource.data.userId == request.auth.uid || isAdmin());
@@ -133,12 +137,20 @@ service cloud.firestore {
     // --- FINANCE & ACCOUNTING ---
     match /salesInvoices/{invoiceId} {
         allow get: if signedIn() && (isAdmin() || resource.data.customerId == request.auth.uid || resource.data.assignedToUid == request.auth.uid);
-        allow list: if signedIn() && (
-          isAdmin() || 
-          (request.query.where.customerId == request.auth.uid) || 
-          (request.query.where.assignedToUid == request.auth.uid)
+        
+        allow list: if isAdmin() || (
+            signedIn() && 
+            (
+                (request.query.where.customerId is string && request.query.where.customerId == request.auth.uid) ||
+                (request.query.where.assignedToUid is string && request.query.where.assignedToUid == request.auth.uid)
+            )
         );
-        allow create, update: if signedIn() && (isAdmin() || (exists(request.resource.data.assignedToUid) && request.resource.data.assignedToUid == request.auth.uid));
+        
+        allow create, update: if signedIn() && (
+          isAdmin() || 
+          (exists(request.resource.data.assignedToUid) && request.resource.data.assignedToUid == request.auth.uid)
+        );
+        
         allow delete: if isAdmin();
     }
     

@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -384,7 +385,7 @@ function CompanyPickupDetails() {
   );
 }
 
-function OrderCard({ order, allSalesInvoices }: { order: Order, allSalesInvoices: SalesInvoice[] | null }) {
+function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, allSalesInvoices: SalesInvoice[] | null, onStatusChange: (order: Order, newStatus: OrderStatus) => void }) {
     const { user } = useUser();
     const router = useRouter();
     const { currentRole } = useRole();
@@ -449,6 +450,23 @@ function OrderCard({ order, allSalesInvoices }: { order: Order, allSalesInvoices
         }
     };
     
+    const canChangeStatus = ['Admin', 'Partner', 'Sales Manager', 'CEO'].includes(currentRole);
+    
+    const nextStatusOptions: Record<OrderStatus, OrderStatus[]> = {
+      'Awaiting Payment': ['Ordered', 'Canceled'],
+      'Awaiting Payment Confirmation': ['Ordered', 'Canceled'],
+      'Ordered': ['Manufacturing', 'Ready for Dispatch', 'Shipped'],
+      'Ready for Dispatch': ['Invoice Sent', 'Shipped'],
+      'Invoice Sent': ['Shipped', 'Delivered'],
+      'Shipped': ['Delivered'],
+      'Manufacturing': ['Ready for Dispatch', 'Shipped'],
+      'Delivered': [],
+      'Canceled': [],
+      'Cancellation Requested': ['Ordered', 'Canceled'],
+    };
+    
+    const availableStatuses = nextStatusOptions[order.status] || [];
+    
     return (
       <>
         <Collapsible asChild key={order.id} open={isOpen} onOpenChange={setIsOpen}>
@@ -470,7 +488,12 @@ function OrderCard({ order, allSalesInvoices }: { order: Order, allSalesInvoices
                     </div>
                 </CardHeader>
                 <CardContent className="space-y-6">
-                    <OrderStatusTracker currentStatus={order.status} onStatusChange={()=>{}} canChangeStatus={false} availableNextStatuses={[]} />
+                    <OrderStatusTracker 
+                        currentStatus={order.status}
+                        canChangeStatus={canChangeStatus}
+                        availableNextStatuses={availableStatuses}
+                        onStatusChange={(newStatus) => onStatusChange(order, newStatus)}
+                    />
                     <CollapsibleTrigger asChild>
                          <Button variant="outline" size="sm" className="w-full">
                             {isOpen ? 'Hide' : 'Show'} Order Details <ChevronDown className={cn("h-4 w-4 ml-2 transition-transform", isOpen && "rotate-180")} />
@@ -548,15 +571,14 @@ function OrderCard({ order, allSalesInvoices }: { order: Order, allSalesInvoices
                                         Request Cancellation
                                     </Button>
                                 )}
-                                {existingInvoice && (
+                                {existingInvoice ? (
                                   <Button variant="outline" size="sm" asChild>
                                     <Link href={`/dashboard/sales/invoice/view?id=${existingInvoice.invoiceNumber}`}>
                                       <Receipt className="mr-2 h-4 w-4" />
                                       View Invoice
                                     </Link>
                                   </Button>
-                                )}
-                                {currentRole === 'Partner' && order.status === 'Ready for Dispatch' && !existingInvoice && (
+                                ) : (order.status === 'Ready for Dispatch' || order.status === 'Shipped') && ['Admin', 'Accounts Manager', 'Sales Manager'].includes(currentRole) && (
                                      <Button size="sm" onClick={() => {
                                          localStorage.setItem('invoiceDataToCreate', JSON.stringify(order));
                                          router.push('/dashboard/sales/create-invoice');
@@ -598,7 +620,11 @@ function MyOrdersPageContent() {
     
     const invoicesQuery = React.useMemo(() => {
         if (!user?.uid) return null;
-        return query(collection(firestore, 'salesInvoices'), where('customerId', '==', user.uid));
+        return query(
+            collection(firestore, 'salesInvoices'), 
+            where('customerId', '==', user.uid),
+            orderBy('date', 'desc')
+        );
     }, [user?.uid, firestore]);
 
 
@@ -670,7 +696,7 @@ function MyOrdersPageContent() {
            <Card><CardContent className="p-12 text-center">Loading your orders...</CardContent></Card>
         ) : orders && orders.length > 0 ? (
             orders.map((order) => (
-                <OrderCard key={order.id} order={order} allSalesInvoices={allSalesInvoices} />
+                <OrderCard key={order.id} order={order} allSalesInvoices={allSalesInvoices} onStatusChange={() => {}} />
             ))
         ) : (
             <Card>
@@ -699,3 +725,6 @@ export default function MyOrdersPage() {
 
     return <MyOrdersPageContent />;
 }
+
+
+    
