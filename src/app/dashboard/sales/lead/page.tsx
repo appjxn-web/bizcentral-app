@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -55,7 +56,7 @@ import {
 } from '@/components/ui/tooltip';
 import { useRouter } from 'next/navigation';
 import { useFirestore, useCollection, useUser } from '@/firebase';
-import { collection, addDoc, doc, setDoc, query, where } from 'firebase/firestore';
+import { collection, addDoc, doc, setDoc, query, where, orderBy } from 'firebase/firestore';
 
 const allStatuses: LeadStatus[] = ['New', 'Contacted', 'Qualified', 'Proposal Sent', 'Converted', 'Lost'];
 const allSources: LeadSource[] = ['Website', 'Referral', 'Cold Call', 'Event', 'Social media', 'Other'];
@@ -82,10 +83,12 @@ export default function LeadPage() {
   const leadsQuery = React.useMemo(() => {
     if (!authUser || !currentRole) return null;
     const leadsRef = collection(firestore, 'leads');
+    
     if (['Admin', 'CEO', 'Sales Manager'].includes(currentRole)) {
-      return query(leadsRef);
+      return query(leadsRef, orderBy('createdAt', 'desc'));
     }
-    return query(leadsRef, where('ownerId', '==', authUser.uid));
+    
+    return query(leadsRef, where('ownerId', '==', authUser.uid), orderBy('createdAt', 'desc'));
   }, [authUser, currentRole, firestore]);
 
   const { data: leads, loading: leadsLoading } = useCollection<Lead>(leadsQuery);
