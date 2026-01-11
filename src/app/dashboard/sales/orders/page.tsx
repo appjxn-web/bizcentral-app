@@ -266,6 +266,7 @@ function CompanyPickupDetails() {
 function OrderCard({ order, allSalesInvoices }: { order: Order, allSalesInvoices: SalesInvoice[] | null }) {
     const { user } = useUser();
     const router = useRouter();
+    const { currentRole } = useRole();
     const [isOpen, setIsOpen] = React.useState(false);
     const firestore = useFirestore();
     const { data: companyInfo } = useDoc(doc(firestore, 'company', 'info'));
@@ -325,6 +326,38 @@ function OrderCard({ order, allSalesInvoices }: { order: Order, allSalesInvoices
             });
         }
     };
+
+    const handleStatusChange = async (newStatus: OrderStatus) => {
+        try {
+            const orderRef = doc(firestore, 'orders', order.id);
+            await updateDoc(orderRef, { status: newStatus });
+            toast({
+                title: 'Status Updated',
+                description: `Order status changed to "${newStatus}".`,
+            });
+        } catch (error) {
+            toast({
+                variant: 'destructive',
+                title: 'Update Failed',
+                description: 'Could not update order status.',
+            });
+        }
+    };
+    
+    const canChangeStatus = ['Admin', 'Partner', 'Sales Manager', 'CEO'].includes(currentRole);
+    const nextStatusOptions: Record<OrderStatus, OrderStatus[]> = {
+        'Ordered': ['Manufacturing', 'Ready for Dispatch', 'Canceled'],
+        'Manufacturing': ['Ready for Dispatch', 'Canceled'],
+        'Ready for Dispatch': ['Shipped'],
+        'Shipped': ['Delivered'],
+        'Awaiting PaymentConfirmation': ['Ordered', 'Canceled'],
+        'Cancellation Requested': ['Canceled', 'Ordered'],
+        'Delivered': [],
+        'Canceled': [],
+        'Awaiting Payment': [],
+        'Invoice Sent': [],
+    };
+    const availableStatuses = nextStatusOptions[order.status] || [];
     
     return (
       <>
@@ -338,12 +371,36 @@ function OrderCard({ order, allSalesInvoices }: { order: Order, allSalesInvoices
                                 Placed on {format(new Date(order.date), 'PPP')}
                             </CardDescription>
                         </div>
-                        <Badge
-                            className={cn('text-sm w-fit h-fit', getStatusBadgeVariant(displayStatus))}
-                            variant="outline"
-                        >
-                            {statusBadgeText}
-                        </Badge>
+                        {canChangeStatus ? (
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <div onDoubleClick={(e) => e.stopPropagation()}>
+                                    <Badge
+                                        className={cn('text-sm w-fit h-fit cursor-pointer', getStatusBadgeVariant(displayStatus))}
+                                        variant="outline"
+                                    >
+                                        {statusBadgeText}
+                                    </Badge>
+                                    </div>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent>
+                                    <DropdownMenuLabel>Change Status</DropdownMenuLabel>
+                                    <DropdownMenuSeparator />
+                                    {availableStatuses.map(status => (
+                                        <DropdownMenuItem key={status} onSelect={() => handleStatusChange(status)}>
+                                            {status}
+                                        </DropdownMenuItem>
+                                    ))}
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+                        ) : (
+                            <Badge
+                                className={cn('text-sm w-fit h-fit', getStatusBadgeVariant(displayStatus))}
+                                variant="outline"
+                            >
+                                {statusBadgeText}
+                            </Badge>
+                        )}
                     </div>
                 </CardHeader>
                 <CardContent className="space-y-6">
@@ -458,72 +515,58 @@ function OrdersPageContent() {
     const { user } = useUser();
     const { currentRole } = useRole();
     
-    const { data: allSalesInvoices, loading: invoicesLoading } = useCollection<SalesInvoice>(
-        React.useMemo(
-            () => {
-                if (!user || !currentRole) return null;
-                const invoicesRef = collection(firestore, 'salesInvoices');
-                
-                if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
-                    return query(invoicesRef, orderBy('date', 'desc'));
-                }
-                
-                if (currentRole === 'Partner') {
-                    return query(invoicesRef, where('assignedToUid', '==', user.uid), orderBy('date', 'desc'));
-                }
-                
-                return query(invoicesRef, where('customerId', '==', user.uid), orderBy('date', 'desc'));
-            },
-            [user, currentRole, firestore]
-        )
-    );
+    const invoicesQuery = React.useMemo(() => {
+        if (!user || !currentRole) return null;
+        const invoicesRef = collection(firestore, 'salesInvoices');
     
-    const { data: orders, loading: ordersLoading } = useCollection<Order>(
-        React.useMemo(
-            () => {
-                if (!user || !currentRole) return null;
-                const ordersRef = collection(firestore, 'orders');
+        if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
+            return query(invoicesRef);
+        }
+    
+        // For Partners, they should see invoices where they are assigned.
+        if (['Partner', 'Franchisee', 'Sales Agent', 'Dealer'].includes(currentRole)) {
+            return query(invoicesRef, where('assignedToUid', '==', user.uid));
+        }
+    
+        // For Customers, they see invoices where they are the customer.
+        return query(invoicesRef, where('customerId', '==', user.uid));
+    }, [user, currentRole, firestore]);
 
-                if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
-                    return query(ordersRef, orderBy('date', 'desc'));
-                }
+    const { data: allSalesInvoices, loading: invoicesLoading } = useCollection<SalesInvoice>(invoicesQuery);
+    
+    const ordersQuery = React.useMemo(() => {
+        if (!user || !currentRole) return null;
+        const ordersRef = collection(firestore, 'orders');
 
-                if (currentRole === 'Partner') {
-                    return query(
-                        ordersRef, 
-                        where('assignedToUid', '==', user.uid),
-                        orderBy('date', 'desc')
-                    );
-                }
+        const nonAdminRoles: UserRole[] = ['Customer', 'Partner', 'Franchisee', 'Sales Agent', 'Dealer', 'Employee'];
+        
+        if (nonAdminRoles.includes(currentRole)) {
+            if (currentRole === 'Partner') {
+                return query(ordersRef, where('assignedToUid', '==', user.uid), orderBy('date', 'desc'));
+            }
+             return query(
+                ordersRef, 
+                where('userId', '==', user.uid), 
+                orderBy('date', 'desc')
+            );
+        }
+        
+        return query(ordersRef, orderBy('date', 'desc'));
+    }, [user, currentRole, firestore]);
+    
+    const { data: orders, loading: ordersLoading } = useCollection<Order>(ordersQuery);
 
-                return query(
-                    ordersRef, 
-                    where('userId', '==', user.uid), 
-                    orderBy('date', 'desc')
-                );
-            },
-            [user, currentRole, firestore]
-        )
-    );
 
     const kpis = React.useMemo(() => {
         if (!orders) return { total: 0, inProcess: 0, shipped: 0, delivered: 0 };
         
         const total = orders.length;
-        const inProcess = orders.filter(o => ['Ordered', 'Manufacturing', 'Ready for Dispatch', 'Awaiting Payment', 'Cancellation Requested'].includes(o.status)).length;
+        const inProcess = orders.filter(o => ['Ordered', 'Manufacturing', 'Ready for Dispatch', 'Awaiting Payment', 'Cancellation Requested', 'Awaiting Payment Confirmation'].includes(o.status)).length;
         const shipped = orders.filter(o => o.status === 'Shipped').length;
         const delivered = orders.filter(o => o.status === 'Delivered').length;
 
         return { total, inProcess, shipped, delivered };
     }, [orders]);
-    
-    const onViewInvoice = (invoiceId: string) => {
-        router.push(`/dashboard/sales/invoice/view?id=${invoiceId}`);
-    };
-
-    const handleEditOrder = (orderId: string) => {
-        router.push(`/dashboard/sales/create-order?id=${orderId}`);
-    };
 
     const loading = ordersLoading || invoicesLoading;
 
