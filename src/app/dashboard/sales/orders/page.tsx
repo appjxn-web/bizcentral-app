@@ -242,6 +242,7 @@ function CompanyPickupDetails() {
     const mainAddress = companyInfo.addresses?.find((a: any) => a.type === 'Main Office' || a.type === 'Registered Office') || companyInfo.addresses?.[0];
 
     if (!mainAddress) return <p className="text-sm text-destructive">Main company address not found.</p>;
+    
     const addressString = [mainAddress.line1, mainAddress.line2, mainAddress.city, mainAddress.state, mainAddress.pin].filter(Boolean).join(', ');
     const phone = mainAddress.pickupContactPhone || companyInfo.contactNumber;
     let mapUrl = addressString ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addressString)}` : '';
@@ -262,81 +263,192 @@ function CompanyPickupDetails() {
     );
 }
 
-function OrderRow({ order, allSalesInvoices, onViewInvoice, onEdit, currentRole }: { order: Order, allSalesInvoices: SalesInvoice[] | null, onViewInvoice: (invoiceId: string) => void, onEdit: (orderId: string) => void, currentRole: UserRole }) {
-  const router = useRouter();
-  const [isOpen, setIsOpen] = React.useState(false);
+function OrderCard({ order, allSalesInvoices }: { order: Order, allSalesInvoices: SalesInvoice[] | null }) {
+    const { user } = useUser();
+    const router = useRouter();
+    const [isOpen, setIsOpen] = React.useState(false);
+    const firestore = useFirestore();
+    const { data: companyInfo } = useDoc(doc(firestore, 'company', 'info'));
+    const [isCancelDialogOpen, setIsCancelDialogOpen] = React.useState(false);
+    const { toast } = useToast();
 
-  const existingInvoice = allSalesInvoices?.find(inv => inv.orderNumber === order.orderNumber);
-  
-  const canEdit = ['Admin', 'CEO', 'Sales Manager'].includes(currentRole);
+    // Fetch corresponding refund request if the order is canceled
+    const refundQuery = order.status === 'Canceled' && user
+      ? query(collection(firestore, 'refundRequests'), where('customerId', '==', user.uid), where('orderId', '==', order.id))
+      : null;
+    const { data: refundRequests } = useCollection<RefundRequest>(refundQuery);
+    const refundRequest = refundRequests?.[0];
 
-  const handleGenerateInvoice = (order: Order) => {
-    const dataToPass = {
-      ...order,
-      customerId: order.userId,
-      overallDiscount: (order.discount / order.subtotal) * 100 || 0,
+    const existingInvoice = allSalesInvoices?.find(inv => inv.orderNumber === order.orderNumber);
+
+    const canCancel = order.status === 'Ordered' || order.status === 'Manufacturing';
+    
+    let displayStatus: OrderStatus | 'Refund Pending' | 'Refund Complete' = order.status;
+    let statusBadgeText = displayStatus;
+
+    if (order.status === 'Canceled') {
+        if (refundRequest?.status === 'Pending') {
+            displayStatus = 'Refund Pending';
+            statusBadgeText = 'Refund Pending';
+        } else if (refundRequest?.status === 'Paid') {
+            displayStatus = 'Refund Complete';
+            statusBadgeText = 'Refund Complete';
+        } else {
+            statusBadgeText = 'Canceled';
+        }
+    }
+
+
+    const handleConfirmCancellation = async (reason: string, details?: string) => {
+        if (!user) return; 
+
+        try {
+            const orderRef = doc(firestore, 'orders', order.id);
+            const updateData = {
+                status: 'Cancellation Requested' as OrderStatus,
+                cancellationReason: `${reason}${details ? `: ${details}` : ''}`,
+            };
+            
+            await updateDoc(orderRef, updateData);
+
+            toast({
+                title: 'Cancellation Requested',
+                description: `Your request to cancel order #${order.orderNumber || order.id} has been submitted for approval.`,
+            });
+            setIsCancelDialogOpen(false);
+        } catch (error) {
+            console.error("Error requesting order cancellation:", error);
+            toast({
+                variant: 'destructive',
+                title: 'Cancellation Failed',
+                description: 'There was an error while trying to submit your cancellation request.',
+            });
+        }
     };
-    localStorage.setItem('invoiceDataToCreate', JSON.stringify(dataToPass));
-    router.push('/dashboard/sales/create-invoice');
-  };
+    
+    return (
+      <>
+        <Collapsible asChild key={order.id} open={isOpen} onOpenChange={setIsOpen}>
+            <Card>
+                <CardHeader>
+                    <div className="flex flex-col md:flex-row justify-between gap-2">
+                        <div>
+                            <CardTitle>Order ID: {order.orderNumber || order.id}</CardTitle>
+                            <CardDescription>
+                                Placed on {format(new Date(order.date), 'PPP')}
+                            </CardDescription>
+                        </div>
+                        <Badge
+                            className={cn('text-sm w-fit h-fit', getStatusBadgeVariant(displayStatus))}
+                            variant="outline"
+                        >
+                            {statusBadgeText}
+                        </Badge>
+                    </div>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                    <OrderStatusTracker currentStatus={order.status} />
+                    <CollapsibleTrigger asChild>
+                         <Button variant="outline" size="sm" className="w-full">
+                            {isOpen ? 'Hide' : 'Show'} Order Details <ChevronDown className={cn("h-4 w-4 ml-2 transition-transform", isOpen && "rotate-180")} />
+                        </Button>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent className="space-y-6">
+                      <div className="space-y-2">
+                        {order.items.map(item => (
+                            <div key={item.productId} className="flex items-center justify-between py-2 border-b">
+                                <div className="flex items-center gap-4">
+                                    <Image src={`https://picsum.photos/seed/${item.productId}/64/64`} alt={item.name} width={64} height={64} className="rounded-md object-cover" />
+                                    <div>
+                                        <p className="font-medium">{item.name}</p>
+                                        <p className="text-sm text-muted-foreground">Qty: {item.quantity}</p>
+                                    </div>
+                                </div>
+                                <p className="font-medium">{formatIndianCurrency(item.price * item.quantity)}</p>
+                            </div>
+                        ))}
+                      </div>
 
-  return (
-    <Collapsible asChild key={order.id} open={isOpen} onOpenChange={setIsOpen}>
-      <TableBody>
-        <TableRow>
-          <TableCell>
-            <CollapsibleTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-8 w-8">
-                {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                <span className="sr-only">Toggle details</span>
-              </Button>
-            </CollapsibleTrigger>
-          </TableCell>
-          <TableCell className="font-mono">{(order as SalesOrder).orderNumber || order.id}</TableCell>
-          <TableCell>{order.customerName}</TableCell>
-          <TableCell>{format(new Date(order.date), 'dd/MM/yyyy')}</TableCell>
-          <TableCell>
-            <Badge className={cn('text-xs', getStatusBadgeVariant(order.status))} variant="outline">
-              {order.status}
-            </Badge>
-          </TableCell>
-          <TableCell>{order.expectedDeliveryDate ? format(new Date(order.expectedDeliveryDate), 'dd/MM/yyyy') : 'N/A'}</TableCell>
-          <TableCell className="text-right font-mono">{formatIndianCurrency(order.grandTotal)}</TableCell>
-          <TableCell className="text-right">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button size="icon" variant="ghost"><MoreHorizontal className="h-4 w-4"/></Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent>
-                <DropdownMenuItem onClick={() => router.push(`/dashboard/sales/orders/view?id=${order.id}`)}>
-                  <Eye className="mr-2 h-4 w-4"/> View Order
-                </DropdownMenuItem>
-                {canEdit && <DropdownMenuItem onClick={() => onEdit(order.id)}><Edit className="mr-2 h-4 w-4"/> Edit Order</DropdownMenuItem>}
-                {existingInvoice ? (
-                  <DropdownMenuItem onClick={() => onViewInvoice(existingInvoice.invoiceNumber)}>
-                    <Receipt className="mr-2 h-4 w-4" /> View Invoice
-                  </DropdownMenuItem>
-                ) : (
-                  <DropdownMenuItem onClick={() => handleGenerateInvoice(order)}>
-                    <Receipt className="mr-2 h-4 w-4" /> Generate Invoice
-                  </DropdownMenuItem>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </TableCell>
-        </TableRow>
-        <CollapsibleContent asChild>
-          <TableRow>
-            <TableCell colSpan={8} className="p-0">
-              <div className="p-6 space-y-6 bg-muted/50">
-                {/* Content Here */}
-              </div>
-            </TableCell>
-          </TableRow>
-        </CollapsibleContent>
-      </TableBody>
-    </Collapsible>
-  )
+                      <Separator />
+
+                      <div className="grid md:grid-cols-2 gap-6">
+                        <div className="space-y-4">
+                            <h4 className="font-semibold">Payment Summary</h4>
+                            <div className="text-sm space-y-2 text-muted-foreground">
+                                <div className="flex justify-between"><span>Subtotal:</span> <span className="font-mono">{formatIndianCurrency(order.subtotal)}</span></div>
+                                <div className="flex justify-between"><span>Discount:</span> <span className="font-mono">{formatIndianCurrency(order.discount)}</span></div>
+                                <div className="flex justify-between"><span>Taxes (CGST+SGST):</span> <span className="font-mono">{formatIndianCurrency(order.cgst + order.sgst)}</span></div>
+                                <div className="flex justify-between font-bold text-foreground"><span>Grand Total:</span> <span className="font-mono">{formatIndianCurrency(order.grandTotal)}</span></div>
+                                <Separator/>
+                                <div className="flex justify-between font-medium text-green-600"><span>Paid:</span> <span className="font-mono">{formatIndianCurrency(order.paymentReceived || 0)}</span></div>
+                                {displayStatus !== 'Refund Complete' && (
+                                <div className="flex justify-between font-bold text-red-600"><span>Balance Due:</span> <span className="font-mono">{formatIndianCurrency(order.balance || 0)}</span></div>
+                                )}
+                            </div>
+                            {order.paymentDetails && !refundRequest && (
+                                <div>
+                                    <p className="text-xs font-semibold">Transaction Note:</p>
+                                    <p className="text-xs text-muted-foreground font-mono">{order.paymentDetails}</p>
+                                </div>
+                            )}
+                             {refundRequest && (
+                                <div className="p-3 bg-blue-50 dark:bg-blue-900/30 rounded-md border border-blue-200 dark:border-blue-800">
+                                    <p className="text-xs font-semibold">Refund Details:</p>
+                                    {refundRequest.status === 'Paid' && refundRequest.transactionDate ? (
+                                        <div className="text-xs text-muted-foreground font-mono">
+                                            <p>Amount: {formatIndianCurrency(refundRequest.refundAmount)}</p>
+                                            <p>Ref: {refundRequest.transactionRef}</p>
+                                            <p>Date: {format(new Date(refundRequest.transactionDate), 'PPP')}</p>
+                                        </div>
+                                    ) : (
+                                        <p className="text-xs text-muted-foreground">Your refund of {formatIndianCurrency(refundRequest.refundAmount)} is being processed.</p>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                        <div className="space-y-4">
+                            <h4 className="font-semibold">Pickup Details</h4>
+                             <div className="p-3 rounded-md border bg-background">
+                                {order.assignedToUid && order.pickupPointId !== 'company-main' ? (
+                                    <PartnerPickupDetails userId={order.assignedToUid} />
+                                ) : (
+                                    <CompanyPickupDetails />
+                                )}
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                                {order.balance && order.balance > 0 && (
+                                    <PayBalanceDialog order={order} companyInfo={companyInfo} />
+                                )}
+                                {canCancel && (
+                                    <Button variant="destructive" size="sm" onClick={() => setIsCancelDialogOpen(true)}>
+                                        <XCircle className="mr-2 h-4 w-4" />
+                                        Request Cancellation
+                                    </Button>
+                                )}
+                                {existingInvoice && (
+                                  <Button variant="outline" size="sm" asChild>
+                                    <Link href={`/dashboard/sales/invoice/view?id=${existingInvoice.invoiceNumber}`}>
+                                      <Receipt className="mr-2 h-4 w-4" />
+                                      View Invoice
+                                    </Link>
+                                  </Button>
+                                )}
+                            </div>
+                        </div>
+                      </div>
+
+                    </CollapsibleContent>
+                </CardContent>
+            </Card>
+        </Collapsible>
+        <CancelOrderDialog
+          order={order}
+          open={isCancelDialogOpen}
+          onOpenChange={setIsCancelDialogOpen}
+          onConfirm={handleConfirmCancellation}
+        />
+      </>
+    )
 }
 
 function OrdersPageContent() {
@@ -347,7 +459,7 @@ function OrdersPageContent() {
     const { currentRole } = useRole();
     
     const { data: allSalesInvoices, loading: invoicesLoading } = useCollection<SalesInvoice>(
-        useMemo(
+        React.useMemo(
             () => {
                 if (!user || !currentRole) return null;
                 const invoicesRef = collection(firestore, 'salesInvoices');
@@ -356,7 +468,7 @@ function OrdersPageContent() {
                     return query(invoicesRef, orderBy('date', 'desc'));
                 }
                 
-                if (['Partner', 'Franchisee', 'Sales Agent', 'Dealer'].includes(currentRole)) {
+                if (currentRole === 'Partner') {
                     return query(invoicesRef, where('assignedToUid', '==', user.uid), orderBy('date', 'desc'));
                 }
                 
@@ -367,7 +479,7 @@ function OrdersPageContent() {
     );
     
     const { data: orders, loading: ordersLoading } = useCollection<Order>(
-        useMemo(
+        React.useMemo(
             () => {
                 if (!user || !currentRole) return null;
                 const ordersRef = collection(firestore, 'orders');
@@ -376,7 +488,19 @@ function OrdersPageContent() {
                     return query(ordersRef, orderBy('date', 'desc'));
                 }
 
-                return query(ordersRef, where('userId', '==', user.uid), orderBy('date', 'desc'));
+                if (currentRole === 'Partner') {
+                    return query(
+                        ordersRef, 
+                        where('assignedToUid', '==', user.uid),
+                        orderBy('date', 'desc')
+                    );
+                }
+
+                return query(
+                    ordersRef, 
+                    where('userId', '==', user.uid), 
+                    orderBy('date', 'desc')
+                );
             },
             [user, currentRole, firestore]
         )
@@ -384,10 +508,12 @@ function OrdersPageContent() {
 
     const kpis = React.useMemo(() => {
         if (!orders) return { total: 0, inProcess: 0, shipped: 0, delivered: 0 };
+        
         const total = orders.length;
         const inProcess = orders.filter(o => ['Ordered', 'Manufacturing', 'Ready for Dispatch', 'Awaiting Payment', 'Cancellation Requested'].includes(o.status)).length;
         const shipped = orders.filter(o => o.status === 'Shipped').length;
         const delivered = orders.filter(o => o.status === 'Delivered').length;
+
         return { total, inProcess, shipped, delivered };
     }, [orders]);
     
@@ -403,14 +529,8 @@ function OrdersPageContent() {
 
   return (
     <>
-      <PageHeader title="Sales Orders">
-         <Button onClick={() => router.push('/dashboard/sales/create-order')}>
-            <PlusCircle className="mr-2 h-4 w-4" />
-            Create New Order
-        </Button>
-      </PageHeader>
-
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <PageHeader title="Sales Orders" />
+       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Orders</CardTitle>
@@ -452,47 +572,27 @@ function OrdersPageContent() {
           </CardContent>
         </Card>
       </div>
-
-       <Card>
-        <CardHeader>
-          <CardTitle>All Sales Orders</CardTitle>
-          <CardDescription>
-            List of all sales orders. You can generate an invoice for orders that are ready.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-12"><span className="sr-only">Expand</span></TableHead>
-                <TableHead>SO Number</TableHead>
-                <TableHead>Customer</TableHead>
-                <TableHead>Date</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Exp. Delivery Date</TableHead>
-                <TableHead className="text-right">Total</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-              {loading ? (
-                <TableBody><TableRow><TableCell colSpan={8} className="h-24 text-center">Loading orders...</TableCell></TableRow></TableBody>
-              ) : orders && orders.length > 0 ? (
-                orders.map((order) => (
-                    <OrderRow key={order.id} order={order} allSalesInvoices={allSalesInvoices} onViewInvoice={onViewInvoice} onEdit={handleEditOrder} currentRole={currentRole as UserRole} onGenerateInvoice={() => {}} onUpdateStatus={() => {}} pickupPoints={[]} getOrderInHand={() => 0} allProducts={[]} dynamicStatus={order.status} />
-                ))
-              ) : (
-                <TableBody><TableRow>
-                  <TableCell colSpan={8} className="h-24 text-center">
-                    No sales orders found.
-                  </TableCell>
-                </TableRow></TableBody>
-              )}
-          </Table>
-        </CardContent>
-      </Card>
+      
+       <div className="space-y-4">
+        {loading ? (
+           <Card><CardContent className="p-12 text-center">Loading your orders...</CardContent></Card>
+        ) : orders && orders.length > 0 ? (
+            orders.map((order) => (
+                <OrderCard key={order.id} order={order} allSalesInvoices={allSalesInvoices} />
+            ))
+        ) : (
+            <Card>
+                <CardContent className="p-12 text-center">
+                    <h3 className="text-xl font-medium">No orders yet</h3>
+                    <p className="text-muted-foreground">You haven't placed any orders yet. Start shopping to see your orders here.</p>
+                </CardContent>
+            </Card>
+        )}
+      </div>
     </>
   );
 }
+
 
 export default function OrdersPage() {
     const [isClient, setIsClient] = React.useState(false);
@@ -507,3 +607,5 @@ export default function OrdersPage() {
 
     return <OrdersPageContent />;
 }
+
+    
