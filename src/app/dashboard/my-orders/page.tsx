@@ -70,7 +70,7 @@ import {
 } from '@/components/ui/dialog';
 import { QRCodeSVG } from 'qrcode.react';
 import { Input } from '@/components/ui/input';
-import { useRole } from '../../_components/role-provider';
+import { useRole } from '../_components/role-provider';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
@@ -671,7 +671,7 @@ function MyOrdersPageContent() {
            <Card><CardContent className="p-12 text-center">Loading your orders...</CardContent></Card>
         ) : orders && orders.length > 0 ? (
             orders.map((order) => (
-                <OrderCard key={order.id} order={order} allSalesInvoices={allSalesInvoices} onStatusChange={() => {}} />
+                <OrderCard key={order.id} order={order} allSalesInvoices={allSalesInvoices} />
             ))
         ) : (
             <Card>
@@ -701,5 +701,3 @@ export default function MyOrdersPage() {
     return <MyOrdersPageContent />;
 }
 
-
-    
