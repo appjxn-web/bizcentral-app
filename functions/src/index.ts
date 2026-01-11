@@ -1,5 +1,4 @@
 
-
 'use server';
 import {
   onDocumentCreated,
@@ -11,7 +10,7 @@ import {
 } from "firebase-functions/v2/firestore";
 import * as admin from "firebase-admin";
 import {getFirestore, FieldValue} from "firebase-admin/firestore";
-import type {Order, SalesInvoice, Party, Goal, UserProfile, CreditNote, DebitNote, RefundRequest, Product, StockTransferRequest} from "./types";
+import type {Order, SalesInvoice, Party, Goal, UserProfile, CreditNote, DebitNote, RefundRequest, Product, StockTransferRequest, PaymentSubmission} from "./types";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { getNextDocNumber } from "./number-series";
 
@@ -668,10 +667,43 @@ export const onMilestoneUpdate = onDocumentWritten("goals/{goalId}/milestones/{m
 });
 export const onGoalUpdate = onDocumentCreated("goalUpdates/{updateId}", async () => {});
 
+export const onPaymentApproved = onDocumentUpdated("paymentSubmissions/{id}", async (event) => {
+  if (!event.data) return;
+  const before = event.data.before.data() as PaymentSubmission;
+  const after = event.data.after.data() as PaymentSubmission;
+
+  // Trigger when Admin changes status from 'Pending' to 'Approved'
+  if (before.status === 'Pending' && after.status === 'Approved') {
+    const orderRef = db.collection('orders').doc(after.orderId);
     
+    return db.runTransaction(async (transaction) => {
+      const orderDoc = await transaction.get(orderRef);
+      if (!orderDoc.exists) {
+          console.error(`Order ${after.orderId} not found for payment submission ${after.id}`);
+          return;
+      }
+      const orderData = orderDoc.data() as Order;
 
+      const paymentDetails = {
+          amount: after.amount,
+          date: new Date().toISOString(),
+          ref: after.transactionDetails,
+          method: after.paymentMethod,
+          proofUrl: after.proofUrl,
+      };
 
-
+      transaction.update(orderRef, {
+        // Increment the total paid amount
+        paymentReceived: FieldValue.increment(after.amount),
+        balance: FieldValue.increment(-after.amount),
+        // Log this specific transaction in history
+        paymentDetails: `${orderData.paymentDetails || ''}\nApproved: ${paymentDetails.date} - ${paymentDetails.amount} - Ref: ${paymentDetails.ref}`.trim(),
+        // Set status back to Ordered so work continues
+        status: 'Ordered'
+      });
+    });
+  }
+});
     
 
 

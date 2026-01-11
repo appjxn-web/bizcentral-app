@@ -36,9 +36,11 @@ service cloud.firestore {
 
     // --- USERS & ACCOUNT HISTORY ---
     match /users/{userId} {
-      allow create, update: if signedIn() && request.auth.uid == userId;
-      allow get: if isOwner(userId) || isAdmin();
+      // Allow any logged-in user to GET a profile (to see Pickup/Partner info)
+      // but prevent them from LISTING (searching) all users.
+      allow get: if signedIn();
       allow list: if isAdmin() || isPartner() || isHrManager();
+      allow create, update: if signedIn() && request.auth.uid == userId;
       allow delete: if isAdmin();
       
       match /wallet/main {
@@ -73,19 +75,18 @@ service cloud.firestore {
 
     // --- GLOBAL ORDERS (Main Sales) ---
     match /orders/{orderId} {
-      // Get single document
       allow get: if signedIn() && (
         isAdmin() || 
         resource.data.userId == request.auth.uid || 
         resource.data.assignedToUid == request.auth.uid
       );
       
-      // Allow listing if the user is Admin, or if the query restricts
-      // results to either their own ID or their assigned orders.
+      // FIX: Ensure list rules match the queries exactly. 
+      // Added check for existence of query filters to prevent broad listing.
       allow list: if signedIn() && (
         isAdmin() || 
-        (request.query.where.userId == request.auth.uid) ||
-        (request.query.where.assignedToUid == request.auth.uid)
+        (request.query.limit <= 100 && request.query.where.userId == request.auth.uid) ||
+        (request.query.limit <= 100 && request.query.where.assignedToUid == request.auth.uid)
       );
 
       allow create: if signedIn() && (request.resource.data.userId == request.auth.uid || isAdmin());
@@ -137,14 +138,14 @@ service cloud.firestore {
 
     // --- FINANCE & ACCOUNTING ---
     match /salesInvoices/{invoiceId} {
+        // Partners can view the list if they are the assigned agent
         allow read, list: if signedIn() && (
           isAdmin() ||
-          request.query.where.customerId == request.auth.uid ||
-          request.query.where.assignedToUid == request.auth.uid ||
           resource.data.customerId == request.auth.uid ||
           resource.data.assignedToUid == request.auth.uid
         );
         
+        // Partners can CREATE invoices for their assigned orders
         allow create, update: if signedIn() && (
           isAdmin() || 
           (exists(request.resource.data.assignedToUid) && request.resource.data.assignedToUid == request.auth.uid)
@@ -190,8 +191,7 @@ service cloud.firestore {
         allow read, list: if signedIn() && (
             isAdmin() || 
             isInventoryManager() || 
-            (request.query.where.requestingUserId == request.auth.uid) ||
-            (resource.data.requestingUserId == request.auth.uid)
+            resource.data.requestingUserId == request.auth.uid
         );
         allow create: if signedIn() && (isAdmin() || isInventoryManager() || isPartner());
         allow update: if isAdmin() || isInventoryManager();
@@ -214,7 +214,7 @@ service cloud.firestore {
     match /productCategories/{id} { allow read, list: if true; allow write: if isAdmin(); }
     match /posts/{id} { allow read, list: if true; allow write: if signedIn(); }
     match /company/{id} {
-      allow read: if true;
+      allow read: if signedIn(); // Allow any signed in user to read company info
       allow write: if isAdmin() || isFunction();
     }
     match /supportSettings/{id} { allow read: if true; allow write: if isAdmin(); }

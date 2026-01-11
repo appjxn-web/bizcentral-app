@@ -107,7 +107,7 @@ const formatIndianCurrency = (num: number) => {
   }).format(num);
 };
 
-function PayBalanceDialog({ order, companyInfo }: { order: Order; companyInfo: any; }) {
+function PayBalanceDialog({ order, companyInfo, userProfile }: { order: Order; companyInfo: any; userProfile: UserProfile | null; }) {
   const { toast } = useToast();
   const firestore = useFirestore();
   const storage = useStorage();
@@ -166,6 +166,8 @@ function PayBalanceDialog({ order, companyInfo }: { order: Order; companyInfo: a
       };
       
       await addDoc(collection(firestore, 'paymentSubmissions'), submissionData);
+      
+      await updateDoc(doc(firestore, 'orders', order.id), { status: 'Awaiting Payment Confirmation' });
       
       toast({ title: 'Payment Submitted', description: 'Your payment submission is pending approval from our accounts team.' });
 
@@ -513,7 +515,7 @@ function OrderCard({ order, allSalesInvoices }: { order: Order, allSalesInvoices
                                 )}
                             </div>
                             <div className="flex flex-wrap gap-2">
-                                {order.balance && order.balance > 0 && userProfile && (
+                                {order.balance && order.balance > 0 && (
                                     <PayBalanceDialog order={order} companyInfo={companyInfo} userProfile={userProfile} />
                                 )}
                                 {canCancel && (

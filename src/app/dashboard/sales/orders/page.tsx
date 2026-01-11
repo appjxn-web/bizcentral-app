@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -108,7 +107,7 @@ const formatIndianCurrency = (num: number) => {
   }).format(num);
 };
 
-function PayBalanceDialog({ order, companyInfo }: { order: Order, companyInfo: any }) {
+function PayBalanceDialog({ order, companyInfo, userProfile }: { order: Order; companyInfo: any; userProfile: UserProfile | null; }) {
   const { toast } = useToast();
   const firestore = useFirestore();
   const storage = useStorage();
@@ -167,6 +166,8 @@ function PayBalanceDialog({ order, companyInfo }: { order: Order, companyInfo: a
       };
       
       await addDoc(collection(firestore, 'paymentSubmissions'), submissionData);
+      
+      await updateDoc(doc(firestore, 'orders', order.id), { status: 'Awaiting Payment Confirmation' });
       
       toast({ title: 'Payment Submitted', description: 'Your payment submission is pending approval from our accounts team.' });
 
@@ -370,6 +371,7 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
     const { data: companyInfo } = useDoc(doc(firestore, 'company', 'info'));
     const [isCancelDialogOpen, setIsCancelDialogOpen] = React.useState(false);
     const { toast } = useToast();
+    const { data: userProfile } = useDoc<UserProfile>(user ? doc(firestore, 'users', user.uid) : null);
 
     const refundQuery = order.status === 'Canceled' && user
       ? query(collection(firestore, 'refundRequests'), where('customerId', '==', user.uid), where('orderId', '==', order.id))
@@ -427,11 +429,11 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
     const canChangeStatus = ['Admin', 'Partner', 'Sales Manager', 'CEO'].includes(currentRole);
     
     const nextStatusOptions: Record<OrderStatus, OrderStatus[]> = {
-      'Ordered': ['Manufacturing', 'Ready for Dispatch', 'Awaiting Payment', 'Shipped', 'Delivered', 'Canceled'],
-      'Manufacturing': ['Ready for Dispatch', 'Awaiting Payment', 'Shipped', 'Delivered', 'Canceled'],
-      'Ready for Dispatch': ['Awaiting Payment', 'Invoice Sent', 'Shipped', 'Delivered'],
-      'Awaiting PaymentConfirmation': ['Ordered', 'Canceled'],
       'Awaiting Payment': ['Ordered', 'Canceled'],
+      'Awaiting Payment Confirmation': ['Ordered', 'Canceled'],
+      'Ordered': ['Manufacturing', 'Ready for Dispatch', 'Awaiting Payment', 'Shipped'],
+      'Manufacturing': ['Ready for Dispatch', 'Awaiting Payment', 'Shipped'],
+      'Ready for Dispatch': ['Awaiting Payment', 'Invoice Sent', 'Shipped'],
       'Invoice Sent': ['Shipped', 'Delivered'],
       'Shipped': ['Delivered'],
       'Delivered': [],
@@ -535,8 +537,8 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
                                 )}
                             </div>
                             <div className="flex flex-wrap gap-2">
-                                {order.balance && order.balance > 0 && (
-                                    <PayBalanceDialog order={order} companyInfo={companyInfo} />
+                                {order.balance && order.balance > 0 && userProfile && (
+                                    <PayBalanceDialog order={order} companyInfo={companyInfo} userProfile={userProfile} />
                                 )}
                                 {canCancel && (
                                     <Button variant="destructive" size="sm" onClick={() => setIsCancelDialogOpen(true)}>
