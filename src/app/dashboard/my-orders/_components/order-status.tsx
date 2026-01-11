@@ -5,14 +5,6 @@ import * as React from 'react';
 import { CheckCircle, Factory, CreditCard, Truck, Package, PackageCheck, FileText } from 'lucide-react';
 import type { OrderStatus, UserRole } from '@/lib/types';
 import { cn } from '@/lib/utils';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-  DropdownMenuSeparator,
-  DropdownMenuLabel,
-} from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
 
 
@@ -37,7 +29,6 @@ function StatusStep({
   step,
   isCompleted,
   isCurrent,
-  isFuture,
   canChange,
   availableNextStatuses,
   onStatusChange,
@@ -45,7 +36,6 @@ function StatusStep({
   step: typeof steps[0];
   isCompleted: boolean;
   isCurrent: boolean;
-  isFuture: boolean;
   canChange: boolean;
   availableNextStatuses: OrderStatus[];
   onStatusChange: (newStatus: OrderStatus) => void;
@@ -59,7 +49,7 @@ function StatusStep({
           'w-8 h-8 rounded-full flex items-center justify-center transition-all',
           isCompleted ? 'bg-green-500 text-white' : '',
           isCurrent ? 'bg-primary text-primary-foreground' : '',
-          isFuture ? 'bg-muted border' : '',
+          !isCompleted && !isCurrent ? 'bg-muted border' : '',
           isClickable && 'hover:bg-primary/20 hover:border-primary'
         )}
       >
@@ -79,31 +69,12 @@ function StatusStep({
 
   if (isClickable) {
     return (
-        <Button variant="ghost" className="h-auto p-1 flex flex-col items-center" onClick={() => onStatusChange(step.status)}>
+        <Button variant="ghost" className="h-auto p-1 flex flex-col items-center" onClick={(e) => {
+            e.stopPropagation(); // Prevent card collapse/expand
+            onStatusChange(step.status);
+        }}>
             {content}
         </Button>
-    );
-  }
-
-  // If it's the current step, allow changing to any valid next step via dropdown
-  if (isCurrent && canChange && availableNextStatuses.length > 0) {
-      return (
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <div className="cursor-pointer">
-            {content}
-          </div>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent>
-          <DropdownMenuLabel>Change Status To:</DropdownMenuLabel>
-          <DropdownMenuSeparator />
-          {availableNextStatuses.map(status => (
-            <DropdownMenuItem key={status} onSelect={() => onStatusChange(status)}>
-              {status}
-            </DropdownMenuItem>
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
     );
   }
 
@@ -119,7 +90,6 @@ export function OrderStatusTracker({ currentStatus, canChangeStatus, availableNe
       {steps.map((step, index) => {
         const isCompleted = index < currentStepIndex;
         const isCurrent = index === currentStepIndex;
-        const isFuture = index > currentStepIndex;
         const isLastStep = index === steps.length - 1;
 
         return (
@@ -128,7 +98,6 @@ export function OrderStatusTracker({ currentStatus, canChangeStatus, availableNe
               step={step}
               isCompleted={isCompleted}
               isCurrent={isCurrent}
-              isFuture={isFuture}
               canChange={canChangeStatus}
               availableNextStatuses={availableNextStatuses}
               onStatusChange={onStatusChange}

@@ -274,7 +274,6 @@ function OrderCard({ order, allSalesInvoices }: { order: Order, allSalesInvoices
     const [isCancelDialogOpen, setIsCancelDialogOpen] = React.useState(false);
     const { toast } = useToast();
 
-    // Fetch corresponding refund request if the order is canceled
     const refundQuery = order.status === 'Canceled' && user
       ? query(collection(firestore, 'refundRequests'), where('customerId', '==', user.uid), where('orderId', '==', order.id))
       : null;
@@ -349,14 +348,14 @@ function OrderCard({ order, allSalesInvoices }: { order: Order, allSalesInvoices
     const nextStatusOptions: Record<OrderStatus, OrderStatus[]> = {
         'Ordered': ['Manufacturing', 'Ready for Dispatch', 'Canceled'],
         'Manufacturing': ['Ready for Dispatch', 'Canceled'],
-        'Ready for Dispatch': ['Shipped'],
+        'Ready for Dispatch': ['Shipped', 'Invoice Sent'],
         'Shipped': ['Delivered'],
         'Awaiting Payment Confirmation': ['Ordered', 'Canceled'],
         'Cancellation Requested': ['Canceled', 'Ordered'],
+        'Invoice Sent': ['Shipped'],
         'Delivered': [],
         'Canceled': [],
         'Awaiting Payment': [],
-        'Invoice Sent': [],
     };
     const availableStatuses = nextStatusOptions[order.status] || [];
     
@@ -464,13 +463,21 @@ function OrderCard({ order, allSalesInvoices }: { order: Order, allSalesInvoices
                                         Request Cancellation
                                     </Button>
                                 )}
-                                {existingInvoice && (
+                                {existingInvoice ? (
                                   <Button variant="outline" size="sm" asChild>
                                     <Link href={`/dashboard/sales/invoice/view?id=${existingInvoice.invoiceNumber}`}>
                                       <Receipt className="mr-2 h-4 w-4" />
                                       View Invoice
                                     </Link>
                                   </Button>
+                                ) : (order.status === 'Ready for Dispatch' || order.status === 'Shipped') && ['Admin', 'Accounts Manager', 'Sales Manager'].includes(currentRole) && (
+                                     <Button size="sm" onClick={() => {
+                                         localStorage.setItem('invoiceDataToCreate', JSON.stringify(order));
+                                         router.push('/dashboard/sales/create-invoice');
+                                     }}>
+                                        <PlusCircle className="mr-2 h-4 w-4" />
+                                        Generate Invoice
+                                    </Button>
                                 )}
                             </div>
                         </div>
@@ -552,7 +559,11 @@ function OrdersPageContent() {
 
   return (
     <>
-      <PageHeader title="Sales Orders" />
+      <PageHeader title="Sales Orders">
+        <Button onClick={() => router.push('/dashboard/sales/create-order')}>
+          <PlusCircle className="mr-2 h-4 w-4" /> Create Sales Order
+        </Button>
+      </PageHeader>
        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
