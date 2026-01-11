@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -345,17 +344,18 @@ function OrderCard({ order, allSalesInvoices }: { order: Order, allSalesInvoices
     };
     
     const canChangeStatus = ['Admin', 'Partner', 'Sales Manager', 'CEO'].includes(currentRole);
+    
     const nextStatusOptions: Record<OrderStatus, OrderStatus[]> = {
-        'Ordered': ['Manufacturing', 'Ready for Dispatch', 'Canceled'],
-        'Manufacturing': ['Ready for Dispatch', 'Canceled'],
-        'Ready for Dispatch': ['Shipped', 'Invoice Sent'],
-        'Shipped': ['Delivered'],
-        'Awaiting Payment Confirmation': ['Ordered', 'Canceled'],
-        'Cancellation Requested': ['Canceled', 'Ordered'],
-        'Invoice Sent': ['Shipped'],
-        'Delivered': [],
-        'Canceled': [],
-        'Awaiting Payment': [],
+      'Ordered': ['Manufacturing', 'Ready for Dispatch', 'Awaiting Payment', 'Shipped', 'Delivered', 'Canceled'],
+      'Manufacturing': ['Ready for Dispatch', 'Shipped', 'Delivered', 'Canceled'],
+      'Ready for Dispatch': ['Shipped', 'Invoice Sent', 'Delivered', 'Canceled'],
+      'Shipped': ['Delivered'],
+      'Awaiting PaymentConfirmation': ['Ordered', 'Canceled'],
+      'Awaiting Payment': ['Ordered', 'Canceled'],
+      'Cancellation Requested': ['Canceled', 'Ordered'],
+      'Invoice Sent': ['Shipped', 'Delivered'],
+      'Delivered': [],
+      'Canceled': [],
     };
     const availableStatuses = nextStatusOptions[order.status] || [];
     
@@ -641,5 +641,7 @@ export default function OrdersPage() {
 
     return <OrdersPageContent />;
 }
+
+    
 
     
