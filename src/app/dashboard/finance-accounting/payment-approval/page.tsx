@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -23,19 +24,23 @@ import { CheckCircle, XCircle, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useCollection } from '@/firebase';
 import { collection, doc, updateDoc, query, orderBy, writeBatch, addDoc, serverTimestamp } from 'firebase/firestore';
-import type { PaymentSubmission, UserProfile, CoaLedger } from '@/lib/types';
+import type { PaymentSubmission, UserProfile, CoaLedger, Order } from '@/lib/types';
 import { format } from 'date-fns';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
+import { where } from 'firebase/firestore';
+
 
 function getStatusBadgeVariant(status: string) {
   switch (status) {
     case 'Approved':
+    case 'Ordered':
       return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300';
     case 'Pending':
+    case 'Awaiting Payment Confirmation':
       return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300';
     case 'Rejected':
       return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300';
@@ -49,8 +54,8 @@ function PaymentTable({
   onUpdateStatus,
   processingId,
 }: {
-  submissions: PaymentSubmission[];
-  onUpdateStatus: (submission: PaymentSubmission, status: 'Approved' | 'Rejected') => void;
+  submissions: (PaymentSubmission | Order)[];
+  onUpdateStatus: (submission: PaymentSubmission | Order, status: 'Approved' | 'Rejected') => void;
   processingId: string | null;
 }) {
   return (
@@ -69,49 +74,54 @@ function PaymentTable({
       </TableHeader>
       <TableBody>
         {submissions.length > 0 ? (
-          submissions.map((submission) => (
-            <TableRow key={submission.id}>
-              <TableCell>{submission.customerName}</TableCell>
-              <TableCell>{submission.submittedAt ? format(submission.submittedAt.toDate(), 'dd/MM/yyyy') : 'N/A'}</TableCell>
-              <TableCell>{submission.paymentMethod}</TableCell>
-              <TableCell className="font-mono text-xs">{submission.transactionDetails}</TableCell>
-              <TableCell>
-                {submission.proofUrl ? (
-                  <a href={submission.proofUrl} target="_blank" rel="noopener noreferrer" className="text-blue-500 underline">View</a>
-                ) : 'N/A'}
-              </TableCell>
-              <TableCell>
-                <Badge variant="outline" className={cn(getStatusBadgeVariant(submission.status))}>
-                  {submission.status}
-                </Badge>
-              </TableCell>
-              <TableCell className="text-right font-mono font-semibold">
-                ₹{(submission.amount || 0).toFixed(2)}
-              </TableCell>
-              <TableCell className="text-right space-x-2">
-                {submission.status === 'Pending' && (
-                  <>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => onUpdateStatus(submission, 'Rejected')}
-                      disabled={processingId === submission.id}
-                    >
-                      {processingId === submission.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />}
-                    </Button>
-                    <Button
-                      size="sm"
-                      onClick={() => onUpdateStatus(submission, 'Approved')}
-                      disabled={processingId === submission.id}
-                      className="bg-green-600 hover:bg-green-700"
-                    >
-                       {processingId === submission.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
-                    </Button>
-                  </>
-                )}
-              </TableCell>
-            </TableRow>
-          ))
+          submissions.map((submission) => {
+            const isOrder = 'orderNumber' in submission;
+            const submittedAt = isOrder ? new Date(submission.date) : (submission as PaymentSubmission).submittedAt?.toDate();
+
+            return (
+              <TableRow key={submission.id}>
+                <TableCell>{submission.customerName}</TableCell>
+                <TableCell>{submittedAt ? format(submittedAt, 'dd/MM/yyyy') : 'N/A'}</TableCell>
+                <TableCell>{isOrder ? 'Online' : (submission as PaymentSubmission).paymentMethod}</TableCell>
+                <TableCell className="font-mono text-xs">{isOrder ? submission.paymentDetails : (submission as PaymentSubmission).transactionDetails}</TableCell>
+                <TableCell>
+                  { 'proofUrl' in submission && submission.proofUrl ? (
+                    <a href={submission.proofUrl} target="_blank" rel="noopener noreferrer" className="text-blue-500 underline">View</a>
+                  ) : 'N/A'}
+                </TableCell>
+                <TableCell>
+                  <Badge variant="outline" className={cn(getStatusBadgeVariant(submission.status))}>
+                    {submission.status}
+                  </Badge>
+                </TableCell>
+                <TableCell className="text-right font-mono font-semibold">
+                  ₹{(isOrder ? submission.paymentReceived : (submission as PaymentSubmission).amount || 0).toFixed(2)}
+                </TableCell>
+                <TableCell className="text-right space-x-2">
+                  {submission.status === 'Pending' || submission.status === 'Awaiting Payment Confirmation' ? (
+                    <>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => onUpdateStatus(submission, 'Rejected')}
+                        disabled={processingId === submission.id}
+                      >
+                        {processingId === submission.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />}
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={() => onUpdateStatus(submission, 'Approved')}
+                        disabled={processingId === submission.id}
+                        className="bg-green-600 hover:bg-green-700"
+                      >
+                         {processingId === submission.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
+                      </Button>
+                    </>
+                  ) : null}
+                </TableCell>
+              </TableRow>
+            )
+          })
         ) : (
           <TableRow>
             <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
@@ -133,43 +143,59 @@ export default function PaymentApprovalPage() {
     collection(firestore, 'paymentSubmissions'),
     orderBy('submittedAt', 'desc')
   );
-  const { data: allPayments, loading } = useCollection<PaymentSubmission>(allPaymentsQuery);
+
+  const pendingOrdersQuery = query(
+    collection(firestore, 'orders'),
+    where('status', '==', 'Awaiting Payment Confirmation')
+  );
+
+  const { data: allPayments, loading: paymentsLoading } = useCollection<PaymentSubmission>(allPaymentsQuery);
+  const { data: pendingOrders, loading: ordersLoading } = useCollection<Order>(pendingOrdersQuery);
+
   const { data: users } = useCollection<UserProfile>(collection(firestore, 'users'));
   const { data: coaLedgers } = useCollection<CoaLedger>(collection(firestore, 'coa_ledgers'));
   
   const [processingId, setProcessingId] = React.useState<string | null>(null);
 
-  const handleUpdateStatus = async (submission: PaymentSubmission, newStatus: 'Approved' | 'Rejected') => {
+  const handleUpdateStatus = async (submission: PaymentSubmission | Order, newStatus: 'Approved' | 'Rejected') => {
     setProcessingId(submission.id);
     const batch = writeBatch(firestore);
 
-    const submissionRef = doc(firestore, 'paymentSubmissions', submission.id);
-    batch.update(submissionRef, { status: newStatus });
+    const isOrder = 'orderNumber' in submission;
+    const collectionName = isOrder ? 'orders' : 'paymentSubmissions';
+    const submissionRef = doc(firestore, collectionName, submission.id);
+
+    const finalStatus = isOrder
+      ? (newStatus === 'Approved' ? 'Ordered' : 'Canceled')
+      : newStatus;
+
+    batch.update(submissionRef, { status: finalStatus });
 
     // If approved, create the journal voucher
     if (newStatus === 'Approved') {
         const customer = users?.find(u => u.id === submission.userId);
         if (!customer?.coaLedgerId) {
             toast({ variant: 'destructive', title: 'Accounting Error', description: `Could not find a ledger account for ${submission.customerName}.` });
-            setIsProcessing(null);
+            setProcessingId(null);
             return;
         }
 
-        // Placeholder for the bank account - assumes a primary bank account exists.
         const bankAccount = coaLedgers?.find(l => l.name === 'Bank – Current Account');
         if (!bankAccount) {
             toast({ variant: 'destructive', title: 'Accounting Error', description: 'Default bank account "Bank – Current Account" not found.' });
-            setIsProcessing(null);
+            setProcessingId(null);
             return;
         }
 
+        const amount = isOrder ? submission.paymentReceived : (submission as PaymentSubmission).amount;
+
         const jvData = {
             date: new Date().toISOString().split("T")[0],
-            narration: `Payment received from ${submission.customerName}. Ref: ${submission.transactionDetails}`,
+            narration: `Payment received from ${submission.customerName}. Ref: ${isOrder ? submission.paymentDetails : (submission as PaymentSubmission).transactionDetails}`,
             voucherType: "Receipt Voucher",
             entries: [
-                { accountId: bankAccount.id, debit: submission.amount, credit: 0 },
-                { accountId: customer.coaLedgerId, debit: 0, credit: submission.amount },
+                { accountId: bankAccount.id, debit: amount, credit: 0 },
+                { accountId: customer.coaLedgerId, debit: 0, credit: amount },
             ],
             createdAt: serverTimestamp(),
         };
@@ -182,7 +208,7 @@ export default function PaymentApprovalPage() {
         await batch.commit();
         toast({
             title: `Payment ${newStatus}`,
-            description: `The payment submission has been ${newStatus.toLowerCase()}.`,
+            description: `The submission has been ${newStatus.toLowerCase()}.`,
         });
     } catch (error) {
         console.error('Error updating payment status:', error);
@@ -195,9 +221,20 @@ export default function PaymentApprovalPage() {
     }
   };
   
-  const pendingPayments = React.useMemo(() => allPayments?.filter(p => p.status === 'Pending') || [], [allPayments]);
+  const pendingPayments = React.useMemo(() => {
+    const manualSubmissions = allPayments?.filter(p => p.status === 'Pending') || [];
+    const onlineOrders = pendingOrders || [];
+    return [...manualSubmissions, ...onlineOrders].sort((a,b) => {
+        const dateA = 'orderNumber' in a ? new Date(a.date) : (a as PaymentSubmission).submittedAt.toDate();
+        const dateB = 'orderNumber' in b ? new Date(b.date) : (b as PaymentSubmission).submittedAt.toDate();
+        return dateB.getTime() - dateA.getTime();
+    });
+  }, [allPayments, pendingOrders]);
+
   const approvedPayments = React.useMemo(() => allPayments?.filter(p => p.status === 'Approved') || [], [allPayments]);
   const rejectedPayments = React.useMemo(() => allPayments?.filter(p => p.status === 'Rejected') || [], [allPayments]);
+  
+  const loading = paymentsLoading || ordersLoading;
 
   return (
     <>
