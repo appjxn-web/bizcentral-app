@@ -69,7 +69,7 @@ import {
 } from '@/components/ui/dialog';
 import { QRCodeSVG } from 'qrcode.react';
 import { Input } from '@/components/ui/input';
-import { useRole } from '../_components/role-provider';
+import { useRole } from '@/app/dashboard/_components/role-provider';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
@@ -588,18 +588,18 @@ function MyOrdersPageContent() {
     const firestore = useFirestore();
 
     const ordersQuery = React.useMemo(() => {
-        if (!user) return null;
+        if (!user?.uid) return null;
         return query(
             collection(firestore, 'orders'), 
             where('userId', '==', user.uid), 
             orderBy('date', 'desc')
         );
-    }, [user, firestore]);
+    }, [user?.uid, firestore]);
     
     const invoicesQuery = React.useMemo(() => {
-        if (!user) return null;
+        if (!user?.uid) return null;
         return query(collection(firestore, 'salesInvoices'), where('customerId', '==', user.uid));
-    }, [user, firestore]);
+    }, [user?.uid, firestore]);
 
 
     const { data: orders, loading: ordersLoading } = useCollection<Order>(ordersQuery);

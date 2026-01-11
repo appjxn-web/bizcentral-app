@@ -69,7 +69,7 @@ import {
 } from '@/components/ui/dialog';
 import { QRCodeSVG } from 'qrcode.react';
 import { Input } from '@/components/ui/input';
-import { useRole } from '../../_components/role-provider';
+import { useRole } from '@/app/dashboard/_components/role-provider';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
@@ -612,7 +612,7 @@ function OrdersPageContent() {
     const { currentRole } = useRole();
     
     const ordersQuery = React.useMemo(() => {
-        if (!user || !currentRole) return null;
+        if (!user?.uid || !currentRole) return null;
         const ordersRef = collection(firestore, 'orders');
 
         if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
@@ -624,10 +624,10 @@ function OrdersPageContent() {
         }
         
         return query(ordersRef, where('userId', '==', user.uid), orderBy('date', 'desc'));
-    }, [user, currentRole, firestore]);
+    }, [user?.uid, currentRole, firestore]);
     
     const invoicesQuery = React.useMemo(() => {
-        if (!user || !currentRole) return null;
+        if (!user?.uid || !currentRole) return null;
         const invoicesRef = collection(firestore, 'salesInvoices');
     
         if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
@@ -639,7 +639,7 @@ function OrdersPageContent() {
         }
     
         return query(invoicesRef, where('customerId', '==', user.uid));
-    }, [user, currentRole, firestore]);
+    }, [user?.uid, currentRole, firestore]);
 
 
     const { data: orders, loading: ordersLoading } = useCollection<Order>(ordersQuery);

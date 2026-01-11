@@ -1,5 +1,4 @@
 
-
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -7,28 +6,26 @@ service cloud.firestore {
     // --- HELPER FUNCTIONS ---
     function signedIn() { return request.auth != null; }
     
-    // Server-side functions don't have auth objects, so we need to allow access
-    // based on the fact that they run with admin privileges. We can't check a role.
     function isFunction() { return request.auth == null; }
 
-    function getRole() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    function getRole(userId) {
+      return get(/databases/$(database)/documents/users/$(userId)).data.role;
     }
 
     function isAdmin() {
-      return signedIn() && getRole() in ['Admin', 'CEO', 'Sales Manager', 'Accounts Manager', 'Manager', 'Staff', 'Accountant'];
+      return signedIn() && getRole(request.auth.uid) in ['Admin', 'CEO', 'Sales Manager', 'Accounts Manager', 'Manager', 'Staff', 'Accountant'];
     }
 
     function isHrManager() {
-      return signedIn() && getRole() in ['Admin', 'CEO', 'HR Manager'];
+      return signedIn() && getRole(request.auth.uid) in ['Admin', 'CEO', 'HR Manager'];
     }
 
     function isPartner() {
-      return signedIn() && getRole() in ['Partner', 'Franchisee', 'Sales Agent', 'Dealer'];
+      return signedIn() && getRole(request.auth.uid) in ['Partner', 'Franchisee', 'Sales Agent', 'Dealer'];
     }
     
     function isInventoryManager() {
-      return signedIn() && getRole() in ['Inventory Manager', 'Admin', 'CEO'];
+      return signedIn() && getRole(request.auth.uid) in ['Inventory Manager', 'Admin', 'CEO'];
     }
 
     function isOwner(userId) {
@@ -37,11 +34,9 @@ service cloud.firestore {
 
     // --- USERS & ACCOUNT HISTORY ---
     match /users/{userId} {
-      // Allow ANY signed-in user to GET a profile.
-      // This is required so customers can see Partner/Pickup info on their orders.
       allow get: if signedIn(); 
-      allow list: if isAdmin() || isPartner() || isHrManager();
-      allow create, update: if isOwner(userId) || isAdmin();
+      allow list: if isAdmin();
+      allow write: if isOwner(userId) || isAdmin();
       allow delete: if isAdmin();
       
       match /wallet/main {
@@ -84,7 +79,7 @@ service cloud.firestore {
       
       allow list: if signedIn() && (
         isAdmin() || 
-        (request.query.where.userId == request.auth.uid) || 
+        (request.query.where.userId == request.auth.uid) ||
         (request.query.where.assignedToUid == request.auth.uid)
       );
 
@@ -117,7 +112,7 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
     match /leads/{id} { 
-      allow get, write: if signedIn() && (isAdmin() || resource.data.ownerId == request.auth.uid);
+      allow get, write: if signedIn() && (isAdmin() || get(/databases/$(database)/documents/leads/$(id)).data.ownerId == request.auth.uid);
       allow create: if signedIn();
       allow list: if signedIn() && (isAdmin() || request.query.where.ownerId == request.auth.uid);
     }
@@ -137,26 +132,13 @@ service cloud.firestore {
 
     // --- FINANCE & ACCOUNTING ---
     match /salesInvoices/{invoiceId} {
-        // Individual get
-        allow get: if signedIn() && (
-          isAdmin() ||
-          resource.data.customerId == request.auth.uid ||
-          resource.data.assignedToUid == request.auth.uid
-        );
-        
-        // Query listing - MUST use request.query.where for non-admins
+        allow get: if signedIn() && (isAdmin() || resource.data.customerId == request.auth.uid || resource.data.assignedToUid == request.auth.uid);
         allow list: if signedIn() && (
-          isAdmin() ||
-          request.query.where.customerId == request.auth.uid ||
-          request.query.where.assignedToUid == request.auth.uid
-        );
-        
-        // Partners can CREATE invoices for their assigned orders
-        allow create, update: if signedIn() && (
           isAdmin() || 
-          (exists(request.resource.data.assignedToUid) && request.resource.data.assignedToUid == request.auth.uid)
+          (request.query.where.customerId == request.auth.uid) || 
+          (request.query.where.assignedToUid == request.auth.uid)
         );
-        
+        allow create, update: if signedIn() && (isAdmin() || (exists(request.resource.data.assignedToUid) && request.resource.data.assignedToUid == request.auth.uid));
         allow delete: if isAdmin();
     }
     
