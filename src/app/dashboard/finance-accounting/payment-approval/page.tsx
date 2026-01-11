@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -43,6 +42,7 @@ function getStatusBadgeVariant(status: string) {
     case 'Awaiting Payment Confirmation':
       return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300';
     case 'Rejected':
+    case 'Canceled':
       return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300';
     default:
       return 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300';
@@ -143,14 +143,14 @@ export default function PaymentApprovalPage() {
     collection(firestore, 'paymentSubmissions'),
     orderBy('submittedAt', 'desc')
   );
-
-  const pendingOrdersQuery = query(
+  
+  const allOrdersQuery = query(
     collection(firestore, 'orders'),
-    where('status', '==', 'Awaiting Payment Confirmation')
+    orderBy('createdAt', 'desc')
   );
 
   const { data: allPayments, loading: paymentsLoading } = useCollection<PaymentSubmission>(allPaymentsQuery);
-  const { data: pendingOrders, loading: ordersLoading } = useCollection<Order>(pendingOrdersQuery);
+  const { data: allOrders, loading: ordersLoading } = useCollection<Order>(allOrdersQuery);
 
   const { data: users } = useCollection<UserProfile>(collection(firestore, 'users'));
   const { data: coaLedgers } = useCollection<CoaLedger>(collection(firestore, 'coa_ledgers'));
@@ -223,16 +223,33 @@ export default function PaymentApprovalPage() {
   
   const pendingPayments = React.useMemo(() => {
     const manualSubmissions = allPayments?.filter(p => p.status === 'Pending') || [];
-    const onlineOrders = pendingOrders || [];
+    const onlineOrders = allOrders?.filter(o => o.status === 'Awaiting Payment Confirmation') || [];
     return [...manualSubmissions, ...onlineOrders].sort((a,b) => {
         const dateA = 'orderNumber' in a ? new Date(a.date) : (a as PaymentSubmission).submittedAt.toDate();
         const dateB = 'orderNumber' in b ? new Date(b.date) : (b as PaymentSubmission).submittedAt.toDate();
         return dateB.getTime() - dateA.getTime();
     });
-  }, [allPayments, pendingOrders]);
+  }, [allPayments, allOrders]);
 
-  const approvedPayments = React.useMemo(() => allPayments?.filter(p => p.status === 'Approved') || [], [allPayments]);
-  const rejectedPayments = React.useMemo(() => allPayments?.filter(p => p.status === 'Rejected') || [], [allPayments]);
+  const approvedPayments = React.useMemo(() => {
+    const manual = allPayments?.filter(p => p.status === 'Approved') || [];
+    const online = allOrders?.filter(o => o.status === 'Ordered' && o.paymentReceived > 0) || [];
+    return [...manual, ...online].sort((a,b) => {
+        const dateA = 'orderNumber' in a ? new Date(a.date) : (a as PaymentSubmission).submittedAt.toDate();
+        const dateB = 'orderNumber' in b ? new Date(b.date) : (b as PaymentSubmission).submittedAt.toDate();
+        return dateB.getTime() - dateA.getTime();
+    });
+  }, [allPayments, allOrders]);
+
+  const rejectedPayments = React.useMemo(() => {
+    const manual = allPayments?.filter(p => p.status === 'Rejected') || [];
+    const online = allOrders?.filter(o => o.status === 'Canceled' && o.cancellationReason?.includes('Payment')) || [];
+     return [...manual, ...online].sort((a,b) => {
+        const dateA = 'orderNumber' in a ? new Date(a.date) : (a as PaymentSubmission).submittedAt.toDate();
+        const dateB = 'orderNumber' in b ? new Date(b.date) : (b as PaymentSubmission).submittedAt.toDate();
+        return dateB.getTime() - dateA.getTime();
+    });
+  }, [allPayments, allOrders]);
   
   const loading = paymentsLoading || ordersLoading;
 
