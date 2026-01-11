@@ -1,3 +1,4 @@
+
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -35,11 +36,9 @@ service cloud.firestore {
 
     // --- USERS & ACCOUNT HISTORY ---
     match /users/{userId} {
-      // Allow ANY signed-in user to GET a profile.
-      // This is required so customers can see Partner/Pickup info on their orders.
-      allow get: if signedIn(); 
+      allow get: if signedIn();
+      allow create, update: if signedIn() && request.auth.uid == userId;
       allow list: if isAdmin() || isPartner() || isHrManager();
-      allow create, update: if isOwner(userId) || isAdmin();
       allow delete: if isAdmin();
       
       match /wallet/main {
@@ -74,12 +73,18 @@ service cloud.firestore {
 
     // --- GLOBAL ORDERS (Main Sales) ---
     match /orders/{orderId} {
-      // Allows listing if the user is Admin, or if the query results are 
-      // restricted to their own ID or their assigned orders.
-      allow read, list: if signedIn() && (
+      allow read: if signedIn() && (
         isAdmin() || 
         resource.data.userId == request.auth.uid || 
         resource.data.assignedToUid == request.auth.uid
+      );
+      
+      allow list: if isAdmin() || (
+        signedIn() && 
+        (
+            (request.query.where.userId is string && request.query.where.userId == request.auth.uid) ||
+            (request.query.where.assignedToUid is string && request.query.where.assignedToUid == request.auth.uid)
+        )
       );
 
       allow create: if signedIn();
@@ -96,7 +101,24 @@ service cloud.firestore {
     
     // --- PAYMENT SUBMISSIONS ---
     match /paymentSubmissions/{submissionId} {
-      allow read, list: if signedIn() && (isAdmin() || (resource.data.keys().hasAll(['userId']) && resource.data.userId == request.auth.uid));
+      // Allow reading a single submission if user is admin or the creator of the submission
+      allow get: if signedIn() && (isAdmin() || resource.data.userId == request.auth.uid);
+      
+      // Allow listing submissions under specific conditions
+      allow list: if signedIn() && (
+        isAdmin() ||
+        // Allow querying by their own userId
+        (request.query.where.userId is string && request.query.where.userId == request.auth.uid) ||
+        // Allow querying by an orderId if they are the customer or the assigned partner for that order
+        (
+          request.query.where.orderId is string &&
+          (
+            get(/databases/$(database)/documents/orders/$(request.query.where.orderId)).data.userId == request.auth.uid ||
+            get(/databases/$(database)/documents/orders/$(request.query.where.orderId)).data.assignedToUid == request.auth.uid
+          )
+        )
+      );
+      
       allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
       allow update: if isAdmin();
     }
@@ -112,9 +134,9 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
     match /leads/{id} { 
-      allow list: if signedIn() && (isAdmin() || resource.data.ownerId == request.auth.uid);
-      allow get, write: if signedIn() && (isAdmin() || resource.data.ownerId == request.auth.uid); 
       allow create: if signedIn();
+      allow get, write: if signedIn() && (isAdmin() || get(/databases/$(database)/documents/leads/$(id)).data.ownerId == request.auth.uid);
+      allow list: if isAdmin() || (signedIn() && request.query.where.ownerId == request.auth.uid);
     }
     match /quotations/{id} { allow read, write: if signedIn(); }
     match /coupons/{id} { allow read, list: if true; allow write: if isAdmin(); }
