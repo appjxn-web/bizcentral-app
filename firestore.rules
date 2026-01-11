@@ -36,8 +36,6 @@ service cloud.firestore {
 
     // --- USERS & ACCOUNT HISTORY ---
     match /users/{userId} {
-      // Allow ANY signed-in user to GET a profile.
-      // This is required so customers can see Partner/Pickup info on their orders.
       allow get: if signedIn(); 
       allow list: if isAdmin();
       allow write: if isOwner(userId) || isAdmin();
@@ -75,20 +73,12 @@ service cloud.firestore {
 
     // --- GLOBAL ORDERS (Main Sales) ---
     match /orders/{orderId} {
-      allow read: if signedIn() && (
+      allow read, list: if signedIn() && (
         isAdmin() || 
         resource.data.userId == request.auth.uid || 
         resource.data.assignedToUid == request.auth.uid
       );
       
-      allow list: if isAdmin() || (
-        signedIn() && 
-        (
-            (request.query.where.userId is string && request.query.where.userId == request.auth.uid) ||
-            (request.query.where.assignedToUid is string && request.query.where.assignedToUid == request.auth.uid)
-        )
-      );
-
       allow create: if signedIn();
       
       // Partners can update status for orders assigned to them
@@ -138,7 +128,7 @@ service cloud.firestore {
     match /leads/{id} { 
       allow create: if signedIn();
       allow get, write: if signedIn() && (isAdmin() || get(/databases/$(database)/documents/leads/$(id)).data.ownerId == request.auth.uid);
-      allow list: if isAdmin() || (signedIn() && request.query.where.ownerId == request.auth.uid);
+      allow list: if signedIn() && (isAdmin() || request.query.where.ownerId == request.auth.uid);
     }
     match /quotations/{id} { allow read, write: if signedIn(); }
     match /coupons/{id} { allow read, list: if true; allow write: if isAdmin(); }
@@ -273,5 +263,3 @@ service cloud.firestore {
     }
   }
 }
-
-    
