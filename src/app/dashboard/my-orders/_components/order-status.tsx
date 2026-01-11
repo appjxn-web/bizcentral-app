@@ -10,6 +10,8 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSeparator,
+  DropdownMenuLabel,
 } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
 
@@ -48,7 +50,7 @@ function StatusStep({
   availableNextStatuses: OrderStatus[];
   onStatusChange: (newStatus: OrderStatus) => void;
 }) {
-  const isClickable = canChange && (isCurrent || (isFuture && availableNextStatuses.includes(step.status)));
+  const isClickable = canChange && availableNextStatuses.includes(step.status);
 
   const content = (
     <div className="flex flex-col items-center">
@@ -58,7 +60,7 @@ function StatusStep({
           isCompleted ? 'bg-green-500 text-white' : '',
           isCurrent ? 'bg-primary text-primary-foreground' : '',
           isFuture ? 'bg-muted border' : '',
-          isClickable && isFuture && 'hover:bg-primary/20 hover:border-primary'
+          isClickable && 'hover:bg-primary/20 hover:border-primary'
         )}
       >
         <step.icon className="w-5 h-5" />
@@ -75,7 +77,7 @@ function StatusStep({
     </div>
   );
 
-  if (isClickable && isFuture) {
+  if (isClickable) {
     return (
         <Button variant="ghost" className="h-auto p-1 flex flex-col items-center" onClick={() => onStatusChange(step.status)}>
             {content}
@@ -83,8 +85,9 @@ function StatusStep({
     );
   }
 
-  if (isClickable && isCurrent && availableNextStatuses.length > 0) {
-    return (
+  // If it's the current step, allow changing to any valid next step via dropdown
+  if (isCurrent && canChange && availableNextStatuses.length > 0) {
+      return (
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <div className="cursor-pointer">

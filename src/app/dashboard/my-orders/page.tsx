@@ -27,7 +27,7 @@ import {
 
 import { PageHeader } from '@/components/page-header';
 import { cn } from '@/lib/utils';
-import type { Order, OrderStatus, UserProfile, UserRole, WorkOrder, PickupPoint, SalesOrder, RefundRequest, SalesInvoice, Party, CompanyInfo } from '@/lib/types';
+import type { Order, OrderStatus, UserProfile, UserRole, WorkOrder, PickupPoint, SalesOrder, RefundRequest, SalesInvoice } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -202,36 +202,33 @@ function CancelOrderDialog({ order, onConfirm, open, onOpenChange }: { order: Or
 }
 
 
-function PartnerPickupDetails({ userId }: { userId: string }) {
+function PartnerPickupDetails({ pickupPointId }: { pickupPointId: string }) {
     const firestore = useFirestore();
-    const userDocRef = userId ? doc(firestore, 'users', userId) : null;
-    const { data: partner, loading } = useDoc<UserProfile>(userDocRef);
+    const pickupPointRef = pickupPointId ? doc(firestore, 'pickupPoints', pickupPointId) : null;
+    const { data: pickupPoint, loading } = useDoc<PickupPoint>(pickupPointRef);
 
-    if (loading) return <p className="text-sm text-muted-foreground">Loading partner details...</p>;
-    if (!partner) return <p className="text-sm text-destructive">Could not load partner details.</p>;
+    if (loading) return <p className="text-sm text-muted-foreground">Loading details...</p>;
+    if (!pickupPoint) return <p className="text-sm text-destructive">Could not load partner details.</p>;
     
-    const address = (partner.addresses || [])[0];
-    const addressString = address ? [address.line1, address.line2, address.city, address.state, address.pin].filter(Boolean).join(', ') : 'Address not available';
-    
+    const addressString = pickupPoint.addressLine || '';
     let mapUrl = addressString ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addressString)}` : '';
-    if (address?.latitude && address?.longitude) {
-        mapUrl = `https://www.google.com/maps/search/?api=1&query=${address.latitude},${address.longitude}`;
+    if (pickupPoint.lat && pickupPoint.lng) {
+        mapUrl = `https://www.google.com/maps/search/?api=1&query=${pickupPoint.lat},${pickupPoint.lng}`;
     }
 
     return (
         <>
-            <p className="font-medium">{partner.businessName || partner.name}</p>
+            <p className="font-medium">{pickupPoint.name}</p>
             <p className="text-xs text-muted-foreground">Partner</p>
             {addressString && <p className="mt-2 text-sm">{addressString}</p>}
             <div className="flex gap-4 mt-2">
-                {partner.mobile && <a href={`tel:${partner.mobile}`} className="flex items-center gap-1 text-primary hover:underline text-sm"><Phone className="mr-2 h-4 w-4" /> Call</a>}
                 {mapUrl && <a href={mapUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-primary hover:underline text-sm"><MapPin className="h-4 w-4" /> Get Directions</a>}
             </div>
         </>
     );
 }
 
-function CompanyPickupDetails() {
+function CompanyPickupDetails({ point }: { point?: Order['pickupPoint'] }) {
     const { data: companyInfo, loading } = useDoc<any>(doc(useFirestore(), 'company', 'info'));
     
     if (loading) return <p className="text-sm text-muted-foreground">Loading details...</p>;
@@ -240,7 +237,7 @@ function CompanyPickupDetails() {
     const mainAddress = companyInfo.addresses?.find((a: any) => a.type === 'Main Office' || a.type === 'Registered Office') || companyInfo.addresses?.[0];
 
     if (!mainAddress) return <p className="text-sm text-destructive">Main company address not found.</p>;
-    
+
     const addressString = [mainAddress.line1, mainAddress.line2, mainAddress.city, mainAddress.state, mainAddress.pin].filter(Boolean).join(', ');
     const phone = mainAddress.pickupContactPhone || companyInfo.contactNumber;
     let mapUrl = addressString ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addressString)}` : '';
@@ -264,7 +261,6 @@ function CompanyPickupDetails() {
 function OrderCard({ order, allSalesInvoices }: { order: Order, allSalesInvoices: SalesInvoice[] | null }) {
     const { user } = useUser();
     const router = useRouter();
-    const { currentRole } = useRole();
     const [isOpen, setIsOpen] = React.useState(false);
     const firestore = useFirestore();
     const { data: companyInfo } = useDoc(doc(firestore, 'company', 'info'));
@@ -324,38 +320,6 @@ function OrderCard({ order, allSalesInvoices }: { order: Order, allSalesInvoices
             });
         }
     };
-
-    const handleStatusChange = async (newStatus: OrderStatus) => {
-        try {
-            const orderRef = doc(firestore, 'orders', order.id);
-            await updateDoc(orderRef, { status: newStatus });
-            toast({
-                title: 'Status Updated',
-                description: `Order status changed to "${newStatus}".`,
-            });
-        } catch (error) {
-            toast({
-                variant: 'destructive',
-                title: 'Update Failed',
-                description: 'Could not update order status.',
-            });
-        }
-    };
-    
-    const canChangeStatus = ['Admin', 'Partner', 'Sales Manager', 'CEO'].includes(currentRole);
-    const nextStatusOptions: Record<OrderStatus, OrderStatus[]> = {
-        'Ordered': ['Manufacturing', 'Ready for Dispatch', 'Canceled'],
-        'Manufacturing': ['Ready for Dispatch', 'Canceled'],
-        'Ready for Dispatch': ['Shipped'],
-        'Shipped': ['Delivered'],
-        'Awaiting Payment Confirmation': ['Ordered', 'Canceled'],
-        'Cancellation Requested': ['Canceled', 'Ordered'],
-        'Delivered': [],
-        'Canceled': [],
-        'Awaiting Payment': [],
-        'Invoice Sent': [],
-    };
-    const availableStatuses = nextStatusOptions[order.status] || [];
     
     return (
       <>
@@ -369,36 +333,12 @@ function OrderCard({ order, allSalesInvoices }: { order: Order, allSalesInvoices
                                 Placed on {format(new Date(order.date), 'PPP')}
                             </CardDescription>
                         </div>
-                        {canChangeStatus ? (
-                            <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                    <div onDoubleClick={(e) => e.stopPropagation()}>
-                                    <Badge
-                                        className={cn('text-sm w-fit h-fit cursor-pointer', getStatusBadgeVariant(displayStatus))}
-                                        variant="outline"
-                                    >
-                                        {statusBadgeText}
-                                    </Badge>
-                                    </div>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent>
-                                    <DropdownMenuLabel>Change Status</DropdownMenuLabel>
-                                    <DropdownMenuSeparator />
-                                    {availableStatuses.map(status => (
-                                        <DropdownMenuItem key={status} onSelect={() => handleStatusChange(status)}>
-                                            {status}
-                                        </DropdownMenuItem>
-                                    ))}
-                                </DropdownMenuContent>
-                            </DropdownMenu>
-                        ) : (
-                            <Badge
-                                className={cn('text-sm w-fit h-fit', getStatusBadgeVariant(displayStatus))}
-                                variant="outline"
-                            >
-                                {statusBadgeText}
-                            </Badge>
-                        )}
+                        <Badge
+                            className={cn('text-sm w-fit h-fit', getStatusBadgeVariant(displayStatus))}
+                            variant="outline"
+                        >
+                            {statusBadgeText}
+                        </Badge>
                     </div>
                 </CardHeader>
                 <CardContent className="space-y-6">
@@ -465,7 +405,7 @@ function OrderCard({ order, allSalesInvoices }: { order: Order, allSalesInvoices
                             <h4 className="font-semibold">Pickup Details</h4>
                              <div className="p-3 rounded-md border bg-background">
                                 {order.assignedToUid && order.pickupPointId !== 'company-main' ? (
-                                    <PartnerPickupDetails userId={order.assignedToUid} />
+                                    <PartnerPickupDetails pickupPointId={order.pickupPointId!} />
                                 ) : (
                                     <CompanyPickupDetails />
                                 )}
@@ -507,9 +447,8 @@ function OrderCard({ order, allSalesInvoices }: { order: Order, allSalesInvoices
 }
 
 function MyOrdersPageContent() {
-    const router = useRouter();
-    const firestore = useFirestore();
     const { user } = useUser();
+    const firestore = useFirestore();
     const { currentRole } = useRole();
 
     const ordersQuery = React.useMemo(() => {
@@ -646,7 +585,7 @@ export default function MyOrdersPage() {
         return null;
     }
 
-    return <OrdersPageContent />;
+    return <MyOrdersPageContent />;
 }
 
     
