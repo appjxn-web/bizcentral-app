@@ -36,9 +36,9 @@ service cloud.firestore {
 
     // --- USERS & ACCOUNT HISTORY ---
     match /users/{userId} {
-      allow create, update: if signedIn() && request.auth.uid == userId;
       allow get: if signedIn();
-      allow list: if isAdmin() || isPartner() || isHrManager();
+      allow list: if signedIn();
+      allow create, update: if isOwner(userId) || isAdmin();
       allow delete: if isAdmin();
       
       match /wallet/main {
@@ -127,11 +127,10 @@ service cloud.firestore {
       allow read, list: if true; 
       allow write: if isAdmin();
     }
-    match /leads/{id} { 
-      allow get: if signedIn() && (isAdmin() || resource.data.ownerId == request.auth.uid);
-      allow list: if signedIn() && (isAdmin() || (request.query.keys().hasAny(['ownerId']) && request.query.ownerId == request.auth.uid));
+    match /leads/{id} {
+      allow list: if isAdmin() || (request.query.keys().hasAny(['ownerId']) && request.query.ownerId == request.auth.uid);
+      allow get, write: if signedIn() && (isAdmin() || resource.data.ownerId == request.auth.uid);
       allow create: if signedIn();
-      allow write: if signedIn() && (isAdmin() || resource.data.ownerId == request.auth.uid); 
     }
     match /quotations/{id} { allow read, write: if signedIn(); }
     match /coupons/{id} { allow read, list: if true; allow write: if isAdmin(); }
@@ -259,5 +258,3 @@ service cloud.firestore {
     }
   }
 }
-
-    

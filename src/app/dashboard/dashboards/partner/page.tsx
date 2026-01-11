@@ -68,7 +68,7 @@ export default function PartnerDashboardPage() {
   const { data: orders } = useCollection<Order>(ordersQuery);
   const { data: salesInvoices } = useCollection<SalesInvoice>(invoicesQuery);
 
-  const leadsQuery = user ? query(collection(firestore, 'leads'), where('ownerId', '==', user.uid)) : null;
+  const leadsQuery = user ? query(collection(firestore, 'leads'), where('ownerId', '==', user.uid), orderBy('createdAt', 'desc')) : null;
   const { data: leads } = useCollection<Lead>(leadsQuery);
 
   const serviceRequestsQuery = user ? query(collection(firestore, 'serviceRequests'), where('assignedToUid', '==', user.uid)) : null;
@@ -87,8 +87,8 @@ export default function PartnerDashboardPage() {
         totalLeads: 0,
         totalSales: 0,
         franchiseCommission: 0,
-        pendingCommission: walletData?.commissionPayable || 0,
-        walletBalance: walletData?.balance || 0,
+        pendingCommission: userProfile?.commissionPayable || 0,
+        walletBalance: userProfile?.walletBalance || 0,
         openServiceTickets: serviceRequests?.filter(sr => sr.status !== 'Completed' && sr.status !== 'Canceled').length || 0,
         productsUnderWarranty: registeredProducts?.filter(p => p.status === 'Active').length || 0,
         activeOffers: offers?.filter(o => o.status === 'Active').length || 0,
