@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -46,7 +47,7 @@ const formatIndianCurrency = (num: number) => {
     currency: 'INR',
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  }).format(num || 0);
+  }).format(num);
 };
 
 const numberToWords = (num: number): string => {
@@ -89,19 +90,29 @@ function MyAccountPageContent() {
   const firestore = useFirestore();
   const { user: authUser } = useUser();
   const userIdFromParams = searchParams.get('userId');
+  const partyId = searchParams.get('partyId');
+  const [accountHolder, setAccountHolder] = React.useState<UserProfile | Party | null>(null);
   
-  const targetId = userIdFromParams || authUser?.uid;
+  // Determine the target ID for fetching data
+  const targetId = userIdFromParams || partyId || authUser?.uid;
 
-  const userDocRef = targetId ? doc(firestore, 'users', targetId) : null;
-  const { data: accountHolder, loading: userLoading } = useDoc<UserProfile>(userDocRef);
+  // Fetch data based on type (user or party)
+  const userDocRef = userIdFromParams || authUser?.uid ? doc(firestore, 'users', userIdFromParams || authUser!.uid) : null;
+  const partyDocRef = partyId ? doc(firestore, 'parties', partyId) : null;
+  const { data: userData, loading: userLoading } = useDoc<UserProfile>(userDocRef);
+  const { data: partyData, loading: partyLoading } = useDoc<Party>(partyDocRef);
   
-  const userLedgerId = accountHolder?.coaLedgerId;
-  
-  const referralsQuery = targetId ? query(collection(firestore, 'users', targetId, 'referrals')) : null;
-  const { data: referrals } = useCollection<Referral>(referralsQuery);
-  
-  const ordersQuery = targetId ? query(collection(firestore, 'orders'), where('userId', '==', targetId)) : null;
-  const { data: orders } = useCollection<Order>(ordersQuery);
+  const [userLedgerId, setUserLedgerId] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (partyId && partyData) {
+      setAccountHolder(partyData);
+      setUserLedgerId(partyData.coaLedgerId || null);
+    } else if ((userIdFromParams || authUser?.uid) && userData) {
+      setAccountHolder(userData);
+      setUserLedgerId((userData as any).coaLedgerId || null);
+    }
+  }, [partyId, userIdFromParams, authUser, userData, partyData]);
 
   const userLedgerRef = userLedgerId ? doc(firestore, 'coa_ledgers', userLedgerId) : null;
   const { data: userLedger, loading: ledgerLoading } = useDoc<CoaLedger>(userLedgerRef);
@@ -114,6 +125,12 @@ function MyAccountPageContent() {
   ) : null;
   const { data: salesInvoices, loading: invoicesLoading } = useCollection<SalesInvoice>(salesInvoicesQuery);
   
+  const referralsQuery = targetId ? query(collection(firestore, 'users', targetId, 'referrals')) : null;
+  const { data: referrals } = useCollection<Referral>(referralsQuery);
+  
+  const ordersQuery = targetId ? query(collection(firestore, 'orders'), where('userId', '==', targetId)) : null;
+  const { data: orders } = useCollection<Order>(ordersQuery);
+
   const pdfRef = React.useRef<HTMLDivElement>(null);
   const [isDownloading, setIsDownloading] = React.useState(false);
 
@@ -234,7 +251,7 @@ function MyAccountPageContent() {
     setIsDownloading(false);
   };
   
-    if (userLoading || vouchersLoading || ledgerLoading || invoicesLoading) {
+    if (userLoading || partyLoading || vouchersLoading || ledgerLoading || invoicesLoading) {
         return (
             <div className="flex items-center justify-center h-full">
                 <Loader2 className="h-8 w-8 animate-spin" />
@@ -243,7 +260,7 @@ function MyAccountPageContent() {
     }
   
     if (!accountHolder) {
-        return <PageHeader title="User not found" />;
+        return <PageHeader title="User or Party not found" />;
     }
     if (!userLedger) {
          return (

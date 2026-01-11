@@ -1,4 +1,5 @@
 
+
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -38,9 +39,9 @@ service cloud.firestore {
     match /users/{userId} {
       // Allow ANY signed-in user to GET a profile.
       // This is required so customers can see Partner/Pickup info on their orders.
-      allow get: if signedIn();
+      allow get: if signedIn(); 
       allow list: if isAdmin() || isPartner() || isHrManager();
-      allow create, update: if isOwner(userId);
+      allow create, update: if isOwner(userId) || isAdmin();
       allow delete: if isAdmin();
       
       match /wallet/main {
@@ -83,8 +84,8 @@ service cloud.firestore {
       
       allow list: if signedIn() && (
         isAdmin() || 
-        request.query.where.userId == request.auth.uid ||
-        request.query.where.assignedToUid == request.auth.uid
+        (request.query.where.userId == request.auth.uid) || 
+        (request.query.where.assignedToUid == request.auth.uid)
       );
 
       allow create: if signedIn() && (request.resource.data.userId == request.auth.uid || isAdmin());
@@ -116,9 +117,9 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
     match /leads/{id} { 
-      allow list: if signedIn() && (isAdmin() || resource.data.ownerId == request.auth.uid);
-      allow get, write: if signedIn() && (isAdmin() || resource.data.ownerId == request.auth.uid); 
+      allow get, write: if signedIn() && (isAdmin() || resource.data.ownerId == request.auth.uid);
       allow create: if signedIn();
+      allow list: if signedIn() && (isAdmin() || request.query.where.ownerId == request.auth.uid);
     }
     match /quotations/{id} { allow read, write: if signedIn(); }
     match /coupons/{id} { allow read, list: if true; allow write: if isAdmin(); }
