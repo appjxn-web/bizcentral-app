@@ -57,7 +57,7 @@ import {
 import Image from 'next/image';
 import { Separator } from '@/components/ui/separator';
 import { useFirestore, useCollection, useUser, useDoc } from '@/firebase';
-import { collection, query, orderBy, doc, where, or, updateDoc, writeBatch } from 'firebase/firestore';
+import { collection, query, orderBy, doc, where, or, updateDoc, writeBatch, serverTimestamp } from 'firebase/firestore';
 import { OrderStatusTracker } from '../../my-orders/_components/order-status';
 import {
   Dialog,
@@ -264,7 +264,7 @@ function CompanyPickupDetails() {
   );
 }
 
-function OrderCard({ order, allSalesInvoices }: { order: Order, allSalesInvoices: SalesInvoice[] | null }) {
+function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, allSalesInvoices: SalesInvoice[] | null, onStatusChange: (order: Order, newStatus: OrderStatus) => void }) {
     const { user } = useUser();
     const router = useRouter();
     const { currentRole } = useRole();
@@ -326,23 +326,6 @@ function OrderCard({ order, allSalesInvoices }: { order: Order, allSalesInvoices
             });
         }
     };
-
-    const handleStatusChange = async (newStatus: OrderStatus) => {
-        try {
-            const orderRef = doc(firestore, 'orders', order.id);
-            await updateDoc(orderRef, { status: newStatus });
-            toast({
-                title: 'Status Updated',
-                description: `Order status changed to "${newStatus}".`,
-            });
-        } catch (error) {
-            toast({
-                variant: 'destructive',
-                title: 'Update Failed',
-                description: 'Could not update order status.',
-            });
-        }
-    };
     
     const canChangeStatus = ['Admin', 'Partner', 'Sales Manager', 'CEO'].includes(currentRole);
     
@@ -350,7 +333,7 @@ function OrderCard({ order, allSalesInvoices }: { order: Order, allSalesInvoices
       'Ordered': ['Manufacturing', 'Ready for Dispatch', 'Awaiting Payment', 'Shipped', 'Delivered', 'Canceled'],
       'Manufacturing': ['Ready for Dispatch', 'Awaiting Payment', 'Shipped', 'Delivered', 'Canceled'],
       'Ready for Dispatch': ['Awaiting Payment', 'Shipped', 'Invoice Sent', 'Delivered', 'Canceled'],
-      'Shipped': ['Delivered'],
+      'Shipped': ['Delivered', 'Canceled'],
       'Awaiting PaymentConfirmation': ['Ordered', 'Canceled'],
       'Awaiting Payment': ['Ordered', 'Canceled'],
       'Cancellation Requested': ['Canceled', 'Ordered'],
@@ -385,7 +368,7 @@ function OrderCard({ order, allSalesInvoices }: { order: Order, allSalesInvoices
                         currentStatus={order.status}
                         canChangeStatus={canChangeStatus}
                         availableNextStatuses={availableStatuses}
-                        onStatusChange={handleStatusChange}
+                        onStatusChange={(newStatus) => onStatusChange(order, newStatus)}
                     />
                     <CollapsibleTrigger asChild>
                          <Button variant="outline" size="sm" className="w-full">
@@ -555,6 +538,38 @@ function OrdersPageContent() {
 
         return { total, inProcess, shipped, delivered };
     }, [orders]);
+    
+    const handleStatusChange = async (order: Order, newStatus: OrderStatus) => {
+        try {
+            const batch = writeBatch(firestore);
+            const orderRef = doc(firestore, 'orders', order.id);
+            batch.update(orderRef, { status: newStatus });
+            
+            const notificationRef = doc(collection(firestore, 'users', order.userId, 'notifications'));
+            const notificationData = {
+                type: 'info',
+                title: 'Order Status Updated',
+                description: `Your order #${order.orderNumber || order.id} has been updated to "${newStatus}".`,
+                timestamp: serverTimestamp(),
+                read: false,
+            };
+            batch.set(notificationRef, notificationData);
+
+            await batch.commit();
+
+            toast({
+                title: 'Status Updated',
+                description: `Order status changed to "${newStatus}" and customer notified.`,
+            });
+        } catch (error) {
+            toast({
+                variant: 'destructive',
+                title: 'Update Failed',
+                description: 'Could not update order status.',
+            });
+        }
+    };
+
 
     const loading = ordersLoading || invoicesLoading;
 
@@ -613,7 +628,7 @@ function OrdersPageContent() {
            <Card><CardContent className="p-12 text-center">Loading your orders...</CardContent></Card>
         ) : orders && orders.length > 0 ? (
             orders.map((order) => (
-                <OrderCard key={order.id} order={order} allSalesInvoices={allSalesInvoices} />
+                <OrderCard key={order.id} order={order} allSalesInvoices={allSalesInvoices} onStatusChange={handleStatusChange} />
             ))
         ) : (
             <Card>
@@ -642,6 +657,8 @@ export default function OrdersPage() {
 
     return <OrdersPageContent />;
 }
+
+    
 
     
 
