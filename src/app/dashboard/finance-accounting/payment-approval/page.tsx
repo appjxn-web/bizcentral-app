@@ -22,16 +22,13 @@ import {
 import { Button } from '@/components/ui/button';
 import { CheckCircle, XCircle, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { useFirestore, useCollection, useDoc } from '@/firebase';
-import { collection, doc, updateDoc, query, orderBy, writeBatch, addDoc, serverTimestamp, setDoc, increment } from 'firebase/firestore';
-import type { PaymentSubmission, UserProfile, CoaLedger, Order, CompanyInfo } from '@/lib/types';
+import { useFirestore, useCollection } from '@/firebase';
+import { collection, doc, updateDoc, query, orderBy } from 'firebase/firestore';
+import type { PaymentSubmission, Order } from '@/lib/types';
 import { format } from 'date-fns';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import { errorEmitter } from '@/firebase/error-emitter';
-import { FirestorePermissionError } from '@/firebase/errors';
-import { where } from 'firebase/firestore';
 
 
 function getStatusBadgeVariant(status: string) {
@@ -152,72 +149,27 @@ export default function PaymentApprovalPage() {
 
   const { data: allPayments, loading: paymentsLoading } = useCollection<PaymentSubmission>(allPaymentsQuery);
   const { data: allOrders, loading: ordersLoading } = useCollection<Order>(allOrdersQuery);
-
-  const { data: users } = useCollection<UserProfile>(collection(firestore, 'users'));
-  const { data: coaLedgers } = useCollection<CoaLedger>(collection(firestore, 'coa_ledgers'));
-  const { data: companyInfo } = useDoc<CompanyInfo>(doc(firestore, 'company', 'info'));
   
   const [processingId, setProcessingId] = React.useState<string | null>(null);
 
   const handleUpdateStatus = async (submission: PaymentSubmission | Order, newStatus: 'Approved' | 'Rejected') => {
     setProcessingId(submission.id);
-    const batch = writeBatch(firestore);
 
     const isOrder = 'orderNumber' in submission;
     const collectionName = isOrder ? 'orders' : 'paymentSubmissions';
     const submissionRef = doc(firestore, collectionName, submission.id);
 
-    let finalStatus: OrderStatus | 'Approved' | 'Rejected';
-    
-    if (isOrder) {
-        finalStatus = newStatus === 'Approved' ? 'Ordered' : 'Canceled';
-    } else {
-        finalStatus = newStatus;
-    }
-
-    batch.update(submissionRef, { status: finalStatus });
-
-    // If approving a PaymentSubmission, update the order and create a journal voucher
-    if (newStatus === 'Approved' && !isOrder) {
-        const payment = submission as PaymentSubmission;
-        const orderRef = doc(firestore, 'orders', payment.orderId);
-        
-        // Update Order
-        batch.update(orderRef, {
-            paymentReceived: increment(payment.amount),
-            balance: increment(-payment.amount),
-            paymentDetails: `${orderData.paymentDetails || ''}\nApproved: ${format(new Date(), 'PPp')} - ${payment.amount} - Ref: ${payment.transactionDetails}`.trim(),
-        });
-        
-        // Create Journal Voucher
-        const user = users?.find(u => u.id === payment.userId);
-        const customerLedgerId = user?.coaLedgerId;
-        const bankLedger = coaLedgers?.find(l => l.bank?.upiId === companyInfo?.primaryUpiId);
-
-        if (customerLedgerId && bankLedger) {
-            const jvRef = doc(collection(firestore, 'journalVouchers'));
-            const jvData = {
-                id: jvRef.id,
-                date: new Date().toISOString().split("T")[0],
-                narration: `Payment for Order #${payment.orderNumber} via ${payment.paymentMethod}`,
-                voucherType: "Receipt Voucher",
-                entries: [
-                    { accountId: bankLedger.id, debit: payment.amount, credit: 0 },
-                    { accountId: customerLedgerId, debit: 0, credit: payment.amount },
-                ],
-                createdAt: serverTimestamp(),
-            };
-            batch.set(jvRef, jvData);
-        } else {
-          console.warn("Could not create JV for payment approval - ledger missing.", { customerLedgerId, bankLedgerId: bankLedger?.id });
-        }
-    }
-    
     try {
-        await batch.commit();
+        if (isOrder) {
+            const finalStatus = newStatus === 'Approved' ? 'Ordered' : 'Canceled';
+            await updateDoc(submissionRef, { status: finalStatus });
+        } else {
+            await updateDoc(submissionRef, { status: newStatus });
+        }
+
         toast({
             title: `Payment ${newStatus}`,
-            description: `The submission has been ${newStatus.toLowerCase()}.`,
+            description: `The submission has been ${newStatus.toLowerCase()}. The Cloud Function will handle accounting.`,
         });
     } catch (error) {
         console.error('Error updating payment status:', error);

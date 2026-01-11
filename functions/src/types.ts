@@ -67,7 +67,7 @@ export interface Order {
   commission?: number;
   assignedToUid?: string;
   payoutStatus?: 'Awaiting Delivery' | 'Payable' | 'Paid' | 'No Commission';
-  paymentDetails?: string; // Added this field
+  paymentDetails?: string; 
 }
 
 

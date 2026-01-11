@@ -1,4 +1,3 @@
-
 'use client';
 
 import * as React from 'react';
@@ -107,20 +106,19 @@ const formatIndianCurrency = (num: number) => {
   }).format(num);
 };
 
-function PayBalanceDialog({ order, companyInfo, userProfile }: { order: Order; companyInfo: any; userProfile: UserProfile | null; }) {
+function PayBalanceDialog({ order, companyInfo }: { order: Order; companyInfo: any; }) {
   const { toast } = useToast();
   const firestore = useFirestore();
-  const storage = useStorage();
   const { user } = useUser();
   const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const proofInputRef = React.useRef<HTMLInputElement>(null);
 
-  const [amount, setAmount] = React.useState<number | ''>(order.balance || '');
+  const [amount, setAmount] = React.useState<number | ''>(order.balance || 0);
   const [transactionId, setTransactionId] = React.useState('');
   const [paymentProofFile, setPaymentProofFile] = React.useState<File | null>(null);
   const [paymentProofPreview, setPaymentProofPreview] = React.useState<string | null>(null);
-  const proofInputRef = React.useRef<HTMLInputElement>(null);
-
-  const upiString = React.useMemo(() => {
+  
+  const dynamicUpiString = React.useMemo(() => {
     if (!companyInfo?.primaryUpiId || !amount || amount <= 0) return '';
     return `upi://pay?pa=${companyInfo.primaryUpiId}&pn=${encodeURIComponent(companyInfo.companyName || 'Your Company')}&am=${Number(amount).toFixed(2)}&cu=INR&tn=Order%20${order.orderNumber}`;
   }, [companyInfo, amount, order.orderNumber]);
@@ -145,13 +143,7 @@ function PayBalanceDialog({ order, companyInfo, userProfile }: { order: Order; c
     
     setIsSubmitting(true);
     try {
-      let proofUrl = '';
-      if (paymentProofFile) {
-        const storageRef = ref(storage, `payment_proofs/${user.uid}/${order.id}/${Date.now()}_${paymentProofFile.name}`);
-        const snapshot = await uploadBytes(storageRef, paymentProofFile);
-        proofUrl = await getDownloadURL(snapshot.ref);
-      }
-
+      // Create a submission record instead of directly updating the order
       const submissionData: Omit<PaymentSubmission, 'id'> = {
         userId: user.uid,
         customerName: order.customerName,
@@ -160,17 +152,28 @@ function PayBalanceDialog({ order, companyInfo, userProfile }: { order: Order; c
         amount: Number(amount),
         paymentMethod: 'UPI / Online',
         transactionDetails: transactionId,
-        proofUrl: proofUrl,
+        proofUrl: '', // Will be updated if file exists
         status: 'Pending',
         submittedAt: Timestamp.now(),
       };
       
-      await addDoc(collection(firestore, 'paymentSubmissions'), submissionData);
-      
+      const newSubmissionRef = await addDoc(collection(firestore, 'paymentSubmissions'), submissionData);
+
+      // Upload proof image if it exists
+      if (paymentProofFile) {
+        const storage = useStorage();
+        const proofStorageRef = ref(storage, `payment_proofs/${user.uid}/${order.id}/${newSubmissionRef.id}-${paymentProofFile.name}`);
+        const snapshot = await uploadBytes(proofStorageRef, paymentProofFile);
+        const proofUrl = await getDownloadURL(snapshot.ref);
+        await updateDoc(newSubmissionRef, { proofUrl: proofUrl });
+      }
+
+      // Move order to "Awaiting Payment Confirmation"
       await updateDoc(doc(firestore, 'orders', order.id), { status: 'Awaiting Payment Confirmation' });
       
-      toast({ title: 'Payment Submitted', description: 'Your payment submission is pending approval from our accounts team.' });
+      toast({ title: 'Payment Proof Submitted', description: 'An accounts manager will verify your payment shortly.' });
 
+      // Reset form state
       setAmount('');
       setTransactionId('');
       setPaymentProofFile(null);
@@ -184,7 +187,6 @@ function PayBalanceDialog({ order, companyInfo, userProfile }: { order: Order; c
     }
   };
   
-
   if (!order.balance || order.balance <= 0) return null;
 
   return (
@@ -203,7 +205,7 @@ function PayBalanceDialog({ order, companyInfo, userProfile }: { order: Order; c
         </DialogHeader>
         <div className="py-4 space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="pay-amount">Amount to Pay</Label>
+            <Label htmlFor="pay-amount">Amount to Pay (Max: {formatIndianCurrency(order.balance)})</Label>
             <Input
               id="pay-amount"
               type="number"
@@ -212,17 +214,18 @@ function PayBalanceDialog({ order, companyInfo, userProfile }: { order: Order; c
               placeholder={`Max: ${order.balance.toFixed(2)}`}
             />
           </div>
-          {upiString && (
+          {dynamicUpiString && (
             <div className="flex flex-col items-center gap-2">
               <div className="p-2 bg-white rounded-lg border">
-                <QRCodeSVG value={upiString} size={150} />
+                <QRCodeSVG value={dynamicUpiString} size={150} />
               </div>
+              <p className="text-sm font-bold">Paying: {formatIndianCurrency(Number(amount))}</p>
               <p className="text-xs text-muted-foreground text-center">Scan with any UPI app to pay.</p>
             </div>
           )}
           <div className="space-y-2">
-            <Label htmlFor="transaction-id">UPI Transaction ID</Label>
-            <Input id="transaction-id" value={transactionId} onChange={(e) => setTransactionId(e.target.value)} placeholder="Enter ID after payment" />
+            <Label htmlFor="transaction-id">Transaction ID / Ref No.</Label>
+            <Input id="transaction-id" value={transactionId} onChange={(e) => setTransactionId(e.target.value)} placeholder="Enter UPI Ref ID after payment" />
           </div>
           <div className="space-y-2">
             <Label>Upload Screenshot (Optional)</Label>
@@ -237,7 +240,7 @@ function PayBalanceDialog({ order, companyInfo, userProfile }: { order: Order; c
           <DialogClose asChild><Button type="button" variant="outline">Close</Button></DialogClose>
           <Button type="button" onClick={handleSubmit} disabled={isSubmitting || !amount || !transactionId}>
             {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Submit for Approval
+            Confirm Payment Made
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -365,6 +368,7 @@ function CompanyPickupDetails() {
 function OrderCard({ order, allSalesInvoices }: { order: Order, allSalesInvoices: SalesInvoice[] | null }) {
     const { user } = useUser();
     const router = useRouter();
+    const { currentRole } = useRole();
     const [isOpen, setIsOpen] = React.useState(false);
     const firestore = useFirestore();
     const { data: companyInfo } = useDoc(doc(firestore, 'company', 'info'));
@@ -487,7 +491,7 @@ function OrderCard({ order, allSalesInvoices }: { order: Order, allSalesInvoices
                             {order.paymentDetails && !refundRequest && (
                                 <div>
                                     <p className="text-xs font-semibold">Transaction Note:</p>
-                                    <p className="text-xs text-muted-foreground font-mono">{order.paymentDetails}</p>
+                                    <p className="text-xs text-muted-foreground font-mono whitespace-pre-wrap">{order.paymentDetails}</p>
                                 </div>
                             )}
                              {refundRequest && (
@@ -516,7 +520,7 @@ function OrderCard({ order, allSalesInvoices }: { order: Order, allSalesInvoices
                             </div>
                             <div className="flex flex-wrap gap-2">
                                 {order.balance && order.balance > 0 && (
-                                    <PayBalanceDialog order={order} companyInfo={companyInfo} userProfile={userProfile} />
+                                    <PayBalanceDialog order={order} companyInfo={companyInfo} />
                                 )}
                                 {canCancel && (
                                     <Button variant="destructive" size="sm" onClick={() => setIsCancelDialogOpen(true)}>
@@ -556,9 +560,8 @@ function MyOrdersPageContent() {
 
     const ordersQuery = React.useMemo(() => {
         if (!user) return null;
-        const ordersRef = collection(firestore, 'orders');
         return query(
-            ordersRef, 
+            collection(firestore, 'orders'), 
             where('userId', '==', user.uid), 
             orderBy('date', 'desc')
         );
@@ -566,8 +569,7 @@ function MyOrdersPageContent() {
     
     const invoicesQuery = React.useMemo(() => {
         if (!user) return null;
-        const invoicesRef = collection(firestore, 'salesInvoices');
-        return query(invoicesRef, where('customerId', '==', user.uid));
+        return query(collection(firestore, 'salesInvoices'), where('customerId', '==', user.uid));
     }, [user, firestore]);
 
 
