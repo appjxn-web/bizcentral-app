@@ -72,9 +72,9 @@ service cloud.firestore {
 
     // --- LEADS (Fixes KPI Permission Error) ---
     match /leads/{id} {
-      allow read, list: if signedIn() && (isAdmin() || resource.data.ownerId == request.auth.uid);
+      allow list: if isAdmin() || (request.query.keys().hasAny(['ownerId']) && request.query.ownerId == request.auth.uid);
+      allow get, write: if signedIn() && (isAdmin() || resource.data.ownerId == request.auth.uid);
       allow create: if signedIn();
-      allow write: if signedIn() && (isAdmin() || resource.data.ownerId == request.auth.uid);
     }
     
     // --- GLOBAL ORDERS ---
@@ -196,7 +196,7 @@ service cloud.firestore {
     match /productCategories/{id} { allow read, list: if true; allow write: if isAdmin(); }
     match /posts/{id} { allow read, list: if true; allow write: if signedIn(); }
     match /company/{id} {
-      allow read: if signedIn(); // Allow any signed in user to read company info
+      allow read: if true; // Allow any user (signed in or not) to read company info
       allow write: if isAdmin() || isFunction();
     }
     match /supportSettings/{id} { allow read: if true; allow write: if isAdmin(); }
