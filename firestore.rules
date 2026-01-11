@@ -1,5 +1,4 @@
 
-
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -157,14 +156,20 @@ service cloud.firestore {
 
     // --- FINANCE & ACCOUNTING ---
     match /salesInvoices/{invoiceId} {
-        // Partners can view the list if they are the assigned agent
-        allow read, list: if signedIn() && (
+        allow read: if signedIn() && (
           isAdmin() ||
           resource.data.customerId == request.auth.uid ||
           resource.data.assignedToUid == request.auth.uid
         );
+
+        allow list: if isAdmin() || (
+            signedIn() && 
+            (
+                (request.query.where.customerId is string && request.query.where.customerId == request.auth.uid) ||
+                (request.query.where.assignedToUid is string && request.query.where.assignedToUid == request.auth.uid)
+            )
+        );
         
-        // Partners can CREATE invoices for their assigned orders
         allow create, update: if signedIn() && (
           isAdmin() || 
           (exists(request.resource.data.assignedToUid) && request.resource.data.assignedToUid == request.auth.uid)
