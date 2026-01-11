@@ -685,19 +685,45 @@ export const onPaymentApproved = onDocumentUpdated("paymentSubmissions/{id}", as
       }
       const orderData = orderDoc.data() as Order;
 
-      const paymentDetails = {
-          amount: after.amount,
-          date: new Date().toISOString(),
-          ref: after.transactionDetails,
-          method: after.paymentMethod,
-          proofUrl: after.proofUrl,
-      };
-
+      // Log this specific transaction in history
       const newPaymentDetailsString = [
           orderData.paymentDetails || '',
-          `Approved: ${paymentDetails.date} - ${paymentDetails.amount} - Ref: ${paymentDetails.ref}`
+          `Approved: ${new Date().toISOString()} - ${after.amount} - Ref: ${after.transactionDetails}`
       ].filter(Boolean).join('\n');
 
+      // Create a JV for THIS specific payment amount
+      const customerLedgerId = await findOrCreateSpecificCustomerLedger(transaction, orderData);
+      const companySnap = await transaction.get(db.doc("company/info"));
+      const primaryUpi = companySnap.data()?.primaryUpiId;
+      let bankAccountId: string | null = null;
+            
+      if (primaryUpi) {
+          const ledgerSearchQuery = db.collection("coa_ledgers").where("bank.upiId", "==", primaryUpi).limit(1);
+          const ledgerSearch = await transaction.get(ledgerSearchQuery);
+          if (!ledgerSearch.empty) {
+              bankAccountId = ledgerSearch.docs[0].id;
+          }
+      }
+
+      if (bankAccountId) {
+        const jvRef = db.collection("journalVouchers").doc();
+        transaction.set(jvRef, {
+            id: jvRef.id,
+            date: new Date().toISOString().split("T")[0],
+            narration: `Payment for Order #${orderData.orderNumber || orderData.id} via ${after.paymentMethod}. Ref: ${after.transactionDetails}`,
+            voucherType: "Receipt Voucher",
+            entries: [
+                { accountId: bankAccountId, debit: after.amount, credit: 0 },
+                { accountId: customerLedgerId, debit: 0, credit: after.amount }, 
+            ],
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            createdByUid: after.userId,
+        });
+      } else {
+        console.error("No bank account found for primary UPI. Cannot create JV for payment submission:", after.id);
+      }
+
+      // Update order with the incremented amounts and new status
       transaction.update(orderRef, {
         paymentReceived: FieldValue.increment(after.amount),
         balance: FieldValue.increment(-after.amount),
@@ -745,3 +771,4 @@ export const onPaymentApproved = onDocumentUpdated("paymentSubmissions/{id}", as
 
 
     
+
