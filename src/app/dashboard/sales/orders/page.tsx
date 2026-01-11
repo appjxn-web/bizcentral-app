@@ -398,9 +398,18 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
     const { data: userProfile } = useDoc<UserProfile>(userProfileRef);
 
     const paymentSubmissionsQuery = React.useMemo(() => {
-      if (!order.id) return null;
-      return query(collection(firestore, 'paymentSubmissions'), where('orderId', '==', order.id));
-    }, [order.id, firestore]);
+      if (!order.id || !user?.uid || !firestore) return null;
+    
+      const isPartner = currentRole === 'Partner';
+      const filterField = isPartner ? 'assignedToUid' : 'userId';
+    
+      return query(
+        collection(firestore, 'paymentSubmissions'),
+        where('orderId', '==', order.id),
+        where(filterField, '==', user.uid), // THIS IS THE CRITICAL SECURITY FILTER
+        orderBy('submittedAt', 'desc')
+      );
+    }, [order.id, user?.uid, currentRole, firestore]);
     const { data: paymentSubmissions } = useCollection<PaymentSubmission>(paymentSubmissionsQuery);
     
     const { totalPaid, balanceDue, paymentHistory } = React.useMemo(() => {
@@ -644,93 +653,93 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
 }
 
 function OrdersPageContent() {
-    const router = useRouter();
-    const firestore = useFirestore();
-    const { toast } = useToast();
-    const { user } = useUser();
-    const { currentRole } = useRole();
-    
-    const ordersQuery = React.useMemo(() => {
-        if (!user?.uid || !currentRole) return null;
-        const ordersRef = collection(firestore, 'orders');
+  const router = useRouter();
+  const firestore = useFirestore();
+  const { toast } = useToast();
+  const { user } = useUser();
+  const { currentRole } = useRole();
+  
+  const ordersQuery = React.useMemo(() => {
+      if (!user?.uid || !currentRole) return null;
+      const ordersRef = collection(firestore, 'orders');
 
-        if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
-            return query(ordersRef, orderBy('date', 'desc'));
-        }
+      if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
+          return query(ordersRef, orderBy('date', 'desc'));
+      }
 
-        if (currentRole === 'Partner') {
-            return query(ordersRef, where('assignedToUid', '==', user.uid), orderBy('date', 'desc'));
-        }
-        
-        return query(ordersRef, where('userId', '==', user.uid), orderBy('date', 'desc'));
-    }, [user?.uid, currentRole, firestore]);
-    
-    const invoicesQuery = React.useMemo(() => {
-        if (!user?.uid || !currentRole) return null;
-        const invoicesRef = collection(firestore, 'salesInvoices');
-    
-        if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
-            return query(invoicesRef, orderBy('date', 'desc'));
-        }
-    
-        if (currentRole === 'Partner') {
-            return query(invoicesRef, where('assignedToUid', '==', user.uid), orderBy('date', 'desc'));
-        }
-    
-        return query(invoicesRef, where('customerId', '==', user.uid), orderBy('date', 'desc'));
-    }, [user?.uid, currentRole, firestore]);
-
-
-    const { data: orders, loading: ordersLoading } = useCollection<Order>(ordersQuery);
-    const { data: allSalesInvoices, loading: invoicesLoading } = useCollection<SalesInvoice>(invoicesQuery);
+      if (currentRole === 'Partner') {
+          return query(ordersRef, where('assignedToUid', '==', user.uid), orderBy('date', 'desc'));
+      }
+      
+      return query(ordersRef, where('userId', '==', user.uid), orderBy('date', 'desc'));
+  }, [user?.uid, currentRole, firestore]);
+  
+  const invoicesQuery = React.useMemo(() => {
+      if (!user?.uid || !currentRole) return null;
+      const invoicesRef = collection(firestore, 'salesInvoices');
+  
+      if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
+          return query(invoicesRef, orderBy('date', 'desc'));
+      }
+  
+      if (currentRole === 'Partner') {
+          return query(invoicesRef, where('assignedToUid', '==', user.uid), orderBy('date', 'desc'));
+      }
+  
+      return query(invoicesRef, where('customerId', '==', user.uid), orderBy('date', 'desc'));
+  }, [user?.uid, currentRole, firestore]);
 
 
-    const kpis = React.useMemo(() => {
-        if (!orders) return { total: 0, inProcess: 0, shipped: 0, delivered: 0 };
-        
-        const total = orders.length;
-        const inProcess = orders.filter(o => ['Ordered', 'Manufacturing', 'Ready for Dispatch', 'Awaiting Payment', 'Awaiting Payment Confirmation', 'Cancellation Requested'].includes(o.status)).length;
-        const shipped = orders.filter(o => o.status === 'Shipped').length;
-        const delivered = orders.filter(o => o.status === 'Delivered').length;
-
-        return { total, inProcess, shipped, delivered };
-    }, [orders]);
-    
-    const handleStatusChange = async (order: Order, newStatus: OrderStatus) => {
-        try {
-            const batch = writeBatch(firestore);
-            const orderRef = doc(firestore, 'orders', order.id);
-            batch.update(orderRef, { status: newStatus });
-            
-            const notificationRef = doc(collection(firestore, 'users', order.userId, 'notifications'));
-            const orderNumber = (order as SalesOrder).orderNumber || order.id;
-
-            const notificationData = {
-                type: 'info',
-                title: 'Order Status Updated',
-                description: `Your order #${orderNumber} has been updated to "${newStatus}".`,
-                timestamp: serverTimestamp(),
-                read: false,
-            };
-            batch.set(notificationRef, notificationData);
-
-            await batch.commit();
-
-            toast({
-                title: 'Status Updated',
-                description: `Order status changed to "${newStatus}" and customer notified.`,
-            });
-        } catch (error) {
-            toast({
-                variant: 'destructive',
-                title: 'Update Failed',
-                description: 'Could not update order status.',
-            });
-        }
-    };
+  const { data: orders, loading: ordersLoading } = useCollection<Order>(ordersQuery);
+  const { data: allSalesInvoices, loading: invoicesLoading } = useCollection<SalesInvoice>(invoicesQuery);
 
 
-    const loading = ordersLoading || invoicesLoading;
+  const kpis = React.useMemo(() => {
+      if (!orders) return { total: 0, inProcess: 0, shipped: 0, delivered: 0 };
+      
+      const total = orders.length;
+      const inProcess = orders.filter(o => ['Ordered', 'Manufacturing', 'Ready for Dispatch', 'Awaiting Payment', 'Awaiting Payment Confirmation', 'Cancellation Requested'].includes(o.status)).length;
+      const shipped = orders.filter(o => o.status === 'Shipped').length;
+      const delivered = orders.filter(o => o.status === 'Delivered').length;
+
+      return { total, inProcess, shipped, delivered };
+  }, [orders]);
+  
+  const handleStatusChange = async (order: Order, newStatus: OrderStatus) => {
+      try {
+          const batch = writeBatch(firestore);
+          const orderRef = doc(firestore, 'orders', order.id);
+          batch.update(orderRef, { status: newStatus });
+          
+          const notificationRef = doc(collection(firestore, 'users', order.userId, 'notifications'));
+          const orderNumber = (order as SalesOrder).orderNumber || order.id;
+
+          const notificationData = {
+              type: 'info',
+              title: 'Order Status Updated',
+              description: `Your order #${orderNumber} has been updated to "${newStatus}".`,
+              timestamp: serverTimestamp(),
+              read: false,
+          };
+          batch.set(notificationRef, notificationData);
+
+          await batch.commit();
+
+          toast({
+              title: 'Status Updated',
+              description: `Order status changed to "${newStatus}" and customer notified.`,
+          });
+      } catch (error) {
+          toast({
+              variant: 'destructive',
+              title: 'Update Failed',
+              description: 'Could not update order status.',
+          });
+      }
+  };
+
+
+  const loading = ordersLoading || invoicesLoading;
 
   return (
     <>
@@ -816,11 +825,3 @@ export default function OrdersPage() {
 
     return <OrdersPageContent />;
 }
-
-    
-
-    
-      
-    
-
-    

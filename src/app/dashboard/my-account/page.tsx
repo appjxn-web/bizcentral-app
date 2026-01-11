@@ -240,7 +240,6 @@ function PayBalanceDialog({ order, companyInfo, balance }: { order: Order; compa
   );
 }
 
-
 function MyAccountPageContent() {
   const searchParams = useSearchParams();
   const firestore = useFirestore();
@@ -669,6 +668,3 @@ export default function MyAccountPage() {
 
     return <MyAccountPageContent />;
 }
-
-    
-    
