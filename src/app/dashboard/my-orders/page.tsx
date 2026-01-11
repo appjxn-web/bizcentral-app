@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -70,7 +69,7 @@ import {
 } from '@/components/ui/dialog';
 import { QRCodeSVG } from 'qrcode.react';
 import { Input } from '@/components/ui/input';
-import { useRole } from '../../_components/role-provider';
+import { useRole } from '../_components/role-provider';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
@@ -115,7 +114,7 @@ function PayBalanceDialog({ order, companyInfo }: { order: Order; companyInfo: a
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const proofInputRef = React.useRef<HTMLInputElement>(null);
 
-  const [amountToPay, setAmountToPay] = React.useState<number | ''>(order.balance || 0);
+  const [amountToPay, setAmountToPay] = React.useState<number | ''>((order.balance || 0) > 0 ? order.balance || 0 : '');
   const [transactionId, setTransactionId] = React.useState('');
   const [paymentProofFile, setPaymentProofFile] = React.useState<File | null>(null);
   const [paymentProofPreview, setPaymentProofPreview] = React.useState<string | null>(null);
@@ -146,11 +145,10 @@ function PayBalanceDialog({ order, companyInfo }: { order: Order; companyInfo: a
     
     setIsSubmitting(true);
     try {
-      const submissionData: Omit<PaymentSubmission, 'id'> = {
+      const submissionData: Omit<PaymentSubmission, 'id'|'orderNumber'> = {
         userId: user.uid,
         customerName: order.customerName,
         orderId: order.id,
-        orderNumber: (order as SalesOrder).orderNumber || order.id,
         amount: Number(amountToPay),
         paymentMethod: 'UPI / Online',
         transactionDetails: transactionId,
@@ -197,7 +195,7 @@ function PayBalanceDialog({ order, companyInfo }: { order: Order; companyInfo: a
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Pay Balance for Order: {order.orderNumber || order.id}</DialogTitle>
+          <DialogTitle>Pay Balance for Order: {(order as SalesOrder).orderNumber || order.id}</DialogTitle>
           <DialogDescription>
             You can pay the full amount of <span className="font-bold">{formatIndianCurrency(order.balance)}</span> or make a partial payment.
           </DialogDescription>
@@ -263,7 +261,7 @@ function CancelOrderDialog({ order, onConfirm, open, onOpenChange }: { order: Or
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Request Cancellation for Order: {order.orderNumber || order.id}</DialogTitle>
+          <DialogTitle>Request Cancellation for Order: {(order as SalesOrder).orderNumber || order.id}</DialogTitle>
           <DialogDescription>
             Please let us know why you are canceling this order. An admin will review and approve your request.
           </DialogDescription>
@@ -374,7 +372,7 @@ function CompanyPickupDetails() {
       <>
           <p className="font-medium">{mainAddress.pickupContactName || companyInfo.companyName}</p>
           <p className="text-xs text-muted-foreground">Main Office / Factory</p>
-          {addressString && <p className="text-sm mt-2">{addressString}</p>}
+          {addressString && <p className="mt-2 text-sm">{addressString}</p>}
           <div className="flex gap-4 mt-2">
               {phone && <a href={`tel:${phone}`} className="flex items-center gap-1 text-primary hover:underline text-sm"><Phone className="h-4 w-4" /> Call</a>}
               {mapUrl && <a href={mapUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-primary hover:underline text-sm"><MapPin className="h-4 w-4" /> Get Directions</a>}
@@ -435,7 +433,7 @@ function OrderCard({ order, allSalesInvoices }: { order: Order, allSalesInvoices
 
             toast({
                 title: 'Cancellation Requested',
-                description: `Your request to cancel order #${order.orderNumber || order.id} has been submitted for approval.`,
+                description: `Your request to cancel order #${(order as SalesOrder).orderNumber || order.id} has been submitted for approval.`,
             });
             setIsCancelDialogOpen(false);
         } catch (error) {
@@ -455,7 +453,7 @@ function OrderCard({ order, allSalesInvoices }: { order: Order, allSalesInvoices
                 <CardHeader>
                     <div className="flex flex-col md:flex-row justify-between gap-2">
                         <div>
-                            <CardTitle>Order ID: {order.orderNumber || order.id}</CardTitle>
+                            <CardTitle>Order ID: {(order as SalesOrder).orderNumber || order.id}</CardTitle>
                             <CardDescription>
                                 Placed on {format(new Date(order.date), 'PPP')}
                             </CardDescription>
@@ -538,7 +536,7 @@ function OrderCard({ order, allSalesInvoices }: { order: Order, allSalesInvoices
                                 )}
                             </div>
                             <div className="flex flex-wrap gap-2">
-                                {order.balance && order.balance > 0 && (
+                                {order.balance && order.balance > 0 && userProfile && (
                                     <PayBalanceDialog order={order} companyInfo={companyInfo} />
                                 )}
                                 {canCancel && (
@@ -669,7 +667,7 @@ function MyOrdersPageContent() {
            <Card><CardContent className="p-12 text-center">Loading your orders...</CardContent></Card>
         ) : orders && orders.length > 0 ? (
             orders.map((order) => (
-                <OrderCard key={order.id} order={order} allSalesInvoices={allSalesInvoices} />
+                <OrderCard key={order.id} order={order} allSalesInvoices={allSalesInvoices} onStatusChange={() => {}} />
             ))
         ) : (
             <Card>
@@ -698,5 +696,6 @@ export default function MyOrdersPage() {
 
     return <MyOrdersPageContent />;
 }
+
 
     
