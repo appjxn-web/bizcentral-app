@@ -136,18 +136,21 @@ service cloud.firestore {
 
     // --- FINANCE & ACCOUNTING ---
     match /salesInvoices/{invoiceId} {
+        // Individual get
         allow get: if signedIn() && (
           isAdmin() ||
           resource.data.customerId == request.auth.uid ||
           resource.data.assignedToUid == request.auth.uid
         );
         
+        // Query listing - MUST use request.query.where for non-admins
         allow list: if signedIn() && (
           isAdmin() ||
           request.query.where.customerId == request.auth.uid ||
           request.query.where.assignedToUid == request.auth.uid
         );
         
+        // Partners can CREATE invoices for their assigned orders
         allow create, update: if signedIn() && (
           isAdmin() || 
           (exists(request.resource.data.assignedToUid) && request.resource.data.assignedToUid == request.auth.uid)

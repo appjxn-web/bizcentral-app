@@ -56,7 +56,7 @@ import {
 import Image from 'next/image';
 import { Separator } from '@/components/ui/separator';
 import { useFirestore, useCollection, useUser, useDoc, useStorage } from '@/firebase';
-import { collection, query, orderBy, doc, where, or, updateDoc, writeBatch, serverTimestamp, addDoc, Timestamp } from 'firebase/firestore';
+import { collection, query, orderBy, doc, where, or, updateDoc, writeBatch, serverTimestamp, addDoc, Timestamp, getDoc } from 'firebase/firestore';
 import { OrderStatusTracker } from '../../my-orders/_components/order-status';
 import {
   Dialog,
@@ -70,7 +70,7 @@ import {
 } from '@/components/ui/dialog';
 import { QRCodeSVG } from 'qrcode.react';
 import { Input } from '@/components/ui/input';
-import { useRole } from '@/app/dashboard/_components/role-provider';
+import { useRole } from '../../_components/role-provider';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
@@ -115,7 +115,7 @@ function PayBalanceDialog({ order, companyInfo }: { order: Order; companyInfo: a
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const proofInputRef = React.useRef<HTMLInputElement>(null);
 
-  const [amountToPay, setAmountToPay] = React.useState<number | ''>(order.balance || 0);
+  const [amountToPay, setAmountToPay] = React.useState<number | ''>((order.balance || 0) > 0 ? order.balance || 0 : '');
   const [transactionId, setTransactionId] = React.useState('');
   const [paymentProofFile, setPaymentProofFile] = React.useState<File | null>(null);
   const [paymentProofPreview, setPaymentProofPreview] = React.useState<string | null>(null);
@@ -197,7 +197,7 @@ function PayBalanceDialog({ order, companyInfo }: { order: Order; companyInfo: a
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Pay Balance for Order: {order.orderNumber || order.id}</DialogTitle>
+          <DialogTitle>Pay Balance for Order: {(order as SalesOrder).orderNumber || order.id}</DialogTitle>
           <DialogDescription>
             You can pay the full amount of <span className="font-bold">{formatIndianCurrency(order.balance)}</span> or make a partial payment.
           </DialogDescription>
@@ -263,7 +263,7 @@ function CancelOrderDialog({ order, onConfirm, open, onOpenChange }: { order: Or
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Request Cancellation for Order: {order.orderNumber || order.id}</DialogTitle>
+          <DialogTitle>Request Cancellation for Order: {(order as SalesOrder).orderNumber || order.id}</DialogTitle>
           <DialogDescription>
             Please let us know why you are canceling this order. An admin will review and approve your request.
           </DialogDescription>
@@ -308,8 +308,30 @@ function CancelOrderDialog({ order, onConfirm, open, onOpenChange }: { order: Or
 
 function PartnerPickupDetails({ userId }: { userId: string }) {
     const firestore = useFirestore();
-    const userDocRef = userId ? doc(firestore, 'users', userId) : null;
-    const { data: partner, loading } = useDoc<UserProfile>(userDocRef);
+    const [partner, setPartner] = React.useState<UserProfile | null>(null);
+    const [loading, setLoading] = React.useState(true);
+
+    React.useEffect(() => {
+        if (!userId) {
+            setLoading(false);
+            return;
+        };
+        
+        const fetchPartner = async () => {
+            try {
+                const docSnap = await getDoc(doc(firestore, 'users', userId));
+                if (docSnap.exists()) {
+                    setPartner(docSnap.data() as UserProfile);
+                }
+            } catch (e) {
+                console.error("Error loading partner:", e);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchPartner();
+    }, [userId, firestore]);
 
     if (loading) return <p className="text-sm text-muted-foreground">Loading partner details...</p>;
     if (!partner) return <p className="text-sm text-destructive">Could not load partner details.</p>;
@@ -416,7 +438,7 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
 
             toast({
                 title: 'Cancellation Requested',
-                description: `Your request to cancel order #${order.orderNumber || order.id} has been submitted for approval.`,
+                description: `Your request to cancel order #${(order as SalesOrder).orderNumber || order.id} has been submitted for approval.`,
             });
             setIsCancelDialogOpen(false);
         } catch (error) {
@@ -453,7 +475,7 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
                 <CardHeader>
                     <div className="flex flex-col md:flex-row justify-between gap-2">
                         <div>
-                            <CardTitle>Order ID: {order.orderNumber || order.id}</CardTitle>
+                            <CardTitle>Order ID: {(order as SalesOrder).orderNumber || order.id}</CardTitle>
                             <CardDescription>
                                 Placed on {format(new Date(order.date), 'PPP')}
                             </CardDescription>
@@ -597,21 +619,21 @@ function OrdersPageContent() {
         const ordersRef = collection(firestore, 'orders');
 
         if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
-            return query(ordersRef, orderBy('createdAt', 'desc'));
+            return query(ordersRef, orderBy('date', 'desc'));
         }
 
         if (currentRole === 'Partner') {
             return query(
                 ordersRef, 
                 where('assignedToUid', '==', user.uid),
-                orderBy('createdAt', 'desc')
+                orderBy('date', 'desc')
             );
         }
         
         return query(
             ordersRef, 
             where('userId', '==', user.uid), 
-            orderBy('createdAt', 'desc')
+            orderBy('date', 'desc')
         );
     }, [user, currentRole, firestore]);
     
