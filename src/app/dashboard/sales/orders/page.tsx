@@ -1,3 +1,5 @@
+
+
 'use client';
 
 import * as React from 'react';
@@ -68,7 +70,7 @@ import {
 } from '@/components/ui/dialog';
 import { QRCodeSVG } from 'qrcode.react';
 import { Input } from '@/components/ui/input';
-import { useRole } from '../../_components/role-provider';
+import { useRole } from '../_components/role-provider';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
@@ -113,15 +115,15 @@ function PayBalanceDialog({ order, companyInfo }: { order: Order; companyInfo: a
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const proofInputRef = React.useRef<HTMLInputElement>(null);
 
-  const [amount, setAmount] = React.useState<number | ''>(order.balance || 0);
+  const [amountToPay, setAmountToPay] = React.useState<number | ''>(order.balance || 0);
   const [transactionId, setTransactionId] = React.useState('');
   const [paymentProofFile, setPaymentProofFile] = React.useState<File | null>(null);
   const [paymentProofPreview, setPaymentProofPreview] = React.useState<string | null>(null);
   
   const dynamicUpiString = React.useMemo(() => {
-    if (!companyInfo?.primaryUpiId || !amount || amount <= 0) return '';
-    return `upi://pay?pa=${companyInfo.primaryUpiId}&pn=${encodeURIComponent(companyInfo.companyName || 'Your Company')}&am=${Number(amount).toFixed(2)}&cu=INR&tn=Order%20${order.orderNumber}`;
-  }, [companyInfo, amount, order.orderNumber]);
+    if (!companyInfo?.primaryUpiId || !amountToPay || amountToPay <= 0) return '';
+    return `upi://pay?pa=${companyInfo.primaryUpiId}&pn=${encodeURIComponent(companyInfo.companyName || 'Your Company')}&am=${Number(amountToPay).toFixed(2)}&cu=INR&tn=Order%20${order.orderNumber}`;
+  }, [companyInfo, amountToPay, order.orderNumber]);
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -136,30 +138,28 @@ function PayBalanceDialog({ order, companyInfo }: { order: Order; companyInfo: a
   };
 
   const handleSubmit = async () => {
-    if (!user || !amount || amount <= 0 || !transactionId) {
+    if (!user || !amountToPay || amountToPay <= 0 || !transactionId) {
       toast({ variant: 'destructive', title: 'Missing Information', description: 'Please enter a valid amount and transaction ID.' });
       return;
     }
     
     setIsSubmitting(true);
     try {
-      // Create a submission record instead of directly updating the order
       const submissionData: Omit<PaymentSubmission, 'id'> = {
         userId: user.uid,
         customerName: order.customerName,
         orderId: order.id,
         orderNumber: order.orderNumber || order.id,
-        amount: Number(amount),
+        amount: Number(amountToPay),
         paymentMethod: 'UPI / Online',
         transactionDetails: transactionId,
-        proofUrl: '', // Will be updated if file exists
+        proofUrl: '',
         status: 'Pending',
         submittedAt: Timestamp.now(),
       };
       
       const newSubmissionRef = await addDoc(collection(firestore, 'paymentSubmissions'), submissionData);
 
-      // Upload proof image if it exists
       if (paymentProofFile) {
         const storage = useStorage();
         const proofStorageRef = ref(storage, `payment_proofs/${user.uid}/${order.id}/${newSubmissionRef.id}-${paymentProofFile.name}`);
@@ -168,13 +168,11 @@ function PayBalanceDialog({ order, companyInfo }: { order: Order; companyInfo: a
         await updateDoc(newSubmissionRef, { proofUrl: proofUrl });
       }
 
-      // Move order to "Awaiting Payment Confirmation"
       await updateDoc(doc(firestore, 'orders', order.id), { status: 'Awaiting Payment Confirmation' });
       
       toast({ title: 'Payment Proof Submitted', description: 'An accounts manager will verify your payment shortly.' });
 
-      // Reset form state
-      setAmount('');
+      setAmountToPay(0);
       setTransactionId('');
       setPaymentProofFile(null);
       setPaymentProofPreview(null);
@@ -209,8 +207,8 @@ function PayBalanceDialog({ order, companyInfo }: { order: Order; companyInfo: a
             <Input
               id="pay-amount"
               type="number"
-              value={amount}
-              onChange={(e) => setAmount(Number(e.target.value))}
+              value={amountToPay}
+              onChange={(e) => setAmountToPay(Number(e.target.value))}
               placeholder={`Max: ${order.balance.toFixed(2)}`}
             />
           </div>
@@ -219,7 +217,7 @@ function PayBalanceDialog({ order, companyInfo }: { order: Order; companyInfo: a
               <div className="p-2 bg-white rounded-lg border">
                 <QRCodeSVG value={dynamicUpiString} size={150} />
               </div>
-              <p className="text-sm font-bold">Paying: {formatIndianCurrency(Number(amount))}</p>
+              <p className="text-sm font-bold">Paying: {formatIndianCurrency(Number(amountToPay))}</p>
               <p className="text-xs text-muted-foreground text-center">Scan with any UPI app to pay.</p>
             </div>
           )}
@@ -238,7 +236,7 @@ function PayBalanceDialog({ order, companyInfo }: { order: Order; companyInfo: a
         </div>
         <DialogFooter>
           <DialogClose asChild><Button type="button" variant="outline">Close</Button></DialogClose>
-          <Button type="button" onClick={handleSubmit} disabled={isSubmitting || !amount || !transactionId}>
+          <Button type="button" onClick={handleSubmit} disabled={isSubmitting || !amountToPay || !transactionId}>
             {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Confirm Payment Made
           </Button>
@@ -433,11 +431,11 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
     const canChangeStatus = ['Admin', 'Partner', 'Sales Manager', 'CEO'].includes(currentRole);
     
     const nextStatusOptions: Record<OrderStatus, OrderStatus[]> = {
+        'Ordered': ['Manufacturing', 'Ready for Dispatch', 'Awaiting Payment', 'Shipped'],
+        'Manufacturing': ['Ready for Dispatch', 'Shipped'],
+        'Ready for Dispatch': ['Awaiting Payment', 'Invoice Sent', 'Shipped'],
         'Awaiting Payment': ['Ordered', 'Canceled'],
         'Awaiting Payment Confirmation': ['Ordered', 'Canceled'],
-        'Ordered': ['Manufacturing', 'Ready for Dispatch', 'Shipped'],
-        'Manufacturing': ['Ready for Dispatch', 'Shipped'],
-        'Ready for Dispatch': ['Invoice Sent', 'Shipped'],
         'Invoice Sent': ['Shipped', 'Delivered'],
         'Shipped': ['Delivered'],
         'Delivered': [],
