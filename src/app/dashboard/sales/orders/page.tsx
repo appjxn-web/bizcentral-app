@@ -70,7 +70,7 @@ import {
 } from '@/components/ui/dialog';
 import { QRCodeSVG } from 'qrcode.react';
 import { Input } from '@/components/ui/input';
-import { useRole } from '../_components/role-provider';
+import { useRole } from '../../_components/role-provider';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
@@ -122,8 +122,9 @@ function PayBalanceDialog({ order, companyInfo }: { order: Order; companyInfo: a
   
   const dynamicUpiString = React.useMemo(() => {
     if (!companyInfo?.primaryUpiId || !amountToPay || amountToPay <= 0) return '';
-    return `upi://pay?pa=${companyInfo.primaryUpiId}&pn=${encodeURIComponent(companyInfo.companyName || 'Your Company')}&am=${Number(amountToPay).toFixed(2)}&cu=INR&tn=Order%20${order.orderNumber}`;
-  }, [companyInfo, amountToPay, order.orderNumber]);
+    const orderNumber = (order as SalesOrder).orderNumber || order.id;
+    return `upi://pay?pa=${companyInfo.primaryUpiId}&pn=${encodeURIComponent(companyInfo.companyName || 'Your Company')}&am=${Number(amountToPay).toFixed(2)}&cu=INR&tn=Order%20${orderNumber}`;
+  }, [companyInfo, amountToPay, order]);
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -149,7 +150,7 @@ function PayBalanceDialog({ order, companyInfo }: { order: Order; companyInfo: a
         userId: user.uid,
         customerName: order.customerName,
         orderId: order.id,
-        orderNumber: order.orderNumber || order.id,
+        orderNumber: (order as SalesOrder).orderNumber || order.id,
         amount: Number(amountToPay),
         paymentMethod: 'UPI / Online',
         transactionDetails: transactionId,
@@ -381,7 +382,7 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
     const { data: refundRequests } = useCollection<RefundRequest>(refundQuery);
     const refundRequest = refundRequests?.[0];
 
-    const existingInvoice = allSalesInvoices?.find(inv => inv.orderNumber === order.orderNumber);
+    const existingInvoice = allSalesInvoices?.find(inv => inv.orderNumber === (order as SalesOrder).orderNumber);
 
     const canCancel = order.status === 'Ordered' || order.status === 'Manufacturing';
     
@@ -431,16 +432,16 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
     const canChangeStatus = ['Admin', 'Partner', 'Sales Manager', 'CEO'].includes(currentRole);
     
     const nextStatusOptions: Record<OrderStatus, OrderStatus[]> = {
-        'Ordered': ['Manufacturing', 'Ready for Dispatch', 'Awaiting Payment', 'Shipped'],
-        'Manufacturing': ['Ready for Dispatch', 'Shipped'],
-        'Ready for Dispatch': ['Awaiting Payment', 'Invoice Sent', 'Shipped'],
-        'Awaiting Payment': ['Ordered', 'Canceled'],
-        'Awaiting Payment Confirmation': ['Ordered', 'Canceled'],
-        'Invoice Sent': ['Shipped', 'Delivered'],
-        'Shipped': ['Delivered'],
-        'Delivered': [],
-        'Canceled': [],
-        'Cancellation Requested': ['Canceled', 'Ordered'],
+      'Ordered': ['Manufacturing', 'Ready for Dispatch', 'Shipped'],
+      'Manufacturing': ['Ready for Dispatch', 'Shipped'],
+      'Ready for Dispatch': ['Invoice Sent', 'Shipped'],
+      'Awaiting Payment': ['Ordered', 'Canceled'],
+      'Awaiting Payment Confirmation': ['Ordered', 'Canceled'],
+      'Invoice Sent': ['Shipped', 'Delivered'],
+      'Shipped': ['Delivered'],
+      'Delivered': [],
+      'Canceled': [],
+      'Cancellation Requested': ['Canceled', 'Ordered'],
     };
     const availableStatuses = nextStatusOptions[order.status] || [];
     
@@ -651,10 +652,12 @@ function OrdersPageContent() {
             batch.update(orderRef, { status: newStatus });
             
             const notificationRef = doc(collection(firestore, 'users', order.userId, 'notifications'));
+            const orderNumber = (order as SalesOrder).orderNumber || order.id;
+
             const notificationData = {
                 type: 'info',
                 title: 'Order Status Updated',
-                description: `Your order #${order.orderNumber || order.id} has been updated to "${newStatus}".`,
+                description: `Your order #${orderNumber} has been updated to "${newStatus}".`,
                 timestamp: serverTimestamp(),
                 read: false,
             };
@@ -762,3 +765,4 @@ export default function OrdersPage() {
 
     return <OrdersPageContent />;
 }
+
