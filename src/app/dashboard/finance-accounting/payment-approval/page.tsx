@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -171,46 +172,6 @@ export default function PaymentApprovalPage() {
       : newStatus;
 
     batch.update(submissionRef, { status: finalStatus });
-
-    // If approved, create the journal voucher
-    if (newStatus === 'Approved') {
-        const customer = users?.find(u => u.id === submission.userId);
-        if (!customer?.coaLedgerId) {
-            toast({ variant: 'destructive', title: 'Accounting Error', description: `Could not find a ledger account for ${submission.customerName}.` });
-            setProcessingId(null);
-            return;
-        }
-
-        const primaryUpiId = companyInfo?.primaryUpiId;
-        if (!primaryUpiId) {
-            toast({ variant: 'destructive', title: 'Accounting Error', description: 'Primary UPI ID is not set in company settings.' });
-            setProcessingId(null);
-            return;
-        }
-
-        const bankAccount = coaLedgers?.find(l => l.bank?.upiId === primaryUpiId);
-        if (!bankAccount) {
-            toast({ variant: 'destructive', title: 'Accounting Error', description: `No bank account found linked to the primary UPI ID: ${primaryUpiId}.` });
-            setProcessingId(null);
-            return;
-        }
-
-        const amount = isOrder ? submission.paymentReceived : (submission as PaymentSubmission).amount;
-
-        const jvData = {
-            date: new Date().toISOString().split("T")[0],
-            narration: `Payment received from ${submission.customerName}. Ref: ${isOrder ? submission.paymentDetails : (submission as PaymentSubmission).transactionDetails}`,
-            voucherType: "Receipt Voucher",
-            entries: [
-                { accountId: bankAccount.id, debit: amount, credit: 0 },
-                { accountId: customer.coaLedgerId, debit: 0, credit: amount },
-            ],
-            createdAt: serverTimestamp(),
-        };
-
-        const jvRef = doc(collection(firestore, 'journalVouchers'));
-        batch.set(jvRef, jvData);
-    }
     
     try {
         await batch.commit();
