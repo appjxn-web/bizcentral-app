@@ -70,7 +70,7 @@ import {
 } from '@/components/ui/dialog';
 import { QRCodeSVG } from 'qrcode.react';
 import { Input } from '@/components/ui/input';
-import { useRole } from '../../_components/role-provider';
+import { useRole } from '@/app/dashboard/_components/role-provider';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
@@ -435,14 +435,15 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
       'Ordered': ['Manufacturing', 'Ready for Dispatch', 'Shipped'],
       'Manufacturing': ['Ready for Dispatch', 'Shipped'],
       'Ready for Dispatch': ['Invoice Sent', 'Shipped'],
-      'Awaiting Payment': ['Ordered', 'Canceled'],
-      'Awaiting Payment Confirmation': ['Ordered', 'Canceled'],
       'Invoice Sent': ['Shipped', 'Delivered'],
       'Shipped': ['Delivered'],
+      'Awaiting Payment': ['Ordered', 'Canceled'],
+      'Awaiting Payment Confirmation': ['Ordered', 'Canceled'],
       'Delivered': [],
       'Canceled': [],
       'Cancellation Requested': ['Canceled', 'Ordered'],
     };
+    
     const availableStatuses = nextStatusOptions[order.status] || [];
     
     return (
@@ -765,4 +766,5 @@ export default function OrdersPage() {
 
     return <OrdersPageContent />;
 }
+
 

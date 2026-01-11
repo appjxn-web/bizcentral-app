@@ -70,7 +70,7 @@ import {
 } from '@/components/ui/dialog';
 import { QRCodeSVG } from 'qrcode.react';
 import { Input } from '@/components/ui/input';
-import { useRole } from '../_components/role-provider';
+import { useRole } from '@/app/dashboard/_components/role-provider';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
@@ -122,8 +122,9 @@ function PayBalanceDialog({ order, companyInfo }: { order: Order; companyInfo: a
   
   const dynamicUpiString = React.useMemo(() => {
     if (!companyInfo?.primaryUpiId || !amountToPay || amountToPay <= 0) return '';
-    return `upi://pay?pa=${companyInfo.primaryUpiId}&pn=${encodeURIComponent(companyInfo.companyName || 'Your Company')}&am=${Number(amountToPay).toFixed(2)}&cu=INR&tn=Order%20${order.orderNumber}`;
-  }, [companyInfo, amountToPay, order.orderNumber]);
+    const orderNumber = (order as SalesOrder).orderNumber || order.id;
+    return `upi://pay?pa=${companyInfo.primaryUpiId}&pn=${encodeURIComponent(companyInfo.companyName || 'Your Company')}&am=${Number(amountToPay).toFixed(2)}&cu=INR&tn=Order%20${orderNumber}`;
+  }, [companyInfo, amountToPay, order]);
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -149,7 +150,7 @@ function PayBalanceDialog({ order, companyInfo }: { order: Order; companyInfo: a
         userId: user.uid,
         customerName: order.customerName,
         orderId: order.id,
-        orderNumber: order.orderNumber || order.id,
+        orderNumber: (order as SalesOrder).orderNumber || order.id,
         amount: Number(amountToPay),
         paymentMethod: 'UPI / Online',
         transactionDetails: transactionId,
@@ -381,7 +382,7 @@ function OrderCard({ order, allSalesInvoices }: { order: Order, allSalesInvoices
     const { data: refundRequests } = useCollection<RefundRequest>(refundQuery);
     const refundRequest = refundRequests?.[0];
 
-    const existingInvoice = allSalesInvoices?.find(inv => inv.orderNumber === order.orderNumber);
+    const existingInvoice = allSalesInvoices?.find(inv => inv.orderNumber === (order as SalesOrder).orderNumber);
 
     const canCancel = order.status === 'Ordered' || order.status === 'Manufacturing';
     
@@ -535,6 +536,15 @@ function OrderCard({ order, allSalesInvoices }: { order: Order, allSalesInvoices
                                     </Link>
                                   </Button>
                                 )}
+                                {currentRole === 'Partner' && order.status === 'Ready for Dispatch' && !existingInvoice && (
+                                     <Button size="sm" onClick={() => {
+                                         localStorage.setItem('invoiceDataToCreate', JSON.stringify(order));
+                                         router.push('/dashboard/sales/create-invoice');
+                                     }}>
+                                        <PlusCircle className="mr-2 h-4 w-4" />
+                                        Generate Invoice
+                                    </Button>
+                                )}
                             </div>
                         </div>
                       </div>
@@ -669,3 +679,4 @@ export default function MyOrdersPage() {
 
     return <MyOrdersPageContent />;
 }
+
