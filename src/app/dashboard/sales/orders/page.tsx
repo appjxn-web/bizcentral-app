@@ -23,13 +23,12 @@ import {
   DollarSign,
   RefreshCcw,
   Receipt,
-  Eye,
-  Edit,
+  FileUp,
 } from 'lucide-react';
 
 import { PageHeader } from '@/components/page-header';
 import { cn } from '@/lib/utils';
-import type { Order, OrderStatus, UserProfile, UserRole, WorkOrder, PickupPoint, SalesOrder, RefundRequest, SalesInvoice, Party, CompanyInfo } from '@/lib/types';
+import type { Order, OrderStatus, UserProfile, UserRole, WorkOrder, PickupPoint, SalesOrder, RefundRequest, SalesInvoice, Party, CompanyInfo, PaymentSubmission } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -56,8 +55,8 @@ import {
 } from '@/components/ui/collapsible';
 import Image from 'next/image';
 import { Separator } from '@/components/ui/separator';
-import { useFirestore, useCollection, useUser, useDoc } from '@/firebase';
-import { collection, query, orderBy, doc, where, or, updateDoc, writeBatch, serverTimestamp } from 'firebase/firestore';
+import { useFirestore, useCollection, useUser, useDoc, useStorage } from '@/firebase';
+import { collection, query, orderBy, doc, where, or, updateDoc, writeBatch, serverTimestamp, addDoc, Timestamp } from 'firebase/firestore';
 import { OrderStatusTracker } from '../../my-orders/_components/order-status';
 import {
   Dialog,
@@ -76,7 +75,8 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
-import { useMemo } from 'react';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { Loader2 } from 'lucide-react';
 
 function getStatusBadgeVariant(status: Order['status'] | 'Refund Pending' | 'Refund Complete' | SalesInvoice['status']) {
   const variants: Record<string, string> = {
@@ -109,42 +109,139 @@ const formatIndianCurrency = (num: number) => {
 };
 
 function PayBalanceDialog({ order, companyInfo }: { order: Order, companyInfo: any }) {
-    if (!order.balance || order.balance <= 0) return null;
+  const { toast } = useToast();
+  const firestore = useFirestore();
+  const storage = useStorage();
+  const { user } = useUser();
+  const [isSubmitting, setIsSubmitting] = React.useState(false);
 
-    const upiString = `upi://pay?pa=${companyInfo?.primaryUpiId || 'your-upi-id@okhdfcbank'}&pn=${encodeURIComponent(companyInfo?.companyName || 'Your Company Name')}&am=${order.balance.toFixed(2)}&cu=INR&tn=Order%20Balance%20Payment`;
+  const [amount, setAmount] = React.useState<number | ''>(order.balance || '');
+  const [transactionId, setTransactionId] = React.useState('');
+  const [paymentProofFile, setPaymentProofFile] = React.useState<File | null>(null);
+  const [paymentProofPreview, setPaymentProofPreview] = React.useState<string | null>(null);
+  const proofInputRef = React.useRef<HTMLInputElement>(null);
 
-    return (
-        <Dialog>
-            <DialogTrigger asChild>
-                <Button size="sm">
-                    <DollarSign className="mr-2 h-4 w-4" /> Pay Balance
-                </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-md">
-                <DialogHeader>
-                    <DialogTitle>Pay Remaining Balance</DialogTitle>
-                    <DialogDescription>
-                        Scan the QR code to pay the balance of {formatIndianCurrency(order.balance)} for Order ID: {order.orderNumber || order.id}.
-                    </DialogDescription>
-                </DialogHeader>
-                <div className="flex flex-col items-center gap-4 py-4">
-                    <div className="p-4 bg-white rounded-lg border">
-                        <QRCodeSVG value={upiString} size={180} />
-                    </div>
-                    <p className="text-sm text-muted-foreground text-center">
-                        After payment, please enter the transaction ID in the field below to confirm your payment.
-                    </p>
-                    <Input placeholder="Enter UPI Transaction ID" />
-                </div>
-                <DialogFooter>
-                    <DialogClose asChild>
-                        <Button type="button" variant="outline">Close</Button>
-                    </DialogClose>
-                     <Button type="button">Confirm Payment</Button>
-                </DialogFooter>
-            </DialogContent>
-        </Dialog>
-    )
+  const upiString = React.useMemo(() => {
+    if (!companyInfo?.primaryUpiId || !amount || amount <= 0) return '';
+    return `upi://pay?pa=${companyInfo.primaryUpiId}&pn=${encodeURIComponent(companyInfo.companyName || 'Your Company')}&am=${Number(amount).toFixed(2)}&cu=INR&tn=Order%20${order.orderNumber}`;
+  }, [companyInfo, amount, order.orderNumber]);
+
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      setPaymentProofFile(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setPaymentProofPreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleSubmit = async () => {
+    if (!user || !amount || amount <= 0 || !transactionId) {
+      toast({ variant: 'destructive', title: 'Missing Information', description: 'Please enter a valid amount and transaction ID.' });
+      return;
+    }
+    
+    setIsSubmitting(true);
+    try {
+      let proofUrl = '';
+      if (paymentProofFile) {
+        const storageRef = ref(storage, `payment_proofs/${user.uid}/${order.id}/${Date.now()}_${paymentProofFile.name}`);
+        const snapshot = await uploadBytes(storageRef, paymentProofFile);
+        proofUrl = await getDownloadURL(snapshot.ref);
+      }
+
+      const submissionData: Omit<PaymentSubmission, 'id'> = {
+        userId: user.uid,
+        customerName: order.customerName,
+        orderId: order.id,
+        orderNumber: order.orderNumber || order.id,
+        amount: Number(amount),
+        paymentMethod: 'UPI / Online',
+        transactionDetails: transactionId,
+        proofUrl: proofUrl,
+        status: 'Pending',
+        submittedAt: Timestamp.now(),
+      };
+      
+      await addDoc(collection(firestore, 'paymentSubmissions'), submissionData);
+      
+      toast({ title: 'Payment Submitted', description: 'Your payment submission is pending approval from our accounts team.' });
+
+      setAmount('');
+      setTransactionId('');
+      setPaymentProofFile(null);
+      setPaymentProofPreview(null);
+      
+    } catch (error) {
+      console.error(error);
+      toast({ variant: 'destructive', title: 'Submission Failed' });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+  
+
+  if (!order.balance || order.balance <= 0) return null;
+
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button size="sm">
+          <DollarSign className="mr-2 h-4 w-4" /> Pay Balance
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Pay Balance for Order: {order.orderNumber || order.id}</DialogTitle>
+          <DialogDescription>
+            You can pay the full amount of <span className="font-bold">{formatIndianCurrency(order.balance)}</span> or make a partial payment.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="py-4 space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="pay-amount">Amount to Pay</Label>
+            <Input
+              id="pay-amount"
+              type="number"
+              value={amount}
+              onChange={(e) => setAmount(Number(e.target.value))}
+              placeholder={`Max: ${order.balance.toFixed(2)}`}
+            />
+          </div>
+          {upiString && (
+            <div className="flex flex-col items-center gap-2">
+              <div className="p-2 bg-white rounded-lg border">
+                <QRCodeSVG value={upiString} size={150} />
+              </div>
+              <p className="text-xs text-muted-foreground text-center">Scan with any UPI app to pay.</p>
+            </div>
+          )}
+          <div className="space-y-2">
+            <Label htmlFor="transaction-id">UPI Transaction ID</Label>
+            <Input id="transaction-id" value={transactionId} onChange={(e) => setTransactionId(e.target.value)} placeholder="Enter ID after payment" />
+          </div>
+          <div className="space-y-2">
+            <Label>Upload Screenshot (Optional)</Label>
+            <Input type="file" ref={proofInputRef} onChange={handleFileChange} className="hidden" accept="image/*" />
+            <Button type="button" variant="outline" className="w-full" onClick={() => proofInputRef.current?.click()}>
+              <FileUp className="h-4 w-4 mr-2" /> Upload Image
+            </Button>
+            {paymentProofPreview && <img src={paymentProofPreview} alt="Proof preview" className="mt-2 rounded-md border max-h-40" />}
+          </div>
+        </div>
+        <DialogFooter>
+          <DialogClose asChild><Button type="button" variant="outline">Close</Button></DialogClose>
+          <Button type="button" onClick={handleSubmit} disabled={isSubmitting || !amount || !transactionId}>
+            {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Submit for Approval
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 function CancelOrderDialog({ order, onConfirm, open, onOpenChange }: { order: Order; onConfirm: (reason: string, details?: string) => void; open: boolean; onOpenChange: (open: boolean) => void }) {
@@ -332,14 +429,14 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
     const nextStatusOptions: Record<OrderStatus, OrderStatus[]> = {
       'Ordered': ['Manufacturing', 'Ready for Dispatch', 'Awaiting Payment', 'Shipped', 'Delivered', 'Canceled'],
       'Manufacturing': ['Ready for Dispatch', 'Awaiting Payment', 'Shipped', 'Delivered', 'Canceled'],
-      'Ready for Dispatch': ['Awaiting Payment', 'Shipped', 'Invoice Sent', 'Delivered', 'Canceled'],
-      'Shipped': ['Delivered', 'Canceled'],
+      'Ready for Dispatch': ['Awaiting Payment', 'Invoice Sent', 'Shipped', 'Delivered'],
       'Awaiting PaymentConfirmation': ['Ordered', 'Canceled'],
       'Awaiting Payment': ['Ordered', 'Canceled'],
-      'Cancellation Requested': ['Canceled', 'Ordered'],
       'Invoice Sent': ['Shipped', 'Delivered'],
+      'Shipped': ['Delivered'],
       'Delivered': [],
       'Canceled': [],
+      'Cancellation Requested': ['Canceled', 'Ordered'],
     };
     const availableStatuses = nextStatusOptions[order.status] || [];
     
@@ -488,27 +585,34 @@ function OrdersPageContent() {
     const { user } = useUser();
     const { currentRole } = useRole();
     
-    const ordersQuery = useMemo(() => {
+    const ordersQuery = React.useMemo(() => {
         if (!user || !currentRole) return null;
 
         const ordersRef = collection(firestore, 'orders');
 
+        // Admin/CEO/Sales Manager can see all orders
         if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
             return query(ordersRef, orderBy('date', 'desc'));
         }
 
+        // Partners see orders assigned to them
         if (currentRole === 'Partner') {
-            return query(ordersRef, where('assignedToUid', '==', user.uid), orderBy('date', 'desc'));
+            return query(
+                ordersRef, 
+                where('assignedToUid', '==', user.uid),
+                orderBy('date', 'desc')
+            );
         }
         
+        // Default (Customers) see their own orders
         return query(
             ordersRef, 
             where('userId', '==', user.uid), 
             orderBy('date', 'desc')
         );
     }, [user, currentRole, firestore]);
-
-    const invoicesQuery = useMemo(() => {
+    
+    const invoicesQuery = React.useMemo(() => {
         if (!user || !currentRole) return null;
         const invoicesRef = collection(firestore, 'salesInvoices');
     
@@ -657,11 +761,3 @@ export default function OrdersPage() {
 
     return <OrdersPageContent />;
 }
-
-    
-
-    
-
-    
-
-    

@@ -1,5 +1,4 @@
 
-
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -74,17 +73,24 @@ service cloud.firestore {
 
     // --- GLOBAL ORDERS (Main Sales) ---
     match /orders/{orderId} {
-      // List and Get rules: Unified to check if the user is the Admin, 
-      // the Customer (userId), or the Assigned Partner (assignedToUid)
-      allow read, list: if signedIn() && (
+      // Get single document
+      allow get: if signedIn() && (
         isAdmin() || 
         resource.data.userId == request.auth.uid || 
         resource.data.assignedToUid == request.auth.uid
       );
+      
+      // Allow listing if the user is Admin, or if the query restricts
+      // results to either their own ID or their assigned orders.
+      allow list: if signedIn() && (
+        isAdmin() || 
+        (request.query.where.userId == request.auth.uid) ||
+        (request.query.where.assignedToUid == request.auth.uid)
+      );
 
       allow create: if signedIn() && (request.resource.data.userId == request.auth.uid || isAdmin());
       
-      allow update: if isAdmin() || (
+      allow update: if isAdmin() || isPartner() || (
           signedIn() && 
           resource.data.userId == request.auth.uid && 
           request.resource.data.status == 'Cancellation Requested'
@@ -95,8 +101,7 @@ service cloud.firestore {
     
     // --- PAYMENT SUBMISSIONS ---
     match /paymentSubmissions/{submissionId} {
-      // FIXED: Allow users to see their own submissions (both single read and list query)
-      allow read, list: if signedIn() && (isAdmin() || resource.data.userId == request.auth.uid);
+      allow read, list: if signedIn() && (isAdmin() || request.query.where.userId == request.auth.uid || resource.data.userId == request.auth.uid);
       allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
       allow update: if isAdmin();
     }
@@ -132,16 +137,19 @@ service cloud.firestore {
 
     // --- FINANCE & ACCOUNTING ---
     match /salesInvoices/{invoiceId} {
-        // FIXED: Removed the brittle request.query.where[0] logic.
-        // It now correctly checks the data fields directly.
         allow read, list: if signedIn() && (
           isAdmin() ||
+          request.query.where.customerId == request.auth.uid ||
+          request.query.where.assignedToUid == request.auth.uid ||
           resource.data.customerId == request.auth.uid ||
           resource.data.assignedToUid == request.auth.uid
         );
         
-        allow create: if isAdmin() || (isPartner() && request.resource.data.assignedToUid == request.auth.uid);
-        allow update: if isAdmin() || (isPartner() && resource.data.assignedToUid == request.auth.uid);
+        allow create, update: if signedIn() && (
+          isAdmin() || 
+          (exists(request.resource.data.assignedToUid) && request.resource.data.assignedToUid == request.auth.uid)
+        );
+        
         allow delete: if isAdmin();
     }
     
@@ -178,10 +186,16 @@ service cloud.firestore {
     match /grns/{id} { allow read, write: if signedIn(); }
     match /workOrders/{id} { allow read, write: if signedIn(); }
     match /serviceRequests/{id} { allow read, write: if signedIn(); }
-    match /stockTransferRequests/{id} {
-        allow read: if signedIn() && (isAdmin() || isInventoryManager() || isPartner());
-        allow create: if signedIn() && (isAdmin() || isInventoryManager());
-        allow update: if isAdmin();
+    match /stockTransferRequests/{requestId} {
+        allow read, list: if signedIn() && (
+            isAdmin() || 
+            isInventoryManager() || 
+            (request.query.where.requestingUserId == request.auth.uid) ||
+            (resource.data.requestingUserId == request.auth.uid)
+        );
+        allow create: if signedIn() && (isAdmin() || isInventoryManager() || isPartner());
+        allow update: if isAdmin() || isInventoryManager();
+        allow delete: if isAdmin();
     }
     
     // --- REGISTERED PRODUCTS (Global Collection for Admins/Service) ---
@@ -199,7 +213,10 @@ service cloud.firestore {
     match /products/{id} { allow read, list: if true; allow write: if signedIn(); }
     match /productCategories/{id} { allow read, list: if true; allow write: if isAdmin(); }
     match /posts/{id} { allow read, list: if true; allow write: if signedIn(); }
-    match /company/{id} { allow read: if true; allow write: if isAdmin() || isFunction(); }
+    match /company/{id} {
+      allow read: if true;
+      allow write: if isAdmin() || isFunction();
+    }
     match /supportSettings/{id} { allow read: if true; allow write: if isAdmin(); }
     match /faqs/{id} { allow read: if true; }
     match /helpGuides/{id} { allow read: if true; }

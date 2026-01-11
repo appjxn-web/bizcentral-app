@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -75,7 +74,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
-import { ref, uploadString, getDownloadURL } from 'firebase/storage';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { Loader2 } from 'lucide-react';
 
 function getStatusBadgeVariant(status: Order['status'] | 'Refund Pending' | 'Refund Complete' | SalesInvoice['status']) {
@@ -91,6 +90,7 @@ function getStatusBadgeVariant(status: Order['status'] | 'Refund Pending' | 'Ref
     Manufacturing: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300',
     'Ready for Dispatch': 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-300',
     'Awaiting Payment': 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300',
+    'Awaiting Payment Confirmation': 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300',
     Unpaid: 'bg-orange-100 text-orange-800',
     Overdue: 'bg-red-100 text-red-800',
     Canceled: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300',
@@ -107,14 +107,14 @@ const formatIndianCurrency = (num: number) => {
   }).format(num);
 };
 
-function PayBalanceDialog({ order, companyInfo, userProfile }: { order: Order; companyInfo: any; userProfile: UserProfile | null }) {
+function PayBalanceDialog({ order, companyInfo }: { order: Order; companyInfo: any; }) {
   const { toast } = useToast();
   const firestore = useFirestore();
   const storage = useStorage();
   const { user } = useUser();
   const [isSubmitting, setIsSubmitting] = React.useState(false);
 
-  const [amount, setAmount] = React.useState<number | ''>('');
+  const [amount, setAmount] = React.useState<number | ''>(order.balance || '');
   const [transactionId, setTransactionId] = React.useState('');
   const [paymentProofFile, setPaymentProofFile] = React.useState<File | null>(null);
   const [paymentProofPreview, setPaymentProofPreview] = React.useState<string | null>(null);
@@ -138,7 +138,7 @@ function PayBalanceDialog({ order, companyInfo, userProfile }: { order: Order; c
   };
 
   const handleSubmit = async () => {
-    if (!user || !userProfile || !amount || amount <= 0 || !transactionId) {
+    if (!user || !amount || amount <= 0 || !transactionId) {
       toast({ variant: 'destructive', title: 'Missing Information', description: 'Please enter a valid amount and transaction ID.' });
       return;
     }
@@ -154,7 +154,7 @@ function PayBalanceDialog({ order, companyInfo, userProfile }: { order: Order; c
 
       const submissionData: Omit<PaymentSubmission, 'id'> = {
         userId: user.uid,
-        customerName: userProfile.name || user.displayName || 'Unknown',
+        customerName: order.customerName,
         orderId: order.id,
         orderNumber: order.orderNumber || order.id,
         amount: Number(amount),
@@ -169,7 +169,6 @@ function PayBalanceDialog({ order, companyInfo, userProfile }: { order: Order; c
       
       toast({ title: 'Payment Submitted', description: 'Your payment submission is pending approval from our accounts team.' });
 
-      // Reset form
       setAmount('');
       setTransactionId('');
       setPaymentProofFile(null);
@@ -361,7 +360,7 @@ function CompanyPickupDetails() {
   );
 }
 
-function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, allSalesInvoices: SalesInvoice[] | null, onStatusChange: (order: Order, newStatus: OrderStatus) => void }) {
+function OrderCard({ order, allSalesInvoices }: { order: Order, allSalesInvoices: SalesInvoice[] | null }) {
     const { user } = useUser();
     const router = useRouter();
     const [isOpen, setIsOpen] = React.useState(false);
@@ -445,7 +444,7 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
                     </div>
                 </CardHeader>
                 <CardContent className="space-y-6">
-                    <OrderStatusTracker currentStatus={order.status} />
+                    <OrderStatusTracker currentStatus={order.status} onStatusChange={()=>{}} canChangeStatus={false} availableNextStatuses={[]} />
                     <CollapsibleTrigger asChild>
                          <Button variant="outline" size="sm" className="w-full">
                             {isOpen ? 'Hide' : 'Show'} Order Details <ChevronDown className={cn("h-4 w-4 ml-2 transition-transform", isOpen && "rotate-180")} />
@@ -514,7 +513,7 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
                                 )}
                             </div>
                             <div className="flex flex-wrap gap-2">
-                                {order.balance && order.balance > 0 && (
+                                {order.balance && order.balance > 0 && userProfile && (
                                     <PayBalanceDialog order={order} companyInfo={companyInfo} userProfile={userProfile} />
                                 )}
                                 {canCancel && (
@@ -578,7 +577,7 @@ function MyOrdersPageContent() {
         if (!orders) return { total: 0, inProcess: 0, shipped: 0, delivered: 0 };
         
         const total = orders.length;
-        const inProcess = orders.filter(o => ['Ordered', 'Manufacturing', 'Ready for Dispatch', 'Awaiting Payment', 'Cancellation Requested'].includes(o.status)).length;
+        const inProcess = orders.filter(o => ['Ordered', 'Manufacturing', 'Ready for Dispatch', 'Awaiting Payment', 'Awaiting Payment Confirmation', 'Cancellation Requested'].includes(o.status)).length;
         const shipped = orders.filter(o => o.status === 'Shipped').length;
         const delivered = orders.filter(o => o.status === 'Delivered').length;
 
@@ -667,6 +666,3 @@ export default function MyOrdersPage() {
 
     return <MyOrdersPageContent />;
 }
-
-    
-
