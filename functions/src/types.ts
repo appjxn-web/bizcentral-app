@@ -67,6 +67,7 @@ export interface Order {
   commission?: number;
   assignedToUid?: string;
   payoutStatus?: 'Awaiting Delivery' | 'Payable' | 'Paid' | 'No Commission';
+  paymentDetails?: string; // Added this field
 }
 
 
@@ -227,6 +228,18 @@ export interface StockTransferRequest {
   notes?: string;
 }
 
+export interface PaymentSubmission {
+  id: string;
+  userId: string;
+  customerName: string;
+  orderId: string;
+  amount: number;
+  paymentMethod: string;
+  transactionDetails: string;
+  proofUrl?: string;
+  status: 'Pending' | 'Approved' | 'Rejected';
+  submittedAt: Timestamp;
+}
     
 
   
