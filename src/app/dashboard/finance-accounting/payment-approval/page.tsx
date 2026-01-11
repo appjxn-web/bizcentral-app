@@ -160,12 +160,14 @@ export default function PaymentApprovalPage() {
     const submissionRef = doc(firestore, collectionName, submission.id);
 
     try {
-        if (isOrder) {
-            const finalStatus = newStatus === 'Approved' ? 'Ordered' : 'Canceled';
-            await updateDoc(submissionRef, { status: finalStatus });
+        let finalStatus;
+        if (newStatus === 'Approved') {
+            finalStatus = isOrder ? 'Ordered' : 'Approved';
         } else {
-            await updateDoc(submissionRef, { status: newStatus });
+            finalStatus = 'Rejected';
         }
+
+        await updateDoc(submissionRef, { status: finalStatus });
 
         toast({
             title: `Payment ${newStatus}`,
