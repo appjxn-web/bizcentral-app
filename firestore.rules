@@ -1,4 +1,5 @@
 
+
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -36,9 +37,11 @@ service cloud.firestore {
 
     // --- USERS & ACCOUNT HISTORY ---
     match /users/{userId} {
-      allow get: if signedIn();
-      allow create, update: if signedIn() && request.auth.uid == userId;
-      allow list: if isAdmin() || isPartner() || isHrManager();
+      // Allow ANY signed-in user to GET a profile.
+      // This is required so customers can see Partner/Pickup info on their orders.
+      allow get: if signedIn(); 
+      allow list: if isAdmin();
+      allow write: if isOwner(userId) || isAdmin();
       allow delete: if isAdmin();
       
       match /wallet/main {
@@ -108,13 +111,13 @@ service cloud.firestore {
       allow list: if signedIn() && (
         isAdmin() ||
         // Allow querying by their own userId
-        (request.query.where.userId is string && request.query.where.userId == request.auth.uid) ||
+        (request.query.userId is string && request.query.userId == request.auth.uid) ||
         // Allow querying by an orderId if they are the customer or the assigned partner for that order
         (
-          request.query.where.orderId is string &&
+          request.query.orderId is string &&
           (
-            get(/databases/$(database)/documents/orders/$(request.query.where.orderId)).data.userId == request.auth.uid ||
-            get(/databases/$(database)/documents/orders/$(request.query.where.orderId)).data.assignedToUid == request.auth.uid
+            get(/databases/$(database)/documents/orders/$(request.query.orderId)).data.userId == request.auth.uid ||
+            get(/databases/$(database)/documents/orders/$(request.query.orderId)).data.assignedToUid == request.auth.uid
           )
         )
       );
@@ -265,3 +268,5 @@ service cloud.firestore {
     }
   }
 }
+
+    
