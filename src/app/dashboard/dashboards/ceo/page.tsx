@@ -68,7 +68,7 @@ export default function CeoDashboardPage() {
   const { data: coaGroups } = useCollection<CoaGroup>(collection(firestore, 'coa_groups'));
   const { data: coaLedgers } = useCollection<CoaLedger>(collection(firestore, 'coa_ledgers'));
   const { data: journalVouchers } = useCollection<JournalVoucher>(collection(firestore, 'journalVouchers'));
-  const { data: leadsData } = useCollection<Lead>(collection(firestore, 'leads'));
+  const { data: leadsData } = useCollection<Lead>(isAdminOrCEO ? query(collection(firestore, 'leads'), orderBy('createdAt', 'desc')) : null);
 
 
   const liveBalances = React.useMemo(() => {
@@ -468,3 +468,5 @@ export default function CeoDashboardPage() {
     </>
   );
 }
+
+    
