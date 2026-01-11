@@ -1,5 +1,4 @@
 
-      
 'use client';
 
 import * as React from 'react';
@@ -399,12 +398,8 @@ function OrderCard({ order, allSalesInvoices }: { order: Order, allSalesInvoices
     const { data: userProfile } = useDoc<UserProfile>(userProfileRef);
 
     const paymentSubmissionsQuery = React.useMemo(() => {
-      if (!order.id || !firestore) return null;
-      return query(
-        collection(firestore, 'paymentSubmissions'), 
-        where('orderId', '==', order.id),
-        orderBy('submittedAt', 'desc')
-      );
+      if (!order.id) return null;
+      return query(collection(firestore, 'paymentSubmissions'), where('orderId', '==', order.id));
     }, [order.id, firestore]);
     const { data: paymentSubmissions } = useCollection<PaymentSubmission>(paymentSubmissionsQuery);
     
@@ -763,4 +758,6 @@ export default function MyOrdersPage() {
 
     
       
+    
+
     
