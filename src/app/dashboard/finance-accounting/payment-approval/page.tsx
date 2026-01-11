@@ -21,9 +21,9 @@ import {
 import { Button } from '@/components/ui/button';
 import { CheckCircle, XCircle, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { useFirestore, useCollection } from '@/firebase';
+import { useFirestore, useCollection, useDoc } from '@/firebase';
 import { collection, doc, updateDoc, query, orderBy, writeBatch, addDoc, serverTimestamp } from 'firebase/firestore';
-import type { PaymentSubmission, UserProfile, CoaLedger, Order } from '@/lib/types';
+import type { PaymentSubmission, UserProfile, CoaLedger, Order, CompanyInfo } from '@/lib/types';
 import { format } from 'date-fns';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
@@ -154,6 +154,7 @@ export default function PaymentApprovalPage() {
 
   const { data: users } = useCollection<UserProfile>(collection(firestore, 'users'));
   const { data: coaLedgers } = useCollection<CoaLedger>(collection(firestore, 'coa_ledgers'));
+  const { data: companyInfo } = useDoc<CompanyInfo>(doc(firestore, 'company', 'info'));
   
   const [processingId, setProcessingId] = React.useState<string | null>(null);
 
@@ -180,9 +181,16 @@ export default function PaymentApprovalPage() {
             return;
         }
 
-        const bankAccount = coaLedgers?.find(l => l.name === 'Bank – Current Account');
+        const primaryUpiId = companyInfo?.primaryUpiId;
+        if (!primaryUpiId) {
+            toast({ variant: 'destructive', title: 'Accounting Error', description: 'Primary UPI ID is not set in company settings.' });
+            setProcessingId(null);
+            return;
+        }
+
+        const bankAccount = coaLedgers?.find(l => l.bank?.upiId === primaryUpiId);
         if (!bankAccount) {
-            toast({ variant: 'destructive', title: 'Accounting Error', description: 'Default bank account "Bank – Current Account" not found.' });
+            toast({ variant: 'destructive', title: 'Accounting Error', description: `No bank account found linked to the primary UPI ID: ${primaryUpiId}.` });
             setProcessingId(null);
             return;
         }
@@ -243,7 +251,7 @@ export default function PaymentApprovalPage() {
 
   const rejectedPayments = React.useMemo(() => {
     const manual = allPayments?.filter(p => p.status === 'Rejected') || [];
-    const online = allOrders?.filter(o => o.status === 'Canceled' && o.cancellationReason?.includes('Payment')) || [];
+    const online = allOrders?.filter(o => o.status === 'Canceled') || [];
      return [...manual, ...online].sort((a,b) => {
         const dateA = 'orderNumber' in a ? new Date(a.date) : (a as PaymentSubmission).submittedAt.toDate();
         const dateB = 'orderNumber' in b ? new Date(b.date) : (b as PaymentSubmission).submittedAt.toDate();
