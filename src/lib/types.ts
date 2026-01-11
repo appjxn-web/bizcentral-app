@@ -130,6 +130,20 @@ export interface PayoutRequest {
   paymentAccountId?: string;
 }
 
+export interface PaymentSubmission {
+  id: string;
+  userId: string;
+  customerName: string;
+  orderId: string;
+  orderNumber: string;
+  amount: number;
+  paymentMethod: string;
+  transactionDetails?: string;
+  proofUrl?: string;
+  status: 'Pending' | 'Approved' | 'Rejected';
+  submittedAt: Timestamp;
+}
+
 
 export interface ProductCategory {
     id: string;
@@ -912,6 +926,7 @@ export interface SalesInvoice {
       remarks: string;
     };
     assignedToUid?: string;
+    createdByUid?: string;
 }
 
 export interface CreditItem extends Omit<SalesInvoiceItem, 'discount' | 'amount'> {

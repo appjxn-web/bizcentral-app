@@ -23,7 +23,7 @@ import { Button } from '@/components/ui/button';
 import { CheckCircle, XCircle, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useCollection, useDoc } from '@/firebase';
-import { collection, doc, updateDoc, query, orderBy, writeBatch, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, doc, updateDoc, query, orderBy, writeBatch, addDoc, serverTimestamp, setDoc, increment } from 'firebase/firestore';
 import type { PaymentSubmission, UserProfile, CoaLedger, Order, CompanyInfo } from '@/lib/types';
 import { format } from 'date-fns';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -167,11 +167,51 @@ export default function PaymentApprovalPage() {
     const collectionName = isOrder ? 'orders' : 'paymentSubmissions';
     const submissionRef = doc(firestore, collectionName, submission.id);
 
-    const finalStatus = isOrder
-      ? (newStatus === 'Approved' ? 'Ordered' : 'Canceled')
-      : newStatus;
+    let finalStatus: OrderStatus | 'Approved' | 'Rejected';
+    
+    if (isOrder) {
+        finalStatus = newStatus === 'Approved' ? 'Ordered' : 'Canceled';
+    } else {
+        finalStatus = newStatus;
+    }
 
     batch.update(submissionRef, { status: finalStatus });
+
+    // If approving a PaymentSubmission, update the order and create a journal voucher
+    if (newStatus === 'Approved' && !isOrder) {
+        const payment = submission as PaymentSubmission;
+        const orderRef = doc(firestore, 'orders', payment.orderId);
+        
+        // Update Order
+        batch.update(orderRef, {
+            paymentReceived: increment(payment.amount),
+            balance: increment(-payment.amount),
+            paymentDetails: `${orderData.paymentDetails || ''}\nApproved: ${format(new Date(), 'PPp')} - ${payment.amount} - Ref: ${payment.transactionDetails}`.trim(),
+        });
+        
+        // Create Journal Voucher
+        const user = users?.find(u => u.id === payment.userId);
+        const customerLedgerId = user?.coaLedgerId;
+        const bankLedger = coaLedgers?.find(l => l.bank?.upiId === companyInfo?.primaryUpiId);
+
+        if (customerLedgerId && bankLedger) {
+            const jvRef = doc(collection(firestore, 'journalVouchers'));
+            const jvData = {
+                id: jvRef.id,
+                date: new Date().toISOString().split("T")[0],
+                narration: `Payment for Order #${payment.orderNumber} via ${payment.paymentMethod}`,
+                voucherType: "Receipt Voucher",
+                entries: [
+                    { accountId: bankLedger.id, debit: payment.amount, credit: 0 },
+                    { accountId: customerLedgerId, debit: 0, credit: payment.amount },
+                ],
+                createdAt: serverTimestamp(),
+            };
+            batch.set(jvRef, jvData);
+        } else {
+          console.warn("Could not create JV for payment approval - ledger missing.", { customerLedgerId, bankLedgerId: bankLedger?.id });
+        }
+    }
     
     try {
         await batch.commit();

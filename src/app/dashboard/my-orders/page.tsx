@@ -23,11 +23,12 @@ import {
   DollarSign,
   RefreshCcw,
   Receipt,
+  FileUp,
 } from 'lucide-react';
 
 import { PageHeader } from '@/components/page-header';
 import { cn } from '@/lib/utils';
-import type { Order, OrderStatus, UserProfile, UserRole, WorkOrder, PickupPoint, SalesOrder, RefundRequest, SalesInvoice, Party, CompanyInfo } from '@/lib/types';
+import type { Order, OrderStatus, UserProfile, UserRole, WorkOrder, PickupPoint, SalesOrder, RefundRequest, SalesInvoice, Party, CompanyInfo, PaymentSubmission } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -54,8 +55,8 @@ import {
 } from '@/components/ui/collapsible';
 import Image from 'next/image';
 import { Separator } from '@/components/ui/separator';
-import { useFirestore, useCollection, useUser, useDoc } from '@/firebase';
-import { collection, query, orderBy, doc, where, or, updateDoc, writeBatch } from 'firebase/firestore';
+import { useFirestore, useCollection, useUser, useDoc, useStorage } from '@/firebase';
+import { collection, query, orderBy, doc, where, or, updateDoc, writeBatch, serverTimestamp, addDoc, Timestamp } from 'firebase/firestore';
 import { OrderStatusTracker } from './_components/order-status';
 import {
   Dialog,
@@ -69,10 +70,13 @@ import {
 } from '@/components/ui/dialog';
 import { QRCodeSVG } from 'qrcode.react';
 import { Input } from '@/components/ui/input';
+import { useRole } from '../../_components/role-provider';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
+import { ref, uploadString, getDownloadURL } from 'firebase/storage';
+import { Loader2 } from 'lucide-react';
 
 function getStatusBadgeVariant(status: Order['status'] | 'Refund Pending' | 'Refund Complete' | SalesInvoice['status']) {
   const variants: Record<string, string> = {
@@ -103,43 +107,141 @@ const formatIndianCurrency = (num: number) => {
   }).format(num);
 };
 
-function PayBalanceDialog({ order, companyInfo }: { order: Order, companyInfo: any }) {
-    if (!order.balance || order.balance <= 0) return null;
+function PayBalanceDialog({ order, companyInfo, userProfile }: { order: Order; companyInfo: any; userProfile: UserProfile | null }) {
+  const { toast } = useToast();
+  const firestore = useFirestore();
+  const storage = useStorage();
+  const { user } = useUser();
+  const [isSubmitting, setIsSubmitting] = React.useState(false);
 
-    const upiString = `upi://pay?pa=${companyInfo?.primaryUpiId || 'your-upi-id@okhdfcbank'}&pn=${encodeURIComponent(companyInfo?.companyName || 'Your Company Name')}&am=${order.balance.toFixed(2)}&cu=INR&tn=Order%20Balance%20Payment`;
+  const [amount, setAmount] = React.useState<number | ''>('');
+  const [transactionId, setTransactionId] = React.useState('');
+  const [paymentProofFile, setPaymentProofFile] = React.useState<File | null>(null);
+  const [paymentProofPreview, setPaymentProofPreview] = React.useState<string | null>(null);
+  const proofInputRef = React.useRef<HTMLInputElement>(null);
 
-    return (
-        <Dialog>
-            <DialogTrigger asChild>
-                <Button size="sm">
-                    <DollarSign className="mr-2 h-4 w-4" /> Pay Balance
-                </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-md">
-                <DialogHeader>
-                    <DialogTitle>Pay Remaining Balance</DialogTitle>
-                    <DialogDescription>
-                        Scan the QR code to pay the balance of {formatIndianCurrency(order.balance)} for Order ID: {order.orderNumber || order.id}.
-                    </DialogDescription>
-                </DialogHeader>
-                <div className="flex flex-col items-center gap-4 py-4">
-                    <div className="p-4 bg-white rounded-lg border">
-                        <QRCodeSVG value={upiString} size={180} />
-                    </div>
-                    <p className="text-sm text-muted-foreground text-center">
-                        After payment, please enter the transaction ID in the field below to confirm your payment.
-                    </p>
-                    <Input placeholder="Enter UPI Transaction ID" />
-                </div>
-                <DialogFooter>
-                    <DialogClose asChild>
-                        <Button type="button" variant="outline">Close</Button>
-                    </DialogClose>
-                     <Button type="button">Confirm Payment</Button>
-                </DialogFooter>
-            </DialogContent>
-        </Dialog>
-    )
+  const upiString = React.useMemo(() => {
+    if (!companyInfo?.primaryUpiId || !amount || amount <= 0) return '';
+    return `upi://pay?pa=${companyInfo.primaryUpiId}&pn=${encodeURIComponent(companyInfo.companyName || 'Your Company')}&am=${Number(amount).toFixed(2)}&cu=INR&tn=Order%20${order.orderNumber}`;
+  }, [companyInfo, amount, order.orderNumber]);
+
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      setPaymentProofFile(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setPaymentProofPreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleSubmit = async () => {
+    if (!user || !userProfile || !amount || amount <= 0 || !transactionId) {
+      toast({ variant: 'destructive', title: 'Missing Information', description: 'Please enter a valid amount and transaction ID.' });
+      return;
+    }
+    
+    setIsSubmitting(true);
+    try {
+      let proofUrl = '';
+      if (paymentProofFile) {
+        const storageRef = ref(storage, `payment_proofs/${user.uid}/${order.id}/${Date.now()}_${paymentProofFile.name}`);
+        const snapshot = await uploadBytes(storageRef, paymentProofFile);
+        proofUrl = await getDownloadURL(snapshot.ref);
+      }
+
+      const submissionData: Omit<PaymentSubmission, 'id'> = {
+        userId: user.uid,
+        customerName: userProfile.name || user.displayName || 'Unknown',
+        orderId: order.id,
+        orderNumber: order.orderNumber || order.id,
+        amount: Number(amount),
+        paymentMethod: 'UPI / Online',
+        transactionDetails: transactionId,
+        proofUrl: proofUrl,
+        status: 'Pending',
+        submittedAt: Timestamp.now(),
+      };
+      
+      await addDoc(collection(firestore, 'paymentSubmissions'), submissionData);
+      
+      toast({ title: 'Payment Submitted', description: 'Your payment submission is pending approval from our accounts team.' });
+
+      // Reset form
+      setAmount('');
+      setTransactionId('');
+      setPaymentProofFile(null);
+      setPaymentProofPreview(null);
+      
+    } catch (error) {
+      console.error(error);
+      toast({ variant: 'destructive', title: 'Submission Failed' });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+  
+
+  if (!order.balance || order.balance <= 0) return null;
+
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button size="sm">
+          <DollarSign className="mr-2 h-4 w-4" /> Pay Balance
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Pay Balance for Order: {order.orderNumber || order.id}</DialogTitle>
+          <DialogDescription>
+            You can pay the full amount of <span className="font-bold">{formatIndianCurrency(order.balance)}</span> or make a partial payment.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="py-4 space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="pay-amount">Amount to Pay</Label>
+            <Input
+              id="pay-amount"
+              type="number"
+              value={amount}
+              onChange={(e) => setAmount(Number(e.target.value))}
+              placeholder={`Max: ${order.balance.toFixed(2)}`}
+            />
+          </div>
+          {upiString && (
+            <div className="flex flex-col items-center gap-2">
+              <div className="p-2 bg-white rounded-lg border">
+                <QRCodeSVG value={upiString} size={150} />
+              </div>
+              <p className="text-xs text-muted-foreground text-center">Scan with any UPI app to pay.</p>
+            </div>
+          )}
+          <div className="space-y-2">
+            <Label htmlFor="transaction-id">UPI Transaction ID</Label>
+            <Input id="transaction-id" value={transactionId} onChange={(e) => setTransactionId(e.target.value)} placeholder="Enter ID after payment" />
+          </div>
+          <div className="space-y-2">
+            <Label>Upload Screenshot (Optional)</Label>
+            <Input type="file" ref={proofInputRef} onChange={handleFileChange} className="hidden" accept="image/*" />
+            <Button type="button" variant="outline" className="w-full" onClick={() => proofInputRef.current?.click()}>
+              <FileUp className="h-4 w-4 mr-2" /> Upload Image
+            </Button>
+            {paymentProofPreview && <img src={paymentProofPreview} alt="Proof preview" className="mt-2 rounded-md border max-h-40" />}
+          </div>
+        </div>
+        <DialogFooter>
+          <DialogClose asChild><Button type="button" variant="outline">Close</Button></DialogClose>
+          <Button type="button" onClick={handleSubmit} disabled={isSubmitting || !amount || !transactionId}>
+            {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Submit for Approval
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 function CancelOrderDialog({ order, onConfirm, open, onOpenChange }: { order: Order; onConfirm: (reason: string, details?: string) => void; open: boolean; onOpenChange: (open: boolean) => void }) {
@@ -201,63 +303,65 @@ function CancelOrderDialog({ order, onConfirm, open, onOpenChange }: { order: Or
 }
 
 
-function PartnerPickupDetails({ pickupPointId }: { pickupPointId: string }) {
+function PartnerPickupDetails({ userId }: { userId: string }) {
     const firestore = useFirestore();
-    const pickupPointRef = pickupPointId ? doc(firestore, 'pickupPoints', pickupPointId) : null;
-    const { data: pickupPoint, loading } = useDoc<PickupPoint>(pickupPointRef);
+    const userDocRef = userId ? doc(firestore, 'users', userId) : null;
+    const { data: partner, loading } = useDoc<UserProfile>(userDocRef);
 
-    if (loading) return <p className="text-sm text-muted-foreground">Loading details...</p>;
-    if (!pickupPoint) return <p className="text-sm text-destructive">Could not load partner details.</p>;
+    if (loading) return <p className="text-sm text-muted-foreground">Loading partner details...</p>;
+    if (!partner) return <p className="text-sm text-destructive">Could not load partner details.</p>;
     
-    const addressString = pickupPoint.addressLine || '';
+    const address = (partner.addresses || [])[0];
+    const addressString = address ? [address.line1, address.line2, address.city, address.state, address.pin].filter(Boolean).join(', ') : 'Address not available';
+    
     let mapUrl = addressString ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addressString)}` : '';
-    if (pickupPoint.lat && pickupPoint.lng) {
-        mapUrl = `https://www.google.com/maps/search/?api=1&query=${pickupPoint.lat},${pickupPoint.lng}`;
+    if (address?.latitude && address?.longitude) {
+        mapUrl = `https://www.google.com/maps/search/?api=1&query=${address.latitude},${address.longitude}`;
     }
 
     return (
         <>
-            <p className="font-medium">{pickupPoint.name}</p>
+            <p className="font-medium">{partner.businessName || partner.name}</p>
             <p className="text-xs text-muted-foreground">Partner</p>
             {addressString && <p className="mt-2 text-sm">{addressString}</p>}
             <div className="flex gap-4 mt-2">
+                {partner.mobile && <a href={`tel:${partner.mobile}`} className="flex items-center gap-1 text-primary hover:underline text-sm"><Phone className="mr-2 h-4 w-4" /> Call</a>}
                 {mapUrl && <a href={mapUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-primary hover:underline text-sm"><MapPin className="h-4 w-4" /> Get Directions</a>}
             </div>
         </>
     );
 }
 
-function CompanyPickupDetails({ point }: { point?: Order['pickupPoint'] }) {
-    const { data: companyInfo, loading } = useDoc<any>(doc(useFirestore(), 'company', 'info'));
-    
-    if (loading) return <p className="text-sm text-muted-foreground">Loading details...</p>;
-    if (!companyInfo) return <p className="text-sm text-destructive">Could not load company details.</p>;
+function CompanyPickupDetails() {
+  const { data: companyInfo, loading } = useDoc<any>(doc(useFirestore(), 'company', 'info'));
+  if (loading) return <p className="text-sm text-muted-foreground">Loading details...</p>;
+  if (!companyInfo) return <p className="text-sm text-destructive">Could not load company details.</p>;
 
-    const mainAddress = companyInfo.addresses?.find((a: any) => a.type === 'Main Office' || a.type === 'Registered Office') || companyInfo.addresses?.[0];
+  const mainAddress = companyInfo.addresses?.find((a: any) => a.type === 'Main Office' || a.type === 'Registered Office') || companyInfo.addresses?.[0];
 
-    if (!mainAddress) return <p className="text-sm text-destructive">Main company address not found.</p>;
-
-    const addressString = [mainAddress.line1, mainAddress.line2, mainAddress.city, mainAddress.state, mainAddress.pin].filter(Boolean).join(', ');
-    const phone = mainAddress.pickupContactPhone || companyInfo.contactNumber;
-    let mapUrl = addressString ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addressString)}` : '';
-    if (mainAddress.latitude && mainAddress.longitude) {
-      mapUrl = `https://www.google.com/maps/search/?api=1&query=${mainAddress.latitude},${mainAddress.longitude}`;
-    }
-    
-    return (
-        <>
-            <p className="font-medium">{mainAddress.pickupContactName || companyInfo.companyName}</p>
-            <p className="text-xs text-muted-foreground">Main Office / Factory</p>
-            {addressString && <p className="mt-2 text-sm">{addressString}</p>}
-            <div className="flex gap-4 mt-2">
-                {phone && <a href={`tel:${phone}`} className="flex items-center gap-1 text-primary hover:underline text-sm"><Phone className="h-4 w-4" /> Call</a>}
-                {mapUrl && <a href={mapUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-primary hover:underline text-sm"><MapPin className="h-4 w-4" /> Get Directions</a>}
-            </div>
-        </>
-    );
+  if (!mainAddress) return <p className="text-sm text-destructive">Main company address not found.</p>;
+  
+  const addressString = [mainAddress.line1, mainAddress.line2, mainAddress.city, mainAddress.state, mainAddress.pin].filter(Boolean).join(', ');
+  const phone = mainAddress.pickupContactPhone || companyInfo.contactNumber;
+  let mapUrl = addressString ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addressString)}` : '';
+  if (mainAddress.latitude && mainAddress.longitude) {
+    mapUrl = `https://www.google.com/maps/search/?api=1&query=${mainAddress.latitude},${mainAddress.longitude}`;
+  }
+  
+  return (
+      <>
+          <p className="font-medium">{mainAddress.pickupContactName || companyInfo.companyName}</p>
+          <p className="text-xs text-muted-foreground">Main Office / Factory</p>
+          {addressString && <p className="mt-2 text-sm">{addressString}</p>}
+          <div className="flex gap-4 mt-2">
+              {phone && <a href={`tel:${phone}`} className="flex items-center gap-1 text-primary hover:underline text-sm"><Phone className="h-4 w-4" /> Call</a>}
+              {mapUrl && <a href={mapUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-primary hover:underline text-sm"><MapPin className="h-4 w-4" /> Get Directions</a>}
+          </div>
+      </>
+  );
 }
 
-function OrderCard({ order, allSalesInvoices }: { order: Order, allSalesInvoices: SalesInvoice[] | null }) {
+function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, allSalesInvoices: SalesInvoice[] | null, onStatusChange: (order: Order, newStatus: OrderStatus) => void }) {
     const { user } = useUser();
     const router = useRouter();
     const [isOpen, setIsOpen] = React.useState(false);
@@ -265,8 +369,8 @@ function OrderCard({ order, allSalesInvoices }: { order: Order, allSalesInvoices
     const { data: companyInfo } = useDoc(doc(firestore, 'company', 'info'));
     const [isCancelDialogOpen, setIsCancelDialogOpen] = React.useState(false);
     const { toast } = useToast();
+    const { data: userProfile } = useDoc<UserProfile>(user ? doc(firestore, 'users', user.uid) : null);
 
-    // Fetch corresponding refund request if the order is canceled
     const refundQuery = order.status === 'Canceled' && user
       ? query(collection(firestore, 'refundRequests'), where('customerId', '==', user.uid), where('orderId', '==', order.id))
       : null;
@@ -404,14 +508,14 @@ function OrderCard({ order, allSalesInvoices }: { order: Order, allSalesInvoices
                             <h4 className="font-semibold">Pickup Details</h4>
                              <div className="p-3 rounded-md border bg-background">
                                 {order.assignedToUid && order.pickupPointId !== 'company-main' ? (
-                                    <PartnerPickupDetails pickupPointId={order.pickupPointId!} />
+                                    <PartnerPickupDetails userId={order.assignedToUid} />
                                 ) : (
                                     <CompanyPickupDetails />
                                 )}
                             </div>
                             <div className="flex flex-wrap gap-2">
                                 {order.balance && order.balance > 0 && (
-                                    <PayBalanceDialog order={order} companyInfo={companyInfo} />
+                                    <PayBalanceDialog order={order} companyInfo={companyInfo} userProfile={userProfile} />
                                 )}
                                 {canCancel && (
                                     <Button variant="destructive" size="sm" onClick={() => setIsCancelDialogOpen(true)}>
@@ -534,7 +638,7 @@ function MyOrdersPageContent() {
            <Card><CardContent className="p-12 text-center">Loading your orders...</CardContent></Card>
         ) : orders && orders.length > 0 ? (
             orders.map((order) => (
-                <OrderCard key={order.id} order={order} allSalesInvoices={allSalesInvoices} />
+                <OrderCard key={order.id} order={order} allSalesInvoices={allSalesInvoices} onStatusChange={() => {}} />
             ))
         ) : (
             <Card>
@@ -565,3 +669,4 @@ export default function MyOrdersPage() {
 }
 
     
+
