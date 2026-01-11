@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -310,7 +311,10 @@ function PartnerPickupDetails({ userId }: { userId: string }) {
     const [loading, setLoading] = React.useState(true);
 
     React.useEffect(() => {
-        if (!userId) return;
+        if (!userId) {
+            setLoading(false);
+            return;
+        };
         
         const fetchPartner = async () => {
             try {
