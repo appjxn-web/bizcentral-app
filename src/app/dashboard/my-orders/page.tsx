@@ -190,7 +190,6 @@ function PayBalanceDialog({ order, companyInfo, balance }: { order: Order; compa
 
       toast({ title: 'Payment Proof Submitted', description: 'An accounts manager will verify your payment shortly.' });
 
-      // Reset form
       setAmountToPay('');
       setTransactionId('');
       setPaymentProofFile(null);
@@ -462,12 +461,28 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
     const { data: userProfile } = useDoc<UserProfile>(userProfileRef);
 
     const paymentSubmissionsQuery = React.useMemo(() => {
-      if (!order.id || !firestore) return null;
+      if (!order.id || !user?.uid || !firestore) return null;
+      
+      const submissionsRef = collection(firestore, 'paymentSubmissions');
+
+      // Security Filter: Admins can see all, others can only see theirs by user or assignment
+      if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
+        return query(
+          submissionsRef, 
+          where('orderId', '==', order.id), 
+          orderBy('submittedAt', 'desc')
+        );
+      }
+    
+      const securityField = currentRole === 'Partner' ? 'assignedToUid' : 'userId';
       return query(
-        collection(firestore, 'paymentSubmissions'),
-        where('orderId', '==', order.id)
+        submissionsRef,
+        where('orderId', '==', order.id),
+        where(securityField, '==', user.uid),
+        orderBy('submittedAt', 'desc')
       );
-    }, [order.id, firestore]);
+    }, [order.id, user?.uid, currentRole, firestore]);
+
     const { data: paymentSubmissions } = useCollection<PaymentSubmission>(paymentSubmissionsQuery);
     
     const { totalPaid, balanceDue, paymentHistory } = React.useMemo(() => {
@@ -627,7 +642,7 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
                                     <p className="text-xs font-semibold">Payment History:</p>
                                     {paymentHistory.map((p, i) => (
                                         <p key={i} className="text-xs text-muted-foreground font-mono whitespace-pre-wrap">
-                                            {format(p.date, 'dd/MM/yy')}: {formatIndianCurrency(p.amount)} - {p.details}
+                                            {format(p.date, 'dd/MM/yy')}: {formatIndianCurrency(p.amount)} - {p.details} ({p.status})
                                         </p>
                                     ))}
                                 </div>
