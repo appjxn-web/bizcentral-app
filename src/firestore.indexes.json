@@ -72,20 +72,6 @@
       ]
     },
     {
-      "collectionGroup": "paymentSubmissions",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "userId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "status",
-          "order": "ASCENDING"
-        }
-      ]
-    },
-    {
       "collectionGroup": "stockTransferRequests",
       "queryScope": "COLLECTION",
       "fields": [
@@ -120,9 +106,71 @@
           "order": "DESCENDING"
         }
       ]
+    },
+    {
+      "collectionGroup": "paymentSubmissions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "assignedToUid",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "orderId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "submittedAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "paymentSubmissions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "orderId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "userId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "submittedAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "reimbursementRequests",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "createdByUid",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "quotations",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "createdBy",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
     }
   ],
   "fieldOverrides": []
 }
-
-    
