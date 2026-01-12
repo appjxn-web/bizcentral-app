@@ -66,7 +66,7 @@ service cloud.firestore {
        allow read, list: if isAdmin();
     }
 
-    // --- 6. PUBLIC CONTENT (Fixes "Wishlist" and "Posts" errors) ---
+    // --- 6. PUBLIC CONTENT (Fixes "Wishlist", "Posts", "Offers" errors) ---
     match /products/{id} {
       allow read, list: if true; 
       allow write: if isAdmin();
@@ -81,9 +81,15 @@ service cloud.firestore {
       allow read, list: if true; // Allow public read access to offers
       allow write: if isAdmin();
     }
+    
+    match /vacancies/{id} {
+        allow read, list: if true; // Allow public read for job vacancies
+        allow write: if isAdmin();
+    }
 
-    // --- 7. MISC SETTINGS ---
+    // --- 7. MISC SETTINGS (Fixes Map errors) ---
     match /pickupPoints/{id} { allow read, list: if true; allow write: if isAdmin(); }
+    match /locations/{id} { allow read, list: if true; allow write: if isAdmin(); }
     match /company/{id} { allow read: if true; allow write: if isAdmin(); }
     
     match /paymentSubmissions/{id} {
