@@ -72,20 +72,6 @@
       ]
     },
     {
-      "collectionGroup": "paymentSubmissions",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "userId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "status",
-          "order": "ASCENDING"
-        }
-      ]
-    },
-    {
       "collectionGroup": "stockTransferRequests",
       "queryScope": "COLLECTION",
       "fields": [
@@ -142,6 +128,5 @@
   ],
   "fieldOverrides": []
 }
-
     
     
