@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -135,12 +136,13 @@ export default function BankAndCashPage() {
     });
     
     // 2. Apply all journal vouchers
-    journalVouchers.forEach(jv => {
+    const sortedVouchers = [...journalVouchers].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    sortedVouchers.forEach(jv => {
         jv.entries.forEach(entry => {
             if (balances.has(entry.accountId)) {
                 const currentBal = balances.get(entry.accountId)!;
                 const newBal = currentBal + (entry.debit || 0) - (entry.credit || 0);
-                balances.set(acc.id, newBal);
+                balances.set(entry.accountId, newBal);
             }
         });
     });
@@ -431,7 +433,7 @@ export default function BankAndCashPage() {
                 <Button onClick={() => handleOpenDialog(null)}>
                     <PlusCircle className="mr-2 h-4 w-4" /> Add Account
                 </Button>
-            DialogTrigger>
+            </DialogTrigger>
             <DialogContent className="sm:max-w-lg">
                 <DialogHeader>
                 <DialogTitle>{editingAccount ? 'Edit' : 'Add New'} Account</DialogTitle>
@@ -443,7 +445,7 @@ export default function BankAndCashPage() {
                     <TabsList className="grid w-full grid-cols-2">
                         <TabsTrigger value="bank">Bank Account</TabsTrigger>
                         <TabsTrigger value="cash">Cash Account</TabsTrigger>
-                    TabsList>
+                    </TabsList>
                     <TabsContent value="bank">
                         <ScrollArea className="h-[60vh]">
                             <div className="space-y-4 py-4 pr-6">
@@ -480,12 +482,12 @@ export default function BankAndCashPage() {
                                     <Input id="bank-opening-balance" type="number" placeholder="₹0.00" value={bankOpeningBalance} onChange={e => setBankOpeningBalance(e.target.value)} disabled={!!editingAccount} />
                                 </div>
                             </div>
-                        ScrollArea>
+                        </ScrollArea>
                         <DialogFooter className="pt-4 border-t">
                             <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
                             <Button onClick={() => handleAddAccount('Bank')}>Save Bank Account</Button>
-                        DialogFooter>
-                    TabsContent>
+                        </DialogFooter>
+                    </TabsContent>
                     <TabsContent value="cash">
                         <div className="space-y-4 py-4">
                             <div className="space-y-2">
@@ -501,39 +503,39 @@ export default function BankAndCashPage() {
                                 <Select value={linkedUserId} onValueChange={(value) => setLinkedUserId(value === 'no-user-linked' ? '' : value)}>
                                     <SelectTrigger id="link-user">
                                         <SelectValue placeholder="Select employee or partner..." />
-                                    SelectTrigger>
+                                    </SelectTrigger>
                                     <SelectContent>
                                         <SelectItem value="no-user-linked">None</SelectItem>
                                         {linkableUsers.map((user) => (
                                             <SelectItem key={user.id} value={user.id}>
                                                 {user.name} ({user.role})
-                                            SelectItem>
+                                            </SelectItem>
                                         ))}
-                                    SelectContent>
-                                Select>
-                            div>
+                                    </SelectContent>
+                                </Select>
+                            </div>
                             <div className="space-y-2">
                                 <Label htmlFor="cash-opening-balance">Opening Balance</Label>
                                 <Input id="cash-opening-balance" type="number" placeholder="₹0.00" value={cashOpeningBalance} onChange={e => setCashOpeningBalance(e.target.value)} disabled={!!editingAccount}/>
-                            div>
-                        div>
+                            </div>
+                        </div>
                         <DialogFooter>
                             <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
                             <Button onClick={() => handleAddAccount('Cash')}>Save Cash Account</Button>
-                        DialogFooter>
-                    TabsContent>
-                Tabs>
-            DialogContent>
-            Dialog>
-        div>
-      PageHeader>
+                        </DialogFooter>
+                    </TabsContent>
+                </Tabs>
+            </DialogContent>
+            </Dialog>
+        </div>
+      </PageHeader>
       
       <div className="space-y-6">
         <Card>
             <CardHeader>
                 <CardTitle>Primary UPI for Payments</CardTitle>
                 <CardDescription>Select the default UPI ID to be used for generating QR codes on invoices and checkout.</CardDescription>
-            CardHeader>
+            </CardHeader>
             <CardContent>
                 <div className="flex items-end gap-4">
                     <div className="flex-1 space-y-2">
@@ -541,87 +543,87 @@ export default function BankAndCashPage() {
                         <Select value={primaryUpiId} onValueChange={setPrimaryUpiId}>
                             <SelectTrigger id="primary-upi">
                                 <SelectValue placeholder="Select a UPI ID" />
-                            SelectTrigger>
+                            </SelectTrigger>
                             <SelectContent>
                                 {bankAccounts.filter(acc => acc.bank?.upiId).map(acc => (
                                     <SelectItem key={acc.id} value={acc.bank!.upiId!}>
                                         {acc.bank!.upiId} ({acc.name})
-                                    SelectItem>
+                                    </SelectItem>
                                 ))}
-                            SelectContent>
-                        Select>
-                    div>
+                            </SelectContent>
+                        </Select>
+                    </div>
                     <Button onClick={handleSavePrimaryUpi}>
                         <Save className="mr-2 h-4 w-4" /> Save Primary UPI
-                    Button>
-                div>
-            CardContent>
-        Card>
+                    </Button>
+                </div>
+            </CardContent>
+        </Card>
 
         <Card>
             <CardHeader>
                 <CardTitle>Bank Accounts</CardTitle>
                 <CardDescription>A list of all your company bank accounts.</CardDescription>
-            CardHeader>
+            </CardHeader>
             <CardContent>
                 <Table>
                     <TableHeader>
                         <TableRow>
-                            <TableHead>Account NameTableHead>
-                            <TableHead>Bank NameTableHead>
-                            <TableHead>Account No.TableHead>
-                            <TableHead className="text-right">Current BalanceTableHead>
-                            <TableHead className="w-16">span className="sr-only">Actions/span>TableHead>
-                        TableRow>
-                    TableHeader>
+                            <TableHead>Account Name</TableHead>
+                            <TableHead>Bank Name</TableHead>
+                            <TableHead>Account No.</TableHead>
+                            <TableHead className="text-right">Current Balance</TableHead>
+                            <TableHead className="w-16"><span className="sr-only">Actions</span></TableHead>
+                        </TableRow>
+                    </TableHeader>
                     <TableBody>
                         {loading ? (
-                             <TableRow><TableCell colSpan={5} className="h-24 text-center">Loading...TableCell>TableRow>
+                             <TableRow><TableCell colSpan={5} className="h-24 text-center">Loading...</TableCell></TableRow>
                         ) : bankAccounts.length > 0 ? (
                             bankAccounts.map(acc => (
                                 <TableRow key={acc.id} >
-                                    <TableCell className="font-medium cursor-pointer" onClick={() => handleRowClick(acc.id)}>{acc.name}TableCell>
-                                    <TableCell className="cursor-pointer" onClick={() => handleRowClick(acc.id)}>{acc.bank?.bankName}TableCell>
-                                    <TableCell className="font-mono cursor-pointer" onClick={() => handleRowClick(acc.id)}>{acc.bank?.accountNumberMasked}TableCell>
-                                    <TableCell className="text-right font-mono cursor-pointer" onClick={() => handleRowClick(acc.id)}>₹{(liveBalances.get(acc.id) || 0).toFixed(2)}TableCell>
+                                    <TableCell className="font-medium cursor-pointer" onClick={() => handleRowClick(acc.id)}>{acc.name}</TableCell>
+                                    <TableCell className="cursor-pointer" onClick={() => handleRowClick(acc.id)}>{acc.bank?.bankName}</TableCell>
+                                    <TableCell className="font-mono cursor-pointer" onClick={() => handleRowClick(acc.id)}>{acc.bank?.accountNumberMasked}</TableCell>
+                                    <TableCell className="text-right font-mono cursor-pointer" onClick={() => handleRowClick(acc.id)}>₹{(liveBalances.get(acc.id) || 0).toFixed(2)}</TableCell>
                                     <TableCell>
                                         <Button variant="ghost" size="icon" onClick={() => handleOpenDialog(acc)}>
                                             <Edit className="h-4 w-4" />
-                                            span className="sr-only">Edit/span>
-                                        Button>
-                                    TableCell>
-                                TableRow>
+                                            <span className="sr-only">Edit</span>
+                                        </Button>
+                                    </TableCell>
+                                </TableRow>
                             ))
                         ) : (
                             <TableRow>
                                 <TableCell colSpan={5} className="h-24 text-center">
                                     No bank accounts added yet.
-                                TableCell>
-                            TableRow>
+                                </TableCell>
+                            </TableRow>
                         )}
-                    TableBody>
-                Table>
-            CardContent>
-        Card>
+                    </TableBody>
+                </Table>
+            </CardContent>
+        </Card>
         
         <Card>
             <CardHeader>
                 <CardTitle>Cash Accounts</CardTitle>
                 <CardDescription>A list of all your physical cash accounts.</CardDescription>
-            CardHeader>
+            </CardHeader>
             <CardContent>
                 <Table>
                     <TableHeader>
                         <TableRow>
-                            <TableHead>Account NameTableHead>
-                            <TableHead>Location / Linked UserTableHead>
-                            <TableHead className="text-right">Current BalanceTableHead>
-                            <TableHead className="w-16">span className="sr-only">Actions/span>TableHead>
-                        TableRow>
-                    TableHeader>
+                            <TableHead>Account Name</TableHead>
+                            <TableHead>Location / Linked User</TableHead>
+                            <TableHead className="text-right">Current Balance</TableHead>
+                            <TableHead className="w-16"><span className="sr-only">Actions</span></TableHead>
+                        </TableRow>
+                    </TableHeader>
                     <TableBody>
                         {loading ? (
-                             <TableRow><TableCell colSpan={4} className="h-24 text-center">Loading...TableCell>TableRow>
+                             <TableRow><TableCell colSpan={4} className="h-24 text-center">Loading...</TableCell></TableRow>
                         ) : cashAccounts.length > 0 ? (
                             cashAccounts.map(acc => {
                                 const location = acc.tags?.[0] || '';
@@ -630,33 +632,32 @@ export default function BankAndCashPage() {
                                 const displayLinked = linkedUser ? linkedUser.email : linkedId;
                                 return (
                                     <TableRow key={acc.id}>
-                                        <TableCell className="font-medium cursor-pointer" onClick={() => handleRowClick(acc.id)}>{acc.name}TableCell>
+                                        <TableCell className="font-medium cursor-pointer" onClick={() => handleRowClick(acc.id)}>{acc.name}</TableCell>
                                         <TableCell className="cursor-pointer" onClick={() => handleRowClick(acc.id)}>
                                             {[location, displayLinked].filter(Boolean).join(', ')}
-                                        TableCell>
-                                        <TableCell className="text-right font-mono cursor-pointer" onClick={() => handleRowClick(acc.id)}>₹{(liveBalances.get(acc.id) || 0).toFixed(2)}TableCell>
+                                        </TableCell>
+                                        <TableCell className="text-right font-mono cursor-pointer" onClick={() => handleRowClick(acc.id)}>₹{(liveBalances.get(acc.id) || 0).toFixed(2)}</TableCell>
                                         <TableCell>
                                             <Button variant="ghost" size="icon" onClick={() => handleOpenDialog(acc)}>
                                                 <Edit className="h-4 w-4" />
-                                                span className="sr-only">Edit/span>
-                                            Button>
-                                        TableCell>
-                                    TableRow>
+                                                <span className="sr-only">Edit</span>
+                                            </Button>
+                                        </TableCell>
+                                    </TableRow>
                                 );
                             })
                         ) : (
                             <TableRow>
                                 <TableCell colSpan={4} className="h-24 text-center">
                                     No cash accounts added yet.
-                                TableCell>
-                            TableRow>
+                                </TableCell>
+                            </TableRow>
                         )}
-                    TableBody>
-                Table>
-            CardContent>
-        Card>
-      div>
-    >
+                    </TableBody>
+                </Table>
+            </CardContent>
+        </Card>
+      </div>
+    </>
   );
 }
-
