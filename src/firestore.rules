@@ -1,4 +1,5 @@
 
+
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -102,11 +103,12 @@ service cloud.firestore {
     match /paymentSubmissions/{submissionId} {
       allow read, list: if signedIn() && (
         isAdmin() || 
-        resource.data.userId == request.auth.uid || 
-        resource.data.assignedToUid == request.auth.uid
+        (request.query.keys().hasAny(['userId']) && request.query.userId == request.auth.uid) ||
+        (request.query.keys().hasAny(['assignedToUid']) && request.query.assignedToUid == request.auth.uid) ||
+        (request.query.keys().hasAny(['orderId']) && get(/databases/$(database)/documents/orders/$(request.query.orderId)).data.userId == request.auth.uid)
       );
       
-      allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
+      allow create: if signedIn();
       allow update: if isAdmin();
       allow delete: if isAdmin();
     }

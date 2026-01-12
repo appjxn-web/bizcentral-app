@@ -463,27 +463,28 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
     const { data: userProfile } = useDoc<UserProfile>(userProfileRef);
 
     const paymentSubmissionsQuery = React.useMemo(() => {
-      if (!order.id || !user?.uid || !firestore) return null;
+        if (!order.id || !user?.uid || !firestore) return null;
+        
+        const submissionsRef = collection(firestore, 'paymentSubmissions');
       
-      const submissionsRef = collection(firestore, 'paymentSubmissions');
-
-      // Security Filter for queries
-      if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
+        // Security Filter for queries
+        if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
+          return query(
+            submissionsRef, 
+            where('orderId', '==', order.id), 
+            orderBy('submittedAt', 'desc')
+          );
+        }
+      
+        const securityField = currentRole === 'Partner' ? 'assignedToUid' : 'userId';
+      
         return query(
-          submissionsRef, 
-          where('orderId', '==', order.id), 
+          submissionsRef,
+          where('orderId', '==', order.id),
+          where(securityField, '==', user.uid), // THIS IS THE REQUIRED SECURITY FILTER
           orderBy('submittedAt', 'desc')
         );
-      }
-    
-      const securityField = currentRole === 'Partner' ? 'assignedToUid' : 'userId';
-      return query(
-        submissionsRef,
-        where('orderId', '==', order.id),
-        where(securityField, '==', user.uid),
-        orderBy('submittedAt', 'desc')
-      );
-    }, [order.id, user?.uid, currentRole, firestore]);
+      }, [order.id, user?.uid, currentRole, firestore]);
 
     const { data: paymentSubmissions } = useCollection<PaymentSubmission>(paymentSubmissionsQuery);
     
@@ -885,4 +886,5 @@ export default function OrdersPage() {
 
     return <OrdersPageContent />;
 }
+
 
