@@ -25,9 +25,8 @@ service cloud.firestore {
       }
     }
 
-    // --- 3. ACCOUNTING (Fixes "My Ledger" and "Total Paid" errors) ---
+    // --- 3. ACCOUNTING ---
     match /journalVouchers/{id} { 
-      // Allow customers to see vouchers created for them or by them
       allow read, list: if signedIn(); 
       allow write: if isAdmin();
     }
@@ -36,7 +35,7 @@ service cloud.firestore {
     match /coa_groups/{id} { allow read: if signedIn(); allow write: if isAdmin(); }
     match /parties/{id} { allow read: if signedIn(); allow write: if isAdmin(); }
 
-    // --- 4. LOGISTICS (Orders & Invoices) ---
+    // --- 4. LOGISTICS ---
     match /orders/{orderId} {
       allow get, list: if signedIn() && (isAdmin() || resource.data.userId == request.auth.uid || resource.data.assignedToUid == request.auth.uid);
       allow create: if signedIn();
@@ -48,7 +47,7 @@ service cloud.firestore {
       allow write: if isAdmin() || (signedIn() && request.resource.data.assignedToUid == request.auth.uid);
     }
 
-    // --- 5. SALES & SERVICE (Fixes "Leads" and "Service" errors) ---
+    // --- 5. SALES & SERVICE ---
     match /leads/{id} {
       allow read, list: if signedIn() && (isAdmin() || resource.data.ownerId == request.auth.uid);
       allow create: if signedIn();
@@ -56,7 +55,7 @@ service cloud.firestore {
     }
 
     match /serviceRequests/{id} {
-      allow read, list: if signedIn(); // Opening read for all signed in users for stability
+      allow read, list: if signedIn(); 
       allow create: if signedIn();
       allow update: if isAdmin();
     }
@@ -66,7 +65,7 @@ service cloud.firestore {
        allow read, list: if isAdmin();
     }
 
-    // --- 6. PUBLIC CONTENT (Fixes "Wishlist", "Posts", "Offers" errors) ---
+    // --- 6. PUBLIC CONTENT ---
     match /products/{id} {
       allow read, list: if true; 
       allow write: if isAdmin();
@@ -78,16 +77,23 @@ service cloud.firestore {
     }
 
     match /offers/{id} {
-      allow read, list: if true; // Allow public read access to offers
+      allow read, list: if true;
       allow write: if isAdmin();
     }
     
     match /vacancies/{id} {
-        allow read, list: if true; // Allow public read for job vacancies
+        allow read, list: if true;
         allow write: if isAdmin();
     }
 
-    // --- 7. MISC SETTINGS (Fixes Map errors) ---
+    // --- 7. HR (FIX for Reimbursement) ---
+    match /reimbursementRequests/{id} {
+        allow read, list: if isAdmin() || (signedIn() && request.query.where.createdByUid == request.auth.uid);
+        allow create: if signedIn() && request.resource.data.createdByUid == request.auth.uid;
+        allow update, delete: if isAdmin();
+    }
+
+    // --- 8. MISC SETTINGS & PAYMENTS ---
     match /pickupPoints/{id} { allow read, list: if true; allow write: if isAdmin(); }
     match /locations/{id} { allow read, list: if true; allow write: if isAdmin(); }
     match /company/{id} { allow read: if true; allow write: if isAdmin(); }
@@ -98,7 +104,7 @@ service cloud.firestore {
       allow update, delete: if isAdmin();
     }
 
-    // --- 8. FINAL GLOBAL SAFETY NET ---
+    // --- 9. FINAL GLOBAL SAFETY NET ---
     match /{path=**} {
       allow read, write: if isAdmin();
     }
