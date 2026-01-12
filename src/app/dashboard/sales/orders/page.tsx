@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -163,7 +164,7 @@ function PayBalanceDialog({ order, companyInfo, balance }: { order: Order; compa
 
     setIsSubmitting(true);
     try {
-      const submissionData: Omit<PaymentSubmission, 'id'> = {
+      const submissionData: Partial<PaymentSubmission> = {
         userId: order.userId, 
         recordedByUid: user.uid, 
         customerName: order.customerName,
@@ -175,8 +176,7 @@ function PayBalanceDialog({ order, companyInfo, balance }: { order: Order; compa
         proofUrl: '',
         status: 'Pending',
         submittedAt: Timestamp.now(),
-        receivingAccountId: paymentType === 'manual' ? receivingAccountId : null,
-        
+        ...(paymentType === 'manual' && { receivingAccountId: receivingAccountId }),
       };
 
       const newSubmissionRef = await addDoc(collection(firestore, 'paymentSubmissions'), submissionData);
@@ -873,4 +873,5 @@ export default function OrdersPage() {
     
 
     
+
 
