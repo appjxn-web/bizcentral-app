@@ -104,7 +104,7 @@ export const verifyUpiPaymentAndCreateOrder = onCall(async (request) => {
             const orderRef = db.collection('orders').doc();
             
             // INSTEAD OF JV: Create a payment submission for the advance
-            const submissionRef = db.collection('paymentSubmissions').doc();
+            const submissionRef = doc(collection(firestore, 'paymentSubmissions'));
             transaction.set(submissionRef, {
                 userId: order.userId,
                 customerName: order.customerName,
@@ -595,6 +595,7 @@ export const onPaymentApproved = onDocumentUpdated("paymentSubmissions/{id}", as
   const before = event.data.before.data() as PaymentSubmission;
   const after = event.data.after.data() as PaymentSubmission;
 
+  // Trigger when Admin changes status from 'Pending' to 'Approved'
   if (before.status !== 'Approved' && after.status === 'Approved') {
     const orderRef = db.collection('orders').doc(after.orderId);
     
@@ -616,23 +617,18 @@ export const onPaymentApproved = onDocumentUpdated("paymentSubmissions/{id}", as
       const customerLedgerId = await findOrCreateSpecificCustomerLedger(transaction, after);
 
       // 2. DEBIT SIDE: The Receiving Account
-      // The frontend now sends the exact account ID to use.
-      let receivingAccountId: string | null = (after as any).receivingAccountId || null;
+      let receivingAccountId: string | null = after.receivingAccountId || null;
 
-      // If no specific account was provided (e.g., old UPI flow), use fallback logic.
+      // Fallback logic for older records or if receivingAccountId is not provided
       if (!receivingAccountId) {
-          if (after.paymentMethod === 'Cash') {
+          if (after.paymentMethod === 'Cash' && after.recordedByUid) {
               const recorderSnap = await transaction.get(db.doc(`users/${after.recordedByUid}`));
               const recorderProfile = recorderSnap.data() as UserProfile;
               if (recorderProfile && recorderProfile.coaLedgerId) {
                   receivingAccountId = recorderProfile.coaLedgerId;
               } else {
-                  const ledgerSearch = await transaction.get(db.collection('coa_ledgers').where('tags', 'array-contains', after.recordedByUid).limit(1));
-                  if (!ledgerSearch.empty) {
-                      receivingAccountId = ledgerSearch.docs[0].id;
-                  } else {
-                      receivingAccountId = "L-1.1.1-1"; // Generic Cash
-                  }
+                  // Fallback to generic cash if specific user ledger is not found
+                  receivingAccountId = 'L-1.1.1-1';
               }
           } else { // UPI / Bank etc.
             const companySnap = await transaction.get(db.doc("company/info"));
@@ -647,9 +643,8 @@ export const onPaymentApproved = onDocumentUpdated("paymentSubmissions/{id}", as
           }
       }
 
-
       if (receivingAccountId && customerLedgerId) {
-        const jvRef = db.collection("journalVouchers").doc();
+        const jvRef = doc(collection(firestore, 'journalVouchers'));
         transaction.set(jvRef, {
             id: jvRef.id,
             date: new Date().toISOString().split("T")[0],
@@ -721,3 +716,6 @@ export const onPaymentApproved = onDocumentUpdated("paymentSubmissions/{id}", as
 
 
 
+
+
+    
