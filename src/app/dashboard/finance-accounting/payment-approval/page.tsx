@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -93,7 +92,7 @@ function PaymentTable({
                   ₹{(submission.amount || 0).toFixed(2)}
                 </TableCell>
                 <TableCell className="text-right space-x-2">
-                  {submission.status === 'Pending' || submission.status === 'Awaiting Payment Confirmation' ? (
+                  {submission.status === 'Pending' && (
                     <>
                       <Button
                         variant="destructive"
@@ -112,7 +111,7 @@ function PaymentTable({
                          {processingId === submission.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
                       </Button>
                     </>
-                  ) : null}
+                  )}
                 </TableCell>
               </TableRow>
             )
@@ -162,7 +161,7 @@ export default function PaymentApprovalPage() {
   
   // Simplified Memo filters
   const pendingPayments = React.useMemo(() => 
-    allPayments?.filter(p => p.status === 'Pending' || p.status === 'Awaiting Payment Confirmation') || []
+    allPayments?.filter(p => p.status === 'Pending') || []
   , [allPayments]);
 
   const approvedPayments = React.useMemo(() => 
