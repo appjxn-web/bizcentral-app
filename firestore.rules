@@ -78,7 +78,7 @@ service cloud.firestore {
     }
 
     match /offers/{id} {
-      allow read, list: if signedIn(); 
+      allow read, list: if true; // Allow public read access to offers
       allow write: if isAdmin();
     }
 
