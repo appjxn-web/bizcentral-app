@@ -241,6 +241,7 @@ export interface PaymentSubmission {
   status: 'Pending' | 'Approved' | 'Rejected';
   submittedAt: Timestamp;
   recordedByUid?: string;
+  receivingAccountId?: string | null;
 }
     
 

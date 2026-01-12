@@ -165,7 +165,7 @@ function PayBalanceDialog({ order, companyInfo, balance }: { order: Order; compa
     setIsSubmitting(true);
     try {
       const submissionData: Omit<PaymentSubmission, 'id'> = {
-        userId: order.userId, 
+        userId: order.userId,
         recordedByUid: user.uid,
         customerName: order.customerName,
         orderId: order.id,
@@ -176,6 +176,7 @@ function PayBalanceDialog({ order, companyInfo, balance }: { order: Order; compa
         proofUrl: '',
         status: 'Pending',
         submittedAt: Timestamp.now(),
+        receivingAccountId: paymentType === 'manual' ? receivingAccountId : null,
       };
 
       const newSubmissionRef = await addDoc(collection(firestore, 'paymentSubmissions'), submissionData);
@@ -863,6 +864,7 @@ export default function OrdersPage() {
 
     return <OrdersPageContent />;
 }
+
 
 
 

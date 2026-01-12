@@ -176,6 +176,7 @@ function PayBalanceDialog({ order, companyInfo, balance }: { order: Order; compa
         proofUrl: '',
         status: 'Pending',
         submittedAt: Timestamp.now(),
+        receivingAccountId: paymentType === 'manual' ? receivingAccountId : null,
       };
 
       const newSubmissionRef = await addDoc(collection(firestore, 'paymentSubmissions'), submissionData);
@@ -787,7 +788,7 @@ function OrdersPageContent() {
 
   return (
     <>
-      <PageHeader title="My Orders" />
+      <PageHeader title="Sales Orders" />
        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -796,7 +797,7 @@ function OrdersPageContent() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{kpis.total}</div>
-            <p className="text-xs text-muted-foreground">All your orders with us</p>
+            <p className="text-xs text-muted-foreground">All orders in the system</p>
           </CardContent>
         </Card>
         <Card>
