@@ -465,8 +465,7 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
       if (!order.id || !firestore) return null;
       return query(
         collection(firestore, 'paymentSubmissions'),
-        where('orderId', '==', order.id),
-        orderBy('submittedAt', 'desc')
+        where('orderId', '==', order.id)
       );
     }, [order.id, firestore]);
     const { data: paymentSubmissions } = useCollection<PaymentSubmission>(paymentSubmissionsQuery);
@@ -475,20 +474,17 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
         const approvedSubmissions = (paymentSubmissions || []).filter(p => p.status === 'Approved');
         const totalFromSubmissions = approvedSubmissions.reduce((sum, p) => sum + p.amount, 0);
 
-        const totalPaid = order.paymentReceived || totalFromSubmissions;
-        const balance = order.grandTotal - totalPaid;
-        
         const history = approvedSubmissions.map(p => ({
             amount: p.amount,
             date: p.submittedAt.toDate(),
             details: `Ref: ${p.transactionDetails || 'N/A'} (${p.paymentMethod})`,
             status: p.status,
-        }));
+        })).sort((a, b) => a.date.getTime() - b.date.getTime());
         
         return {
-            totalPaid,
-            balanceDue: balance,
-            paymentHistory: history.sort((a,b) => a.date.getTime() - b.date.getTime()),
+            totalPaid: totalFromSubmissions,
+            balanceDue: order.grandTotal - totalFromSubmissions,
+            paymentHistory: history,
         }
     }, [order, paymentSubmissions]);
 
@@ -631,7 +627,7 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
                                     <p className="text-xs font-semibold">Payment History:</p>
                                     {paymentHistory.map((p, i) => (
                                         <p key={i} className="text-xs text-muted-foreground font-mono whitespace-pre-wrap">
-                                            {format(p.date, 'dd/MM/yy')}: {formatIndianCurrency(p.amount)} - {p.details} ({p.status})
+                                            {format(p.date, 'dd/MM/yy')}: {formatIndianCurrency(p.amount)} - {p.details}
                                         </p>
                                     ))}
                                 </div>
@@ -872,7 +868,3 @@ export default function MyOrdersPage() {
 
     return <OrdersPageContent />;
 }
-
-    
-
-    

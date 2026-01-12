@@ -1,5 +1,4 @@
 
-      
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -106,7 +105,8 @@ service cloud.firestore {
       allow list: if signedIn() && (
         isAdmin() ||
         resource.data.userId == request.auth.uid ||
-        resource.data.assignedToUid == request.auth.uid
+        resource.data.assignedToUid == request.auth.uid ||
+        request.query.where.orderId == resource.data.orderId // Allow if querying by a specific order
       );
       
       allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
@@ -232,5 +232,3 @@ service cloud.firestore {
     }
   }
 }
-      
-    
