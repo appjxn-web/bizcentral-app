@@ -20,12 +20,19 @@ const db = getFirestore();
 
 /**
  * Aggressive helper to ensure every customer has their OWN specific ledger.
- * It strictly ignores the generic "customer-advances" account.
  */
 const findOrCreateSpecificCustomerLedger = async (transaction: admin.firestore.Transaction, order: Order | SalesInvoice | PaymentSubmission): Promise<string> => {
-    const userId = order.userId;
+    // Explicitly determine ID based on which property exists
+    let userId = '';
+    if ('userId' in order) {
+        userId = order.userId;
+    } else if ('customerId' in order) {
+        userId = order.customerId;
+    }
+
     const customerName = order.customerName;
-    const customerEmail = 'customerEmail' in order ? order.customerEmail : '';
+    // Safely get email if it exists
+    const customerEmail = ('customerEmail' in order) ? order.customerEmail : '';
 
     const partyRef = db.collection('parties').doc(userId);
     const partySnap = await transaction.get(partyRef);
@@ -686,4 +693,5 @@ export const onPaymentApproved = onDocumentUpdated("paymentSubmissions/{id}", as
 
 
     
+
 
