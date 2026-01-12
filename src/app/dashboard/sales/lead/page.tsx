@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -91,8 +92,7 @@ export default function LeadPage() {
   }, [authUser, currentRole, firestore]);
 
   const { data: leads, loading: leadsLoading } = useCollection<Lead>(leadsQuery);
-  const { data: allUsers } = useCollection<any>(collection(firestore, 'users'));
-
+  
   const [statusFilters, setStatusFilters] = React.useState<LeadStatus[]>([]);
   const [sourceFilters, setSourceFilters] = React.useState<LeadSource[]>([]);
   const [isAddLeadOpen, setIsAddLeadOpen] = React.useState(false);
@@ -139,12 +139,9 @@ export default function LeadPage() {
   };
 
   const findDuplicateOwner = (currentLead: Lead) => {
-    if (!leads || !allUsers) return null;
+    if (!leads) return null;
     const duplicate = leads.find(l => l.id !== currentLead.id && l.phone === currentLead.phone && l.ownerId !== currentLead.ownerId);
-    if (duplicate) {
-      return allUsers.find(u => u.id === duplicate.ownerId)?.name || 'another user';
-    }
-    return null;
+    return duplicate ? 'another user' : null;
   };
   
   const handleCreateQuotation = async (lead: Lead) => {
@@ -161,7 +158,7 @@ export default function LeadPage() {
   };
 
   const handleStatusFilterChange = (status: LeadStatus) => {
-    setStatusFilters(prev => (prev.includes(status) ? prev.filter(s => s !== status) : [...prev, status]));
+    setStatusFilters(prev => (prev.includes(status) ? prev.filter(s => s !== status) : [...prev, s]));
   };
   
   const handleSourceFilterChange = (source: LeadSource) => {
@@ -253,7 +250,7 @@ export default function LeadPage() {
                   <TableHead>Mobile No.</TableHead>
                   <TableHead>Source</TableHead>
                   <TableHead>Status</TableHead>
-                  {isEmployee && <TableHead>Owner</TableHead>}
+                  {isEmployee && <TableHead>Owner ID</TableHead>}
                   <TableHead>Created At</TableHead>
                   <TableHead><span className="sr-only">Actions</span></TableHead>
                 </TableRow>
@@ -290,7 +287,7 @@ export default function LeadPage() {
                           {lead.status}
                         </Badge>
                       </TableCell>
-                      {isEmployee && <TableCell>{allUsers?.find(u => u.id === lead.ownerId)?.name || 'Unknown'}</TableCell>}
+                      {isEmployee && <TableCell className="font-mono text-xs">{lead.ownerId}</TableCell>}
                       <TableCell>{format(new Date(lead.createdAt), 'dd/MM/yyyy')}</TableCell>
                       <TableCell>
                         <DropdownMenu>
@@ -325,5 +322,3 @@ export default function LeadPage() {
     </>
   );
 }
-
-    
