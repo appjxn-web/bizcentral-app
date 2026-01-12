@@ -1,5 +1,4 @@
 
-
 'use server';
 import {
   onDocumentCreated,
@@ -592,122 +591,75 @@ export const onGoalUpdate = onDocumentCreated("goalUpdates/{updateId}", async ()
 
 export const onPaymentApproved = onDocumentUpdated("paymentSubmissions/{id}", async (event) => {
   if (!event.data) return;
-  const before = event.data.before.data() as PaymentSubmission;
   const after = event.data.after.data() as PaymentSubmission;
+  const before = event.data.before.data() as PaymentSubmission;
 
-  // Trigger when Admin changes status from 'Pending' to 'Approved'
+  // Only trigger when Admin moves status to 'Approved'
   if (before.status !== 'Approved' && after.status === 'Approved') {
     const orderRef = db.collection('orders').doc(after.orderId);
     
     return db.runTransaction(async (transaction) => {
       const orderDoc = await transaction.get(orderRef);
       if (!orderDoc.exists) {
-          console.error(`Order ${after.orderId} not found for payment submission ${after.id}`);
-          return;
+        console.error(`Order ${after.orderId} not found for payment submission ${after.id}`);
+        return;
       }
       const orderData = orderDoc.data() as Order;
 
-      // Log this specific transaction in history
-      const newPaymentDetailsString = [
-          orderData.paymentDetails || '',
-          `Approved: ${new Date().toISOString()} - ${after.amount} - Ref: ${after.transactionDetails}`
-      ].filter(Boolean).join('\n');
-
-      // Create a JV for THIS specific payment amount
+      // 1. CREDIT SIDE: The Customer Account (e.g., Kartik)
       const customerLedgerId = await findOrCreateSpecificCustomerLedger(transaction, after);
-      let receivingAccountId: string | null = null;
+
+      // 2. DEBIT SIDE: The Receiving Account
+      let debitAccountId: string | null = null;
             
-      if (after.paymentMethod === 'Cash') {
-        const recorderSnap = await transaction.get(db.doc(`users/${after.recordedByUid}`));
-        const recorderProfile = recorderSnap.data() as UserProfile;
-        
-        if (recorderProfile && recorderProfile.coaLedgerId) {
-            receivingAccountId = recorderProfile.coaLedgerId;
-        } else {
-            const cashLedgerSnap = await transaction.get(db.collection('coa_ledgers').where('name', '==', 'Cash in Hand').limit(1));
-            if (!cashLedgerSnap.empty) {
-                receivingAccountId = cashLedgerSnap.docs[0].id;
-            }
-        }
-      } else { // UPI / Bank etc.
+      // PRIORITY 1: Use the specific account selected by the Partner/Admin in the UI
+      if (after.receivingAccountId) {
+        debitAccountId = after.receivingAccountId;
+      } 
+      // PRIORITY 2 (Fallback for UPI/Bank): Find the company's primary bank account
+      else { 
         const companySnap = await transaction.get(db.doc("company/info"));
         const primaryUpi = companySnap.data()?.primaryUpiId;
         if (primaryUpi) {
-            const ledgerSearchQuery = db.collection("coa_ledgers").where("bank.upiId", "==", primaryUpi).limit(1);
-            const ledgerSearch = await transaction.get(ledgerSearchQuery);
+            const ledgerSearch = await transaction.get(
+                db.collection("coa_ledgers").where("bank.upiId", "==", primaryUpi).limit(1)
+            );
             if (!ledgerSearch.empty) {
-                receivingAccountId = ledgerSearch.docs[0].id;
+                debitAccountId = ledgerSearch.docs[0].id;
             }
         }
       }
 
-      if (receivingAccountId && customerLedgerId) {
+      if (debitAccountId && customerLedgerId) {
         const jvRef = db.collection("journalVouchers").doc();
         transaction.set(jvRef, {
             id: jvRef.id,
             date: new Date().toISOString().split("T")[0],
-            narration: `Receipt for Order #${orderData.orderNumber || orderData.id}. Method: ${after.paymentMethod}. Ref: ${after.transactionDetails}`,
+            narration: `Payment for Order #${orderData.orderNumber || orderData.id}. Method: ${after.paymentMethod}. Ref: ${after.transactionDetails}`,
             voucherType: "Receipt Voucher",
             entries: [
-                { accountId: receivingAccountId, debit: after.amount, credit: 0 },
-                { accountId: customerLedgerId, debit: 0, credit: after.amount }, 
+                { accountId: debitAccountId, debit: after.amount, credit: 0 }, // DEBIT selected account
+                { accountId: customerLedgerId, debit: 0, credit: after.amount }, // CREDIT customer account
             ],
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
             createdByUid: after.recordedByUid || after.userId,
         });
       } else {
-        console.error("No bank/cash account found for payment. Cannot create JV for payment submission:", after.id);
+        console.error("Critical: Could not determine Debit Account for payment approval.");
       }
 
-      // Update order with the incremented amounts and new status
+      // 3. Update Order Totals
+      const newPaymentDetailsString = [
+          orderData.paymentDetails || '',
+          `Approved: ${new Date().toISOString()} - ${after.amount} - Ref: ${after.transactionDetails}`
+      ].filter(Boolean).join('\n');
+      
       transaction.update(orderRef, {
-        paymentReceived: FieldValue.increment(after.amount),
-        balance: FieldValue.increment(-after.amount),
+        paymentReceived: admin.firestore.FieldValue.increment(after.amount),
+        balance: admin.firestore.FieldValue.increment(-after.amount),
         paymentDetails: newPaymentDetailsString,
         status: 'Ordered'
       });
     });
   }
 });
-    
-
-
-
-
-
-
-
-    
-
-    
-
-      
-
-
-
-
-
-
-
-
-
-
-
-    
-
-    
-
-  
-
-
-
-
-    
-
-
-
-    
-
-
-
-
