@@ -31,11 +31,15 @@ import Image from 'next/image';
 import { Separator } from '@/components/ui/separator';
 import { useUser, useFirestore, useDoc, useCollection } from '@/firebase';
 import { collection, query, where, doc, getDoc, Timestamp, orderBy, addDoc, updateDoc } from 'firebase/firestore';
-import type { JournalVoucher, CoaLedger, UserProfile, Party, Referral, Order, SalesInvoice, PaymentSubmission } from '@/lib/types';
+import type { JournalVoucher, CoaLedger, UserProfile, Party, Referral, Order, SalesInvoice, PaymentSubmission, CoaNature, PartyType } from '@/lib/types';
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { QRCodeSVG } from 'qrcode.react';
 import { useToast } from '@/hooks/use-toast';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useRole } from '../_components/role-provider';
+
 
 const companyDetails = {
   name: 'JXN Infra Equipment Private Limited',
@@ -105,6 +109,7 @@ function PayBalanceDialog({ order, companyInfo, balance }: { order: Order; compa
   const { toast } = useToast();
   const firestore = useFirestore();
   const { user } = useUser();
+  const { currentRole } = useRole();
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const proofInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -113,9 +118,16 @@ function PayBalanceDialog({ order, companyInfo, balance }: { order: Order; compa
   const [paymentProofFile, setPaymentProofFile] = React.useState<File | null>(null);
   const [paymentProofPreview, setPaymentProofPreview] = React.useState<string | null>(null);
 
+  const [manualPaymentMethod, setManualPaymentMethod] = React.useState('Cash');
+  const [receivingAccountId, setReceivingAccountId] = React.useState('');
+
+  const { data: coaLedgers } = useCollection<CoaLedger>(collection(firestore, 'coa_ledgers'));
+  const bankAndCashAccounts = React.useMemo(() => coaLedgers?.filter(l => l.groupId === '1.1.1') || [], [coaLedgers]);
+  const canRecordManualPayment = ['Admin', 'Manager', 'Sales Manager', 'Accounts Manager', 'Partner', 'CEO'].includes(currentRole);
+
   const dynamicUpiString = React.useMemo(() => {
     if (!companyInfo?.primaryUpiId || !amountToPay || amountToPay <= 0) return '';
-    const orderNumber = (order as any).orderNumber || order.id;
+    const orderNumber = (order as SalesOrder).orderNumber || order.id;
     return `upi://pay?pa=${companyInfo.primaryUpiId}&pn=${encodeURIComponent(companyInfo.companyName || 'Your Company')}&am=${Number(amountToPay).toFixed(2)}&cu=INR&tn=Order%20${orderNumber}`;
   }, [companyInfo, amountToPay, order]);
 
@@ -131,10 +143,18 @@ function PayBalanceDialog({ order, companyInfo, balance }: { order: Order; compa
     }
   };
 
-  const handleSubmit = async () => {
-    if (!user || !amountToPay || amountToPay <= 0 || !transactionId) {
-      toast({ variant: 'destructive', title: 'Missing Information', description: 'Please enter a valid amount and transaction ID.' });
+  const handleSubmit = async (paymentType: 'upi' | 'manual') => {
+    if (!user || !amountToPay || amountToPay <= 0) {
+      toast({ variant: 'destructive', title: 'Missing Amount', description: 'Please enter a valid amount.' });
       return;
+    }
+    if (paymentType === 'upi' && !transactionId) {
+      toast({ variant: 'destructive', title: 'Missing Transaction ID', description: 'Please enter the UPI transaction ID.' });
+      return;
+    }
+    if (paymentType === 'manual' && !receivingAccountId) {
+        toast({ variant: 'destructive', title: 'Missing Account', description: 'Please select the receiving account.' });
+        return;
     }
 
     setIsSubmitting(true);
@@ -145,7 +165,7 @@ function PayBalanceDialog({ order, companyInfo, balance }: { order: Order; compa
         orderId: order.id,
         assignedToUid: order.assignedToUid || null,
         amount: Number(amountToPay),
-        paymentMethod: 'UPI / Online',
+        paymentMethod: paymentType === 'upi' ? 'UPI / Online' : manualPaymentMethod,
         transactionDetails: transactionId,
         proofUrl: '',
         status: 'Pending',
@@ -170,6 +190,8 @@ function PayBalanceDialog({ order, companyInfo, balance }: { order: Order; compa
       setTransactionId('');
       setPaymentProofFile(null);
       setPaymentProofPreview(null);
+      setManualPaymentMethod('Cash');
+      setReceivingAccountId('');
 
     } catch (error) {
       console.error(error);
@@ -178,8 +200,6 @@ function PayBalanceDialog({ order, companyInfo, balance }: { order: Order; compa
       setIsSubmitting(false);
     }
   };
-
-  if (balance <= 0) return null;
 
   return (
     <Dialog>
@@ -190,51 +210,94 @@ function PayBalanceDialog({ order, companyInfo, balance }: { order: Order; compa
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Pay Balance for Order: {(order as any).orderNumber || order.id}</DialogTitle>
+          <DialogTitle>Pay Balance for Order: {(order as SalesOrder).orderNumber || order.id}</DialogTitle>
           <DialogDescription>
             You can pay the full amount of <span className="font-bold">{formatIndianCurrency(balance)}</span> or make a partial payment.
           </DialogDescription>
         </DialogHeader>
-        <div className="py-4 space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="pay-amount">Amount to Pay (Max: {formatIndianCurrency(balance)})</Label>
-            <Input
-              id="pay-amount"
-              type="number"
-              value={amountToPay}
-              onChange={(e) => setAmountToPay(Number(e.target.value))}
-              placeholder={`Max: ${balance.toFixed(2)}`}
-            />
-          </div>
-          {dynamicUpiString && (
-            <div className="flex flex-col items-center gap-2">
-              <div className="p-2 bg-white rounded-lg border">
-                <QRCodeSVG value={dynamicUpiString} size={150} />
-              </div>
-              <p className="text-sm font-bold">Paying: {formatIndianCurrency(Number(amountToPay))}</p>
-              <p className="text-xs text-muted-foreground text-center">Scan with any UPI app to pay.</p>
-            </div>
-          )}
-          <div className="space-y-2">
-            <Label htmlFor="transaction-id">Transaction ID / Ref No.</Label>
-            <Input id="transaction-id" value={transactionId} onChange={(e) => setTransactionId(e.target.value)} placeholder="Enter UPI Ref ID after payment" />
-          </div>
-          <div className="space-y-2">
-            <Label>Upload Screenshot (Optional)</Label>
-            <Input type="file" ref={proofInputRef} onChange={handleFileChange} className="hidden" accept="image/*" />
-            <Button type="button" variant="outline" className="w-full" onClick={() => proofInputRef.current?.click()}>
-              <FileUp className="h-4 w-4 mr-2" /> Upload Image
-            </Button>
-            {paymentProofPreview && <img src={paymentProofPreview} alt="Proof preview" className="mt-2 rounded-md border max-h-40" />}
-          </div>
-        </div>
-        <DialogFooter>
-          <DialogClose asChild><Button type="button" variant="outline">Close</Button></DialogClose>
-          <Button type="button" onClick={handleSubmit} disabled={isSubmitting || !amountToPay || !transactionId}>
-            {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Confirm Payment Made
-          </Button>
-        </DialogFooter>
+        <Tabs defaultValue="customer-payment" className="w-full">
+            <TabsList className={cn("grid w-full", canRecordManualPayment ? "grid-cols-2" : "grid-cols-1")}>
+                <TabsTrigger value="customer-payment">Customer UPI Payment</TabsTrigger>
+                {canRecordManualPayment && <TabsTrigger value="manual-payment">Record Manual Payment</TabsTrigger>}
+            </TabsList>
+            <TabsContent value="customer-payment">
+                <div className="py-4 space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="pay-amount-upi">Amount to Pay (Max: {formatIndianCurrency(balance)})</Label>
+                    <Input id="pay-amount-upi" type="number" value={amountToPay} onChange={(e) => setAmountToPay(Number(e.target.value))} placeholder={`Max: ${balance.toFixed(2)}`} />
+                  </div>
+                  {dynamicUpiString && (
+                    <div className="flex flex-col items-center gap-2">
+                      <div className="p-2 bg-white rounded-lg border"><QRCodeSVG value={dynamicUpiString} size={150} /></div>
+                      <p className="text-sm font-bold">Paying: {formatIndianCurrency(Number(amountToPay))}</p>
+                      <p className="text-xs text-muted-foreground text-center">Scan with any UPI app to pay.</p>
+                    </div>
+                  )}
+                  <div className="space-y-2">
+                    <Label htmlFor="transaction-id-upi">Transaction ID / Ref No.</Label>
+                    <Input id="transaction-id-upi" value={transactionId} onChange={(e) => setTransactionId(e.target.value)} placeholder="Enter UPI Ref ID after payment" />
+                  </div>
+                   <div className="space-y-2">
+                        <Label>Upload Screenshot (Optional)</Label>
+                        <Input type="file" ref={proofInputRef} onChange={handleFileChange} className="hidden" accept="image/*" />
+                        <Button type="button" variant="outline" className="w-full" onClick={() => proofInputRef.current?.click()}>
+                            <FileUp className="h-4 w-4 mr-2" /> Upload Image
+                        </Button>
+                        {paymentProofPreview && <img src={paymentProofPreview} alt="Proof preview" className="mt-2 rounded-md border max-h-40" />}
+                    </div>
+                </div>
+                 <DialogFooter>
+                    <DialogClose asChild><Button type="button" variant="outline">Close</Button></DialogClose>
+                    <Button type="button" onClick={() => handleSubmit('upi')} disabled={isSubmitting || !amountToPay || !transactionId}>
+                        {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        Confirm Payment Made
+                    </Button>
+                </DialogFooter>
+            </TabsContent>
+            {canRecordManualPayment && (
+                <TabsContent value="manual-payment">
+                    <div className="py-4 space-y-4">
+                        <div className="space-y-2">
+                            <Label htmlFor="pay-amount-manual">Amount Received</Label>
+                            <Input id="pay-amount-manual" type="number" value={amountToPay} onChange={(e) => setAmountToPay(Number(e.target.value))} />
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="payment-method-manual">Payment Method</Label>
+                            <Select value={manualPaymentMethod} onValueChange={setManualPaymentMethod}>
+                                <SelectTrigger id="payment-method-manual"><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="Cash">Cash</SelectItem>
+                                    <SelectItem value="Cheque">Cheque</SelectItem>
+                                    <SelectItem value="Card">Card</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="receiving-account">Received In</Label>
+                            <Select value={receivingAccountId} onValueChange={setReceivingAccountId}>
+                                <SelectTrigger id="receiving-account"><SelectValue placeholder="Select bank/cash account" /></SelectTrigger>
+                                <SelectContent>
+                                    {bankAndCashAccounts.map(acc => (
+                                        <SelectItem key={acc.id} value={acc.id}>{acc.name}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="transaction-id-manual">Transaction Reference</Label>
+                            <Input id="transaction-id-manual" value={transactionId} onChange={(e) => setTransactionId(e.target.value)} placeholder="e.g., Cheque No., Receipt No." />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <DialogClose asChild><Button type="button" variant="outline">Close</Button></DialogClose>
+                        <Button type="button" onClick={() => handleSubmit('manual')} disabled={isSubmitting || !amountToPay || !receivingAccountId}>
+                            {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            Record Payment
+                        </Button>
+                    </DialogFooter>
+                </TabsContent>
+            )}
+        </Tabs>
       </DialogContent>
     </Dialog>
   );
