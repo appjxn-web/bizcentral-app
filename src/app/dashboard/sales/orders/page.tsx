@@ -109,7 +109,7 @@ const formatIndianCurrency = (num: number) => {
   }).format(num);
 };
 
-function PayBalanceDialog({ order, companyInfo }: { order: Order; companyInfo: any; }) {
+function PayBalanceDialog({ order, companyInfo, balance }: { order: Order; companyInfo: any; balance: number }) {
   const { toast } = useToast();
   const firestore = useFirestore();
   const { user } = useUser();
@@ -117,7 +117,7 @@ function PayBalanceDialog({ order, companyInfo }: { order: Order; companyInfo: a
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const proofInputRef = React.useRef<HTMLInputElement>(null);
 
-  const [amountToPay, setAmountToPay] = React.useState<number | ''>((order.balance || 0) > 0 ? order.balance || 0 : '');
+  const [amountToPay, setAmountToPay] = React.useState<number | ''>(balance > 0 ? balance : '');
   const [transactionId, setTransactionId] = React.useState('');
   const [paymentProofFile, setPaymentProofFile] = React.useState<File | null>(null);
   const [paymentProofPreview, setPaymentProofPreview] = React.useState<string | null>(null);
@@ -219,7 +219,7 @@ function PayBalanceDialog({ order, companyInfo }: { order: Order; companyInfo: a
         <DialogHeader>
           <DialogTitle>Pay Balance for Order: {(order as SalesOrder).orderNumber || order.id}</DialogTitle>
           <DialogDescription>
-            You can pay the full amount of <span className="font-bold">{formatIndianCurrency(order.balance)}</span> or make a partial payment.
+            You can pay the full amount of <span className="font-bold">{formatIndianCurrency(balance)}</span> or make a partial payment.
           </DialogDescription>
         </DialogHeader>
         <Tabs defaultValue="customer-payment" className="w-full">
@@ -230,8 +230,8 @@ function PayBalanceDialog({ order, companyInfo }: { order: Order; companyInfo: a
             <TabsContent value="customer-payment">
                 <div className="py-4 space-y-4">
                   <div className="space-y-2">
-                    <Label htmlFor="pay-amount-upi">Amount to Pay (Max: {formatIndianCurrency(order.balance)})</Label>
-                    <Input id="pay-amount-upi" type="number" value={amountToPay} onChange={(e) => setAmountToPay(Number(e.target.value))} placeholder={`Max: ${order.balance.toFixed(2)}`} />
+                    <Label htmlFor="pay-amount-upi">Amount to Pay (Max: {formatIndianCurrency(balance)})</Label>
+                    <Input id="pay-amount-upi" type="number" value={amountToPay} onChange={(e) => setAmountToPay(Number(e.target.value))} placeholder={`Max: ${balance.toFixed(2)}`} />
                   </div>
                   {dynamicUpiString && (
                     <div className="flex flex-col items-center gap-2">
@@ -477,30 +477,32 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
     const { data: paymentSubmissions } = useCollection<PaymentSubmission>(paymentSubmissionsQuery);
     
     const { totalPaid, balanceDue, paymentHistory } = React.useMemo(() => {
-        const initialPayment = {
-            amount: order.paymentReceived || 0,
-            date: order.createdAt?.toDate ? order.createdAt.toDate() : new Date(order.date),
-            details: order.paymentDetails || 'Initial Payment',
-            status: 'Approved'
-        };
+        const approvedSubmissions = (paymentSubmissions || []).filter(p => p.status === 'Approved');
+        const totalPaidFromSubmissions = approvedSubmissions.reduce((sum, p) => sum + p.amount, 0);
 
-        const otherPayments = (paymentSubmissions || []).map(p => ({
+        const totalPaid = (order.paymentReceived || 0) + totalPaidFromSubmissions;
+        const balance = order.grandTotal - totalPaid;
+        
+        const history = (paymentSubmissions || []).map(p => ({
             amount: p.amount,
             date: p.submittedAt.toDate(),
-            details: p.transactionDetails || `Via ${p.paymentMethod}`,
+            details: `Ref: ${p.transactionDetails || 'N/A'}`,
             status: p.status,
         }));
         
-        const allPayments = [initialPayment, ...otherPayments].filter(p => p.amount > 0);
-
-        const approvedPayments = allPayments.filter(p => p.status === 'Approved');
-        const totalPaid = approvedPayments.reduce((sum, p) => sum + p.amount, 0);
-        const balance = order.grandTotal - totalPaid;
+        if (order.paymentReceived && order.paymentReceived > 0) {
+            history.unshift({
+                amount: order.paymentReceived,
+                date: order.createdAt?.toDate ? order.createdAt.toDate() : new Date(order.date),
+                details: 'Initial Advance',
+                status: 'Approved'
+            });
+        }
 
         return {
             totalPaid,
             balanceDue: balance,
-            paymentHistory: allPayments
+            paymentHistory: history,
         }
     }, [order, paymentSubmissions]);
 
@@ -674,7 +676,7 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
                             </div>
                             <div className="flex flex-wrap gap-2">
                                 {balanceDue > 0 && userProfile && (
-                                    <PayBalanceDialog order={{...order, balance: balanceDue}} companyInfo={companyInfo} />
+                                    <PayBalanceDialog order={{...order, balance: balanceDue}} companyInfo={companyInfo} balance={balanceDue}/>
                                 )}
                                 {canCancel && (
                                     <Button variant="destructive" size="sm" onClick={() => setIsCancelDialogOpen(true)}>
@@ -716,7 +718,7 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
     )
 }
 
-function MyOrdersPageContent() {
+function OrdersPageContent() {
   const router = useRouter();
   const firestore = useFirestore();
   const { toast } = useToast();
@@ -806,7 +808,7 @@ function MyOrdersPageContent() {
 
   return (
     <>
-      <PageHeader title="My Orders" />
+      <PageHeader title="Sales Orders" />
        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -815,7 +817,7 @@ function MyOrdersPageContent() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{kpis.total}</div>
-            <p className="text-xs text-muted-foreground">All your orders with us</p>
+            <p className="text-xs text-muted-foreground">All orders in the system</p>
           </CardContent>
         </Card>
         <Card>
@@ -860,8 +862,8 @@ function MyOrdersPageContent() {
         ) : (
             <Card>
                 <CardContent className="p-12 text-center">
-                    <h3 className="text-xl font-medium">No orders yet</h3>
-                    <p className="text-muted-foreground">You haven't placed any orders yet. Start shopping to see your orders here.</p>
+                    <h3 className="text-xl font-medium">No orders found</h3>
+                    <p className="text-muted-foreground">No orders match the current criteria.</p>
                 </CardContent>
             </Card>
         )}
@@ -871,7 +873,7 @@ function MyOrdersPageContent() {
 }
 
 
-export default function MyOrdersPage() {
+export default function OrdersPage() {
     const [isClient, setIsClient] = React.useState(false);
 
     React.useEffect(() => {

@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -343,7 +344,7 @@ function MyAccountPageContent() {
   ) : null;
   const { data: salesInvoices, loading: invoicesLoading } = useCollection<SalesInvoice>(salesInvoicesQuery);
   
-  const referralsQuery = targetId ? query(collection(firestore, 'users', targetId, 'referrals')) : null;
+  const referralsQuery = targetId ? query(collection(firestore, 'users', targetId, 'referrals'), where('status', 'in', ['First Purchased', 'Completed'])) : null;
   const { data: referrals } = useCollection<Referral>(referralsQuery);
   
   const ordersQuery = targetId ? query(collection(firestore, 'orders'), where('userId', '==', targetId)) : null;
