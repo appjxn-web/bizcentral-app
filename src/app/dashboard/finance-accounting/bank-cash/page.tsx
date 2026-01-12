@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -129,26 +130,26 @@ export default function BankAndCashPage() {
 
     // Initialize with opening balances
     accounts.forEach(acc => {
-      const openingBal = acc.openingBalance?.amount || 0;
-      const balance = acc.openingBalance?.drCr === 'CR' ? -openingBal : openingBal;
-      balances.set(acc.id, balance);
+        const openingBal = acc.openingBalance?.amount || 0;
+        const balance = acc.openingBalance?.drCr === 'CR' ? -openingBal : openingBal;
+        balances.set(acc.id, balance);
     });
-
-    // Apply transactions
+    
+    // Apply all journal vouchers
     if (journalVouchers) {
-      journalVouchers.forEach(jv => {
-        jv.entries.forEach(entry => {
-          if (balances.has(entry.accountId)) {
-            const currentBal = balances.get(entry.accountId)!;
-            const newBal = currentBal + (entry.debit || 0) - (entry.credit || 0);
-            balances.set(entry.accountId, newBal);
-          }
+        journalVouchers.forEach(jv => {
+            jv.entries.forEach(entry => {
+                if (balances.has(entry.accountId)) {
+                    const currentBal = balances.get(entry.accountId)!;
+                    const newBal = currentBal + (entry.debit || 0) - (entry.credit || 0);
+                    balances.set(entry.accountId, newBal);
+                }
+            });
         });
-      });
     }
 
     return balances;
-  }, [accounts, journalVouchers]);
+}, [accounts, journalVouchers]);
 
 
   const resetForms = () => {
