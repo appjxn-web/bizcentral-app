@@ -165,8 +165,8 @@ function PayBalanceDialog({ order, companyInfo, balance }: { order: Order; compa
     setIsSubmitting(true);
     try {
       const submissionData: Omit<PaymentSubmission, 'id'> = {
-        userId: order.userId,
-        recordedByUid: user.uid,
+        userId: order.userId, 
+        recordedByUid: user.uid, 
         customerName: order.customerName,
         orderId: order.id,
         assignedToUid: order.assignedToUid || null,
@@ -868,3 +868,6 @@ export default function OrdersPage() {
 
 
 
+
+
+    

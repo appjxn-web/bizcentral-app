@@ -165,8 +165,8 @@ function PayBalanceDialog({ order, companyInfo, balance }: { order: Order; compa
     setIsSubmitting(true);
     try {
       const submissionData: Omit<PaymentSubmission, 'id'> = {
-        userId: order.userId,
-        recordedByUid: user.uid,
+        userId: order.userId, 
+        recordedByUid: user.uid, 
         customerName: order.customerName,
         orderId: order.id,
         assignedToUid: order.assignedToUid || null,
@@ -441,29 +441,19 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
     const { data: userProfile } = useDoc<UserProfile>(userProfileRef);
 
     const paymentSubmissionsQuery = React.useMemo(() => {
-      if (!order.id || !user?.uid || !firestore) return null;
-      
-      const submissionsRef = collection(firestore, 'paymentSubmissions');
-    
-      // 1. Admins/Accounts Managers see all submissions for this order
-      if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
+        if (!order.id || !user?.uid || !firestore) return null;
+        const submissionsRef = collection(firestore, 'paymentSubmissions');
+        
+        if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
+            return query(submissionsRef, where('orderId', '==', order.id), orderBy('submittedAt', 'desc'));
+        }
+        
         return query(
-          submissionsRef, 
-          where('orderId', '==', order.id), 
-          orderBy('submittedAt', 'desc')
+            submissionsRef,
+            where('orderId', '==', order.id),
+            where('userId', '==', user.uid),
+            orderBy('submittedAt', 'desc')
         );
-      }
-    
-      // 2. Security Filter for Customers and Partners
-      // This matches the security rules exactly (userId or assignedToUid)
-      const securityField = currentRole === 'Partner' ? 'assignedToUid' : 'userId';
-    
-      return query(
-        submissionsRef,
-        where('orderId', '==', order.id),
-        where(securityField, '==', user.uid), // THIS IS THE REQUIRED SECURITY FILTER
-        orderBy('submittedAt', 'desc')
-      );
     }, [order.id, user?.uid, currentRole, firestore]);
 
     const { data: paymentSubmissions } = useCollection<PaymentSubmission>(paymentSubmissionsQuery);
@@ -870,3 +860,6 @@ export default function OrdersPage() {
 
 
 
+
+
+    

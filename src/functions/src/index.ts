@@ -104,7 +104,7 @@ export const verifyUpiPaymentAndCreateOrder = onCall(async (request) => {
             const orderRef = db.collection('orders').doc();
             
             // INSTEAD OF JV: Create a payment submission for the advance
-            const submissionRef = doc(collection(firestore, 'paymentSubmissions'));
+            const submissionRef = db.collection('paymentSubmissions').doc();
             transaction.set(submissionRef, {
                 userId: order.userId,
                 customerName: order.customerName,
@@ -614,23 +614,37 @@ export const onPaymentApproved = onDocumentUpdated("paymentSubmissions/{id}", as
       ].filter(Boolean).join('\n');
 
       // 1. CREDIT SIDE: The Customer Account
+      // findOrCreateSpecificCustomerLedger uses after.userId (which is the Customer)
       const customerLedgerId = await findOrCreateSpecificCustomerLedger(transaction, after);
 
-      // 2. DEBIT SIDE: The Receiving Account
+      // 2. DEBIT SIDE: The Receiving Account (Partner Cash or Bank)
+      // PRIORITY 1: Use the specific account ID if provided with the submission
       let receivingAccountId: string | null = after.receivingAccountId || null;
-
-      // Fallback logic for older records or if receivingAccountId is not provided
+            
+      // PRIORITY 2: Fallback logic for older records or different payment flows
       if (!receivingAccountId) {
           if (after.paymentMethod === 'Cash' && after.recordedByUid) {
-              const recorderSnap = await transaction.get(db.doc(`users/${after.recordedByUid}`));
-              const recorderProfile = recorderSnap.data() as UserProfile;
-              if (recorderProfile && recorderProfile.coaLedgerId) {
-                  receivingAccountId = recorderProfile.coaLedgerId;
-              } else {
-                  // Fallback to generic cash if specific user ledger is not found
-                  receivingAccountId = 'L-1.1.1-1';
-              }
-          } else { // UPI / Bank etc.
+            // If Partner received cash, use THEIR specific ledger account (e.g., JXN Sikar Cash Account)
+            const recorderSnap = await transaction.get(db.doc(`users/${after.recordedByUid}`));
+            const recorderProfile = recorderSnap.data() as UserProfile;
+            
+            if (recorderProfile && recorderProfile.coaLedgerId) {
+                receivingAccountId = recorderProfile.coaLedgerId;
+            } else {
+                // BACKUP SEARCH: Find ledger tagged with Partner's UID
+                const ledgerSearch = await transaction.get(
+                    db.collection('coa_ledgers')
+                    .where('tags', 'array-contains', after.recordedByUid)
+                    .limit(1)
+                );
+                if (!ledgerSearch.empty) {
+                    receivingAccountId = ledgerSearch.docs[0].id;
+                } else {
+                    receivingAccountId = "L-1.1.1-1"; // Final Fallback: Generic Cash in Hand
+                }
+            }
+          } else { 
+            // UPI / BANK Logic: Use the company's primary bank account
             const companySnap = await transaction.get(db.doc("company/info"));
             const primaryUpi = companySnap.data()?.primaryUpiId;
             if (primaryUpi) {
@@ -643,8 +657,9 @@ export const onPaymentApproved = onDocumentUpdated("paymentSubmissions/{id}", as
           }
       }
 
+
       if (receivingAccountId && customerLedgerId) {
-        const jvRef = doc(collection(firestore, 'journalVouchers'));
+        const jvRef = db.collection("journalVouchers").doc();
         transaction.set(jvRef, {
             id: jvRef.id,
             date: new Date().toISOString().split("T")[0],
@@ -717,5 +732,7 @@ export const onPaymentApproved = onDocumentUpdated("paymentSubmissions/{id}", as
 
 
 
+
+    
 
     
