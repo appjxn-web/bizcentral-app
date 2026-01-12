@@ -25,10 +25,12 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { useFirestore, useCollection } from '@/firebase';
-import { collection, doc, updateDoc } from 'firebase/firestore';
+import { useFirestore, useCollection, useUser } from '@/firebase';
+import { collection, doc, updateDoc, query, where, orderBy } from 'firebase/firestore';
 import { cn } from '@/lib/utils';
 import type { Quotation } from '@/lib/types';
+import { useRole } from '../../_components/role-provider';
+import { format } from 'date-fns';
 
 type QuotationStatus = 'Draft' | 'Sent' | 'Accepted' | 'Rejected';
 
@@ -46,7 +48,19 @@ function QuotationPageContent() {
   const router = useRouter();
   const { toast } = useToast();
   const firestore = useFirestore();
-  const { data: quotations, loading } = useCollection<Quotation>(collection(firestore, 'quotations'));
+  const { user } = useUser();
+  const { currentRole } = useRole();
+
+  const quotationsQuery = React.useMemo(() => {
+    if (!user || !currentRole) return null;
+    const q = collection(firestore, 'quotations');
+    if (['Admin', 'CEO', 'Sales Manager'].includes(currentRole)) {
+        return query(q, orderBy('createdAt', 'desc'));
+    }
+    return query(q, where('createdBy', '==', user.uid), orderBy('createdAt', 'desc'));
+  }, [user, currentRole, firestore]);
+
+  const { data: quotations, loading } = useCollection<Quotation>(quotationsQuery);
 
   const handleCreateQuotation = () => {
     router.push('/dashboard/sales/create-quotation');

@@ -53,6 +53,13 @@ service cloud.firestore {
       allow create: if signedIn();
       allow write: if signedIn() && (isAdmin() || resource.data.ownerId == request.auth.uid);
     }
+    
+    match /quotations/{id} {
+      allow get: if signedIn();
+      allow list: if isAdmin() || (signedIn() && request.query.where.createdBy == request.auth.uid);
+      allow create: if signedIn();
+      allow update: if signedIn() && (isAdmin() || resource.data.createdBy == request.auth.uid);
+    }
 
     match /serviceRequests/{id} {
       allow read, list: if signedIn(); 
