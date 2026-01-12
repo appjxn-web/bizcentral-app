@@ -111,7 +111,7 @@ const formatIndianCurrency = (num: number) => {
 };
 
 function PayBalanceDialog({ order, companyInfo, balance }: { order: Order; companyInfo: any; balance: number }) {
-  const { toast } = useToast();
+  const { toast } } from useToast();
   const firestore = useFirestore();
   const { user } = useUser();
   const { currentRole } = useRole();
@@ -479,14 +479,14 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
     
     const { totalPaid, balanceDue, paymentHistory } = React.useMemo(() => {
         const approvedSubmissions = (paymentSubmissions || []).filter(p => p.status === 'Approved');
-        const totalPaidFromSubmissions = approvedSubmissions.reduce((sum, p) => sum + p.amount, 0);
+        const totalFromSubmissions = approvedSubmissions.reduce((sum, p) => sum + p.amount, 0);
 
-        // The initial advance is the order's total paymentReceived minus all approved manual submissions
-        const initialAdvance = (order.paymentReceived || 0) - totalPaidFromSubmissions;
-        const totalPaid = (order.paymentReceived || 0);
+        const initialAdvance = (order.paymentReceived || 0);
+
+        const totalPaid = initialAdvance + totalFromSubmissions;
         const balance = order.grandTotal - totalPaid;
         
-        const history = approvedSubmissions.map(p => ({
+        let history = approvedSubmissions.map(p => ({
             amount: p.amount,
             date: p.submittedAt.toDate(),
             details: `Ref: ${p.transactionDetails || 'N/A'}`,
@@ -501,6 +501,21 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
                 status: 'Approved'
             });
         }
+        
+        // This is a correction: The UI was showing a sum instead of individual submissions.
+        // Let's correct the history to show the right values from paymentDetails string if submissions are empty.
+        if (approvedSubmissions.length === 0 && order.paymentDetails) {
+            history = order.paymentDetails.split('\n').filter(Boolean).map(line => {
+                const parts = line.split(' - ');
+                return {
+                    date: new Date(parts[0].replace('Approved: ', '')),
+                    amount: parseFloat(parts[1]),
+                    details: parts[2] || '',
+                    status: 'Approved'
+                }
+            })
+        }
+
 
         return {
             totalPaid,
@@ -721,7 +736,7 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
     )
 }
 
-function MyOrdersPageContent() {
+function OrdersPageContent() {
   const router = useRouter();
   const firestore = useFirestore();
   const { toast } = useToast();
