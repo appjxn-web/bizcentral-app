@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -74,7 +73,7 @@ import { useRole } from '@/app/dashboard/_components/role-provider';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { useToast } } = useToast();
+import { useToast } from '@/hooks/use-toast';
 import { ref, uploadBytes, getDownloadURL, getStorage } from 'firebase/storage';
 import { Loader2 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -111,7 +110,7 @@ const formatIndianCurrency = (num: number) => {
 };
 
 function PayBalanceDialog({ order, companyInfo, balance }: { order: Order; companyInfo: any; balance: number }) {
-  const { toast } } = useToast();
+  const { toast } = useToast();
   const firestore = useFirestore();
   const { user } = useUser();
   const { currentRole } = useRole();
@@ -458,7 +457,7 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
     const firestore = useFirestore();
     const { data: companyInfo } = useDoc(doc(firestore, 'company', 'info'));
     const [isCancelDialogOpen, setIsCancelDialogOpen] = React.useState(false);
-    const { toast } } = useToast();
+    const { toast } = useToast();
     const userProfileRef = user ? doc(firestore, 'users', user.uid) : null;
     const { data: userProfile } = useDoc<UserProfile>(userProfileRef);
 
@@ -478,40 +477,35 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
     const { data: paymentSubmissions } = useCollection<PaymentSubmission>(paymentSubmissionsQuery);
     
     const { totalPaid, balanceDue, paymentHistory } = React.useMemo(() => {
-      const approvedSubmissions = (paymentSubmissions || []).filter(p => p.status === 'Approved');
-      const totalPaidFromSubmissions = approvedSubmissions.reduce((sum, p) => sum + p.amount, 0);
-  
-      // The initial advance is the order's paymentReceived value that was set *before* any manual submissions.
-      // This is now correctly handled by the cloud function which zeroes it out on creation,
-      // and onPaymentApproved increments it. So the base `paymentReceived` IS the total.
-      const totalPaid = order.paymentReceived || 0;
-      const balance = order.grandTotal - totalPaid;
-  
-      let history = approvedSubmissions.map(p => ({
-        amount: p.amount,
-        date: p.submittedAt.toDate(),
-        details: `Ref: ${p.transactionDetails || 'N/A'} (${p.paymentMethod})`,
-        status: p.status,
-      }));
-  
-      // To find the *true* initial advance, subtract all approved submissions from the total paid.
-      // What's left is the payment made at order creation.
-      const initialAdvance = totalPaid - totalPaidFromSubmissions;
-  
-      if (initialAdvance > 0) {
-        history.unshift({
-          amount: initialAdvance,
-          date: order.createdAt?.toDate ? order.createdAt.toDate() : new Date(order.date),
-          details: 'Initial Advance',
-          status: 'Approved'
-        });
-      }
-  
-      return {
-        totalPaid,
-        balanceDue: balance,
-        paymentHistory: history.sort((a,b) => a.date.getTime() - b.date.getTime()),
-      };
+        const approvedSubmissions = (paymentSubmissions || []).filter(p => p.status === 'Approved');
+        const totalFromSubmissions = approvedSubmissions.reduce((sum, p) => sum + p.amount, 0);
+
+        const initialAdvance = (order.paymentReceived || 0) - totalFromSubmissions;
+
+        const totalPaid = order.paymentReceived || 0;
+        const balance = order.grandTotal - totalPaid;
+        
+        let history = approvedSubmissions.map(p => ({
+            amount: p.amount,
+            date: p.submittedAt.toDate(),
+            details: `Ref: ${p.transactionDetails || 'N/A'} (${p.paymentMethod})`,
+            status: p.status,
+        }));
+        
+        if (initialAdvance > 0) {
+            history.unshift({
+                amount: initialAdvance,
+                date: order.createdAt?.toDate ? order.createdAt.toDate() : new Date(order.date),
+                details: 'Initial Advance',
+                status: 'Approved'
+            });
+        }
+        
+        return {
+            totalPaid,
+            balanceDue: balance,
+            paymentHistory: history.sort((a,b) => a.date.getTime() - b.date.getTime()),
+        }
     }, [order, paymentSubmissions]);
 
     const refundQuery = order.status === 'Canceled' && user
@@ -729,7 +723,7 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
 function OrdersPageContent() {
   const router = useRouter();
   const firestore = useFirestore();
-  const { toast } } = useToast();
+  const { toast } = useToast();
   const { user } = useUser();
   const { currentRole } = useRole();
   

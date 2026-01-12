@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -111,7 +110,7 @@ const formatIndianCurrency = (num: number) => {
 };
 
 function PayBalanceDialog({ order, companyInfo, balance }: { order: Order; companyInfo: any; balance: number }) {
-  const { toast } } from useToast();
+  const { toast } = useToast();
   const firestore = useFirestore();
   const { user } = useUser();
   const { currentRole } = useRole();
@@ -481,15 +480,15 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
         const approvedSubmissions = (paymentSubmissions || []).filter(p => p.status === 'Approved');
         const totalFromSubmissions = approvedSubmissions.reduce((sum, p) => sum + p.amount, 0);
 
-        const initialAdvance = (order.paymentReceived || 0);
+        const initialAdvance = (order.paymentReceived || 0) - totalFromSubmissions;
 
-        const totalPaid = initialAdvance + totalFromSubmissions;
+        const totalPaid = order.paymentReceived || 0;
         const balance = order.grandTotal - totalPaid;
         
         let history = approvedSubmissions.map(p => ({
             amount: p.amount,
             date: p.submittedAt.toDate(),
-            details: `Ref: ${p.transactionDetails || 'N/A'}`,
+            details: `Ref: ${p.transactionDetails || 'N/A'} (${p.paymentMethod})`,
             status: p.status,
         }));
         
@@ -502,25 +501,10 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
             });
         }
         
-        // This is a correction: The UI was showing a sum instead of individual submissions.
-        // Let's correct the history to show the right values from paymentDetails string if submissions are empty.
-        if (approvedSubmissions.length === 0 && order.paymentDetails) {
-            history = order.paymentDetails.split('\n').filter(Boolean).map(line => {
-                const parts = line.split(' - ');
-                return {
-                    date: new Date(parts[0].replace('Approved: ', '')),
-                    amount: parseFloat(parts[1]),
-                    details: parts[2] || '',
-                    status: 'Approved'
-                }
-            })
-        }
-
-
         return {
             totalPaid,
             balanceDue: balance,
-            paymentHistory: history,
+            paymentHistory: history.sort((a,b) => a.date.getTime() - b.date.getTime()),
         }
     }, [order, paymentSubmissions]);
 
@@ -902,7 +886,7 @@ export default function MyOrdersPage() {
         return null;
     }
 
-    return <MyOrdersPageContent />;
+    return <OrdersPageContent />;
 }
 
     
