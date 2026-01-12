@@ -462,44 +462,28 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
     const { data: userProfile } = useDoc<UserProfile>(userProfileRef);
 
     const paymentSubmissionsQuery = React.useMemo(() => {
-      if (!order.id || !user?.uid || !firestore) return null;
-    
-      const isPartner = currentRole === 'Partner';
-      const filterField = isPartner ? 'assignedToUid' : 'userId';
-    
+      if (!order.id || !firestore) return null;
       return query(
         collection(firestore, 'paymentSubmissions'),
         where('orderId', '==', order.id),
-        where(filterField, '==', user.uid), // THIS IS THE CRITICAL SECURITY FILTER
         orderBy('submittedAt', 'desc')
       );
-    }, [order.id, user?.uid, currentRole, firestore]);
+    }, [order.id, firestore]);
     const { data: paymentSubmissions } = useCollection<PaymentSubmission>(paymentSubmissionsQuery);
     
     const { totalPaid, balanceDue, paymentHistory } = React.useMemo(() => {
         const approvedSubmissions = (paymentSubmissions || []).filter(p => p.status === 'Approved');
         const totalFromSubmissions = approvedSubmissions.reduce((sum, p) => sum + p.amount, 0);
 
-        const initialAdvance = (order.paymentReceived || 0) - totalFromSubmissions;
-
-        const totalPaid = order.paymentReceived || 0;
+        const totalPaid = totalFromSubmissions;
         const balance = order.grandTotal - totalPaid;
         
-        let history = approvedSubmissions.map(p => ({
+        const history = approvedSubmissions.map(p => ({
             amount: p.amount,
             date: p.submittedAt.toDate(),
             details: `Ref: ${p.transactionDetails || 'N/A'} (${p.paymentMethod})`,
             status: p.status,
         }));
-        
-        if (initialAdvance > 0) {
-            history.unshift({
-                amount: initialAdvance,
-                date: order.createdAt?.toDate ? order.createdAt.toDate() : new Date(order.date),
-                details: 'Initial Advance',
-                status: 'Approved'
-            });
-        }
         
         return {
             totalPaid,
@@ -647,7 +631,7 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
                                     <p className="text-xs font-semibold">Payment History:</p>
                                     {paymentHistory.map((p, i) => (
                                         <p key={i} className="text-xs text-muted-foreground font-mono whitespace-pre-wrap">
-                                            {format(p.date, 'dd/MM/yy')}: ₹{p.amount.toFixed(2)} - {p.details} ({p.status})
+                                            {format(p.date, 'dd/MM/yy')}: {formatIndianCurrency(p.amount)} - {p.details} ({p.status})
                                         </p>
                                     ))}
                                 </div>
@@ -888,5 +872,7 @@ export default function OrdersPage() {
 
     return <OrdersPageContent />;
 }
+
+    
 
     
