@@ -480,7 +480,7 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
         const approvedSubmissions = (paymentSubmissions || []).filter(p => p.status === 'Approved');
         const totalPaidFromSubmissions = approvedSubmissions.reduce((sum, p) => sum + p.amount, 0);
 
-        const totalPaid = (order.paymentReceived || 0) + totalPaidFromSubmissions;
+        const totalPaid = order.paymentReceived + totalPaidFromSubmissions;
         const balance = order.grandTotal - totalPaid;
         
         const history = (paymentSubmissions || []).map(p => ({
@@ -490,7 +490,7 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
             status: p.status,
         }));
         
-        if (order.paymentReceived && order.paymentReceived > 0) {
+        if (order.paymentReceived > 0) {
             history.unshift({
                 amount: order.paymentReceived,
                 date: order.createdAt?.toDate ? order.createdAt.toDate() : new Date(order.date),
@@ -884,5 +884,7 @@ export default function OrdersPage() {
         return null;
     }
 
-    return <MyOrdersPageContent />;
+    return <OrdersPageContent />;
 }
+
+    
