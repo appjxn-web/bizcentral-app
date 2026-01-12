@@ -190,3 +190,5 @@ io.netty.handler.codec.http2.Http2Exception: HTTP/2 client preface string missin
 
 Jan 12, 2026 9:40:44 AM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
 INFO: Detected non-HTTP/2 connection.
+Jan 12, 2026 9:40:46 AM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected HTTP/2 connection.
