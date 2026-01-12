@@ -23,7 +23,7 @@ const db = getFirestore();
  * It strictly ignores the generic "customer-advances" account.
  */
 const findOrCreateSpecificCustomerLedger = async (transaction: admin.firestore.Transaction, order: Order | SalesInvoice | PaymentSubmission): Promise<string> => {
-    const userId = order.userId;
+    const userId = 'customerId' in order ? order.customerId : order.userId;
     const customerName = order.customerName;
     const customerEmail = 'customerEmail' in order ? order.customerEmail : '';
 
@@ -80,7 +80,6 @@ const findOrCreateSpecificCustomerLedger = async (transaction: admin.firestore.T
 
 export const verifyUpiPaymentAndCreateOrder = onCall(async (request) => {
     const { order, upiTransactionId } = request.data;
-    const userId = order.userId;
 
     // --- 1. UPI Verification (Simulated) ---
     // In a real app, you would call your payment gateway's API here.
@@ -687,3 +686,4 @@ export const onPaymentApproved = onDocumentUpdated("paymentSubmissions/{id}", as
 
 
     
+
