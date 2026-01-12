@@ -54,7 +54,7 @@ import {
   DialogClose,
 } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
-import { useRole } from '../../_components/role-provider';
+import { useRole } from '@/app/dashboard/_components/role-provider';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useFirestore, useCollection, useUser, useDoc } from '@/firebase';
 import { collection, doc, addDoc, getDoc, updateDoc, query, where } from 'firebase/firestore';
@@ -76,11 +76,11 @@ interface QuotationItem {
 const companyGstin = '08AAFCJ5369P1ZR'; // Mock company GSTIN
 
 const formatIndianCurrency = (num: number) => {
-    return new Intl.NumberFormat('en-IN', {
-      style: 'currency',
-      currency: 'INR',
-      minimumFractionDigits: 2,
-    }).format(num);
+  return new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    minimumFractionDigits: 2,
+  }).format(num);
 };
 
 interface PartnerStockItem {
@@ -282,6 +282,7 @@ export default function CreateQuotationPage() {
         items: items.map(({id, ...rest}) => rest),
         terms,
         overallDiscount,
+        createdBy: authUser?.uid, // CRITICAL FIX: Add the creator's ID
     };
 
     try {
@@ -298,9 +299,8 @@ export default function CreateQuotationPage() {
           quotationNumber: null, 
           status: 'Draft',
           createdAt: new Date().toISOString(),
-          createdBy: authUser?.displayName || 'System'
         });
-        toast({ title: "Quotation created and generating number..." });
+        toast({ title: "Quotation created successfully" });
       }
       router.push('/dashboard/sales/quotation');
     } catch (error: any) {
@@ -516,4 +516,3 @@ export default function CreateQuotationPage() {
     </>
   );
 }
-
