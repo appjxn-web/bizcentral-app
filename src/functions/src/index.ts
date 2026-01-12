@@ -22,8 +22,8 @@ const db = getFirestore();
  * Aggressive helper to ensure every customer has their OWN specific ledger.
  * It strictly ignores the generic "customer-advances" account.
  */
-const findOrCreateSpecificCustomerLedger = async (transaction: admin.firestore.Transaction, order: Order | SalesInvoice): Promise<string> => {
-    const userId = 'userId' in order ? order.userId : order.customerId;
+const findOrCreateSpecificCustomerLedger = async (transaction: admin.firestore.Transaction, order: Order | SalesInvoice | PaymentSubmission): Promise<string> => {
+    const userId = order.userId;
     const customerName = order.customerName;
     const customerEmail = 'customerEmail' in order ? order.customerEmail : '';
 
@@ -590,7 +590,7 @@ export const onPaymentApproved = onDocumentUpdated("paymentSubmissions/{id}", as
   const after = event.data.after.data() as PaymentSubmission;
 
   // Trigger when Admin changes status from 'Pending' to 'Approved'
-  if (before.status === 'Pending' && after.status === 'Approved') {
+  if (before.status !== 'Approved' && after.status === 'Approved') {
     const orderRef = db.collection('orders').doc(after.orderId);
     
     return db.runTransaction(async (transaction) => {
@@ -608,7 +608,7 @@ export const onPaymentApproved = onDocumentUpdated("paymentSubmissions/{id}", as
       ].filter(Boolean).join('\n');
 
       // Create a JV for THIS specific payment amount
-      const customerLedgerId = await findOrCreateSpecificCustomerLedger(transaction, orderData);
+      const customerLedgerId = await findOrCreateSpecificCustomerLedger(transaction, after);
       const companySnap = await transaction.get(db.doc("company/info"));
       const primaryUpi = companySnap.data()?.primaryUpiId;
       let bankAccountId: string | null = null;

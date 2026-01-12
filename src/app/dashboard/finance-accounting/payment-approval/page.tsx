@@ -24,7 +24,7 @@ import { CheckCircle, XCircle, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useCollection } from '@/firebase';
 import { collection, doc, updateDoc, query, orderBy, where } from 'firebase/firestore';
-import type { PaymentSubmission, Order } from '@/lib/types';
+import type { PaymentSubmission } from '@/lib/types';
 import { format } from 'date-fns';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
@@ -217,5 +217,3 @@ export default function PaymentApprovalPage() {
     </>
   );
 }
-
-

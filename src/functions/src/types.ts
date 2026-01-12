@@ -2,6 +2,15 @@
 
 import type {Timestamp} from "firebase/firestore";
 
+export type DocPrefixConfig = {
+    id: string;
+    type: string;
+    prefix: string;
+    useDate: boolean;
+    startNumber: number;
+    digits: number;
+};
+
 export type CoaNature = "ASSET" | "LIABILITY" | "EQUITY" | "INCOME" | "EXPENSE";
 
 export type CoaLedger = {
@@ -33,6 +42,7 @@ export type OrderStatus =
   | "Manufacturing"
   | "Ready for Dispatch"
   | "Awaiting Payment"
+  | "Awaiting Payment Confirmation"
   | "Shipped"
   | "Delivered"
   | "Canceled"
@@ -56,6 +66,8 @@ export interface Order {
   balance: number;
   commission?: number;
   assignedToUid?: string;
+  payoutStatus?: 'Awaiting Delivery' | 'Payable' | 'Paid' | 'No Commission';
+  paymentDetails?: string; 
 }
 
 
@@ -67,6 +79,10 @@ export interface UserProfile {
     category: string;
     commissionRate: number;
   }[];
+  referredBy?: string;
+  mobile?: string;
+  walletBalance?: number;
+  commissionPayable?: number;
 }
 
 export interface Product {
@@ -98,6 +114,7 @@ export type JournalVoucher = {
     credit?: number;
   }[];
   createdAt: Timestamp;
+  createdByUid?: string;
 };
 
 export interface CompanyInfo {
@@ -170,6 +187,19 @@ export interface CreditNote {
     createdAt: any;
 }
 
+export interface RefundRequest {
+    id: string;
+    orderId: string;
+    orderNumber?: string;
+    customerId: string;
+    customerName: string;
+    refundAmount: number;
+    requestDate: string;
+    status: 'Pending' | 'Paid' | 'Rejected';
+    transactionRef?: string;
+    transactionDate?: string;
+}
+
 
 export interface Party {
     id: string;
@@ -179,3 +209,42 @@ export interface Party {
     email?: string;
     // other party fields
 }
+
+export interface StockTransferRequest {
+  id: string;
+  requestingUserId: string;
+  requestingUserName: string;
+  partnerId: string;
+  partnerName: string;
+  items: {
+      productId: string;
+      productName: string;
+      quantity: number;
+  }[];
+  status: 'Pending Approval' | 'Approved' | 'Rejected' | 'Shipped';
+  createdAt: any; // Using `any` for Timestamp compatibility
+  approvedAt?: any;
+  shippedAt?: any;
+  notes?: string;
+}
+
+export interface PaymentSubmission {
+  id: string;
+  userId: string;
+  customerName: string;
+  orderId: string;
+  amount: number;
+  paymentMethod: string;
+  transactionDetails: string;
+  proofUrl?: string;
+  status: 'Pending' | 'Approved' | 'Rejected';
+  submittedAt: Timestamp;
+}
+    
+
+  
+
+
+
+
+    
