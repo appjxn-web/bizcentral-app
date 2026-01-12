@@ -93,79 +93,35 @@ export const verifyUpiPaymentAndCreateOrder = onCall(async (request) => {
     }
 
     // --- 2. Database Operations within a Transaction ---
-    const orderRef = db.collection('orders').doc();
-    let referralCommission = 0;
-    
     try {
         await db.runTransaction(async (transaction) => {
-            // a. Create Journal Voucher for the advance payment
-            const customerLedgerId = await findOrCreateSpecificCustomerLedger(transaction, order as Order);
-            const companySnap = await transaction.get(db.doc("company/info"));
-            const primaryUpi = companySnap.data()?.primaryUpiId;
-            let bankAccountId: string | null = null;
+            const orderRef = db.collection('orders').doc();
             
-            if (primaryUpi) {
-                const ledgerSearchQuery = db.collection("coa_ledgers").where("bank.upiId", "==", primaryUpi).limit(1);
-                const ledgerSearch = await transaction.get(ledgerSearchQuery);
-                if (!ledgerSearch.empty) {
-                    bankAccountId = ledgerSearch.docs[0].id;
-                } else {
-                    console.error(`No bank ledger found for primary UPI ID: ${primaryUpi}`);
-                }
-            } else {
-                console.error("Primary UPI ID not configured in company/info.");
-            }
-
-            if (!bankAccountId) {
-                throw new Error("Could not determine bank account for payment. Please set a primary UPI in company settings.");
-            }
-        
-            const jvRef = db.collection("journalVouchers").doc();
-            transaction.set(jvRef, {
-                id: jvRef.id,
-                date: new Date().toISOString().split("T")[0],
-                narration: `Advance for new Order #${orderRef.id} via UPI`,
-                voucherType: "Receipt Voucher",
-                entries: [
-                    { accountId: bankAccountId, debit: order.paymentReceived, credit: 0 },
-                    { accountId: customerLedgerId, debit: 0, credit: order.paymentReceived }, 
-                ],
-                createdAt: admin.firestore.FieldValue.serverTimestamp(),
-                createdByUid: userId,
+            // INSTEAD OF JV: Create a payment submission for the advance
+            const submissionRef = db.collection('paymentSubmissions').doc();
+            transaction.set(submissionRef, {
+                userId: order.userId,
+                customerName: order.customerName,
+                orderId: orderRef.id,
+                amount: order.paymentReceived,
+                paymentMethod: 'UPI / Online',
+                transactionDetails: upiTransactionId,
+                status: 'Pending', // Requires Admin approval
+                submittedAt: admin.firestore.FieldValue.serverTimestamp(),
             });
 
-            // b. Handle Referral Logic
-            const userProfileRef = db.doc(`users/${order.userId}`);
-            const userProfileSnap = await transaction.get(userProfileRef);
-            const userProfile = userProfileSnap.data() as UserProfile | undefined;
-
-            if (userProfile?.referredBy) {
-                const ordersQuery = db.collection('orders').where('userId', '==', order.userId).limit(1);
-                const orderCountSnapshot = await transaction.get(ordersQuery);
-                if (orderCountSnapshot.empty) { // This is their first order
-                    const referralsQuery = db.collection('users').doc(userProfile.referredBy).collection('referrals').where('mobile', '==', userProfile.mobile).where('status', '==', 'Signed Up');
-                    const referralsSnapshot = await transaction.get(referralsQuery);
-                    if (!referralsSnapshot.empty) {
-                        const referralDoc = referralsSnapshot.docs[0];
-                        const commissionPercentage = referralDoc.data().commission || 0;
-                        referralCommission = order.grandTotal * (commissionPercentage / 100);
-                        transaction.update(referralDoc.ref, { status: 'First Purchased', commission: referralCommission });
-                    }
-                }
-            }
-
-            // c. Finally, create the order document
+            // Create order with 0 initial verified payment (Submission will update it)
             const newOrderData = {
               ...order,
-              id: orderRef.id, // Ensure ID is consistent
-              assignedToUid: order.assignedToUid || null,
-              commission: referralCommission,
+              id: orderRef.id,
+              paymentReceived: 0, // Set to 0 initially
+              balance: order.grandTotal, 
+              status: 'Awaiting Payment Confirmation',
             };
             transaction.set(orderRef, newOrderData);
         });
-
-        return { success: true, message: "Order created successfully", orderId: orderRef.id };
-    } catch (error: any) {
+        return { success: true, orderId: "Order created, pending payment approval" };
+    } catch (error: any) { 
         console.error("Order creation transaction failed:", error);
         throw new HttpsError('internal', 'An error occurred while creating the order.', error.message);
     }
@@ -572,46 +528,6 @@ export const handleOrderUpdates = onDocumentUpdated("orders/{orderId}", async (e
             }
         });
     }
-  
-    // --- Accounting Entry on Payment Approval ---
-    if (before.status === 'Awaiting Payment Confirmation' && after.status === 'Ordered') {
-      if (after.paymentReceived && after.paymentReceived > 0) {
-        await db.runTransaction(async (transaction) => {
-            const customerLedgerId = await findOrCreateSpecificCustomerLedger(transaction, after);
-            const companySnap = await transaction.get(db.doc("company/info"));
-            const primaryUpi = companySnap.data()?.primaryUpiId;
-            let bankAccountId: string | null = null;
-            
-            if (primaryUpi) {
-                const ledgerSearchQuery = db.collection("coa_ledgers").where("bank.upiId", "==", primaryUpi).limit(1);
-                const ledgerSearch = await transaction.get(ledgerSearchQuery);
-                if (!ledgerSearch.empty) {
-                    bankAccountId = ledgerSearch.docs[0].id;
-                }
-            }
-
-            if (!bankAccountId) {
-                console.error("No bank account found for primary UPI. Cannot create JV for order:", after.id);
-                // Optionally throw an error or handle it gracefully
-                return;
-            }
-        
-            const jvRef = db.collection("journalVouchers").doc();
-            transaction.set(jvRef, {
-                id: jvRef.id,
-                date: new Date().toISOString().split("T")[0],
-                narration: `Advance for Order #${after.orderNumber || after.id} via UPI`,
-                voucherType: "Receipt Voucher",
-                entries: [
-                    { accountId: bankAccountId, debit: after.paymentReceived, credit: 0 },
-                    { accountId: customerLedgerId, debit: 0, credit: after.paymentReceived }, 
-                ],
-                createdAt: admin.firestore.FieldValue.serverTimestamp(),
-                createdByUid: after.userId,
-            });
-        });
-      }
-    }
  });
 export const onMilestoneUpdate = onDocumentWritten("goals/{goalId}/milestones/{milestoneId}", async (event: FirestoreEvent<Change<DocumentSnapshot> | undefined>) => { 
     const goalId = event.params.goalId;
@@ -685,21 +601,49 @@ export const onPaymentApproved = onDocumentUpdated("paymentSubmissions/{id}", as
       }
       const orderData = orderDoc.data() as Order;
 
-      const paymentDetails = {
-          amount: after.amount,
-          date: new Date().toISOString(),
-          ref: after.transactionDetails,
-          method: after.paymentMethod,
-          proofUrl: after.proofUrl,
-      };
+      // Log this specific transaction in history
+      const newPaymentDetailsString = [
+          orderData.paymentDetails || '',
+          `Approved: ${new Date().toISOString()} - ${after.amount} - Ref: ${after.transactionDetails}`
+      ].filter(Boolean).join('\n');
 
+      // Create a JV for THIS specific payment amount
+      const customerLedgerId = await findOrCreateSpecificCustomerLedger(transaction, orderData);
+      const companySnap = await transaction.get(db.doc("company/info"));
+      const primaryUpi = companySnap.data()?.primaryUpiId;
+      let bankAccountId: string | null = null;
+            
+      if (primaryUpi) {
+          const ledgerSearchQuery = db.collection("coa_ledgers").where("bank.upiId", "==", primaryUpi).limit(1);
+          const ledgerSearch = await transaction.get(ledgerSearchQuery);
+          if (!ledgerSearch.empty) {
+              bankAccountId = ledgerSearch.docs[0].id;
+          }
+      }
+
+      if (bankAccountId) {
+        const jvRef = db.collection("journalVouchers").doc();
+        transaction.set(jvRef, {
+            id: jvRef.id,
+            date: new Date().toISOString().split("T")[0],
+            narration: `Payment for Order #${orderData.orderNumber || orderData.id} via ${after.paymentMethod}. Ref: ${after.transactionDetails}`,
+            voucherType: "Receipt Voucher",
+            entries: [
+                { accountId: bankAccountId, debit: after.amount, credit: 0 },
+                { accountId: customerLedgerId, debit: 0, credit: after.amount }, 
+            ],
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            createdByUid: after.userId,
+        });
+      } else {
+        console.error("No bank account found for primary UPI. Cannot create JV for payment submission:", after.id);
+      }
+
+      // Update order with the incremented amounts and new status
       transaction.update(orderRef, {
-        // Increment the total paid amount
         paymentReceived: FieldValue.increment(after.amount),
         balance: FieldValue.increment(-after.amount),
-        // Log this specific transaction in history
-        paymentDetails: `${orderData.paymentDetails || ''}\nApproved: ${paymentDetails.date} - ${paymentDetails.amount} - Ref: ${paymentDetails.ref}`.trim(),
-        // Set status back to Ordered so work continues
+        paymentDetails: newPaymentDetailsString,
         status: 'Ordered'
       });
     });

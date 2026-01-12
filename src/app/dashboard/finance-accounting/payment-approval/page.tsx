@@ -52,8 +52,8 @@ function PaymentTable({
   onUpdateStatus,
   processingId,
 }: {
-  submissions: (PaymentSubmission | Order)[];
-  onUpdateStatus: (submission: PaymentSubmission | Order, status: 'Approved' | 'Rejected') => void;
+  submissions: PaymentSubmission[];
+  onUpdateStatus: (submission: PaymentSubmission, status: 'Approved' | 'Rejected') => void;
   processingId: string | null;
 }) {
   return (
@@ -73,17 +73,14 @@ function PaymentTable({
       <TableBody>
         {submissions.length > 0 ? (
           submissions.map((submission) => {
-            const isOrder = 'orderNumber' in submission;
-            const submittedAt = isOrder ? new Date(submission.date) : (submission as PaymentSubmission).submittedAt?.toDate();
-
             return (
               <TableRow key={submission.id}>
                 <TableCell>{submission.customerName}</TableCell>
-                <TableCell>{submittedAt ? format(submittedAt, 'dd/MM/yyyy') : 'N/A'}</TableCell>
-                <TableCell>{isOrder ? 'Online' : (submission as PaymentSubmission).paymentMethod}</TableCell>
-                <TableCell className="font-mono text-xs">{isOrder ? submission.paymentDetails : (submission as PaymentSubmission).transactionDetails}</TableCell>
+                <TableCell>{submission.submittedAt ? format(submission.submittedAt.toDate(), 'dd/MM/yyyy') : 'N/A'}</TableCell>
+                <TableCell>{submission.paymentMethod}</TableCell>
+                <TableCell className="font-mono text-xs">{submission.transactionDetails}</TableCell>
                 <TableCell>
-                  { 'proofUrl' in submission && submission.proofUrl ? (
+                  {submission.proofUrl ? (
                     <a href={submission.proofUrl} target="_blank" rel="noopener noreferrer" className="text-blue-500 underline">View</a>
                   ) : 'N/A'}
                 </TableCell>
@@ -93,7 +90,7 @@ function PaymentTable({
                   </Badge>
                 </TableCell>
                 <TableCell className="text-right font-mono font-semibold">
-                  ₹{(isOrder ? submission.paymentReceived : (submission as PaymentSubmission).amount || 0).toFixed(2)}
+                  ₹{(submission.amount || 0).toFixed(2)}
                 </TableCell>
                 <TableCell className="text-right space-x-2">
                   {submission.status === 'Pending' || submission.status === 'Awaiting Payment Confirmation' ? (
@@ -137,85 +134,45 @@ export default function PaymentApprovalPage() {
   const { toast } = useToast();
   const firestore = useFirestore();
 
+  // ONLY query paymentSubmissions
   const allPaymentsQuery = query(
     collection(firestore, 'paymentSubmissions'),
     orderBy('submittedAt', 'desc')
   );
-  
-  const allOrdersQuery = query(
-    collection(firestore, 'orders'),
-    orderBy('createdAt', 'desc')
-  );
 
-  const { data: allPayments, loading: paymentsLoading } = useCollection<PaymentSubmission>(allPaymentsQuery);
-  const { data: allOrders, loading: ordersLoading } = useCollection<Order>(allOrdersQuery);
-  
+  const { data: allPayments, loading } = useCollection<PaymentSubmission>(allPaymentsQuery);
   const [processingId, setProcessingId] = React.useState<string | null>(null);
 
-  const handleUpdateStatus = async (submission: PaymentSubmission | Order, newStatus: 'Approved' | 'Rejected') => {
+  const handleUpdateStatus = async (submission: PaymentSubmission, newStatus: 'Approved' | 'Rejected') => {
     setProcessingId(submission.id);
-
-    const isOrder = 'orderNumber' in submission;
-    const collectionName = isOrder ? 'orders' : 'paymentSubmissions';
-    const submissionRef = doc(firestore, collectionName, submission.id);
+    const submissionRef = doc(firestore, 'paymentSubmissions', submission.id);
 
     try {
-        let finalStatus;
-        if (newStatus === 'Approved') {
-            finalStatus = isOrder ? 'Ordered' : 'Approved';
-        } else {
-            finalStatus = 'Rejected';
-        }
+        // Just update the submission. The Cloud Function onPaymentApproved
+        // will handle updating the Order and creating the JV.
+        await updateDoc(submissionRef, { status: newStatus });
 
-        await updateDoc(submissionRef, { status: finalStatus });
-
-        toast({
-            title: `Payment ${newStatus}`,
-            description: `The submission has been ${newStatus.toLowerCase()}. The Cloud Function will handle accounting.`,
-        });
+        toast({ title: `Payment ${newStatus}` });
     } catch (error) {
-        console.error('Error updating payment status:', error);
-        toast({
-            variant: 'destructive',
-            title: 'Update Failed',
-        });
+        toast({ variant: 'destructive', title: 'Update Failed' });
     } finally {
         setProcessingId(null);
     }
   };
   
-  const pendingPayments = React.useMemo(() => {
-    const manualSubmissions = allPayments?.filter(p => p.status === 'Pending') || [];
-    const onlineOrders = allOrders?.filter(o => o.status === 'Awaiting Payment Confirmation') || [];
-    return [...manualSubmissions, ...onlineOrders].sort((a,b) => {
-        const dateA = 'orderNumber' in a ? new Date(a.date) : (a as PaymentSubmission).submittedAt.toDate();
-        const dateB = 'orderNumber' in b ? new Date(b.date) : (b as PaymentSubmission).submittedAt.toDate();
-        return dateB.getTime() - dateA.getTime();
-    });
-  }, [allPayments, allOrders]);
+  // Simplified Memo filters
+  const pendingPayments = React.useMemo(() => 
+    allPayments?.filter(p => p.status === 'Pending' || p.status === 'Awaiting Payment Confirmation') || []
+  , [allPayments]);
 
-  const approvedPayments = React.useMemo(() => {
-    const manual = allPayments?.filter(p => p.status === 'Approved') || [];
-    const online = allOrders?.filter(o => o.status === 'Ordered' && o.paymentReceived > 0) || [];
-    return [...manual, ...online].sort((a,b) => {
-        const dateA = 'orderNumber' in a ? new Date(a.date) : (a as PaymentSubmission).submittedAt.toDate();
-        const dateB = 'orderNumber' in b ? new Date(b.date) : (b as PaymentSubmission).submittedAt.toDate();
-        return dateB.getTime() - dateA.getTime();
-    });
-  }, [allPayments, allOrders]);
+  const approvedPayments = React.useMemo(() => 
+    allPayments?.filter(p => p.status === 'Approved') || []
+  , [allPayments]);
 
-  const rejectedPayments = React.useMemo(() => {
-    const manual = allPayments?.filter(p => p.status === 'Rejected') || [];
-    const online = allOrders?.filter(o => o.status === 'Canceled') || [];
-     return [...manual, ...online].sort((a,b) => {
-        const dateA = 'orderNumber' in a ? new Date(a.date) : (a as PaymentSubmission).submittedAt.toDate();
-        const dateB = 'orderNumber' in b ? new Date(b.date) : (b as PaymentSubmission).submittedAt.toDate();
-        return dateB.getTime() - dateA.getTime();
-    });
-  }, [allPayments, allOrders]);
+  const rejectedPayments = React.useMemo(() => 
+    allPayments?.filter(p => p.status === 'Rejected') || []
+  , [allPayments]);
   
-  const loading = paymentsLoading || ordersLoading;
-
   return (
     <>
       <PageHeader title="Customer Payment Approvals" />
@@ -260,3 +217,4 @@ export default function PaymentApprovalPage() {
     </>
   );
 }
+
