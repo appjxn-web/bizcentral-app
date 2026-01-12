@@ -704,18 +704,19 @@ function OrdersPageContent() {
   const { currentRole } = useRole();
   
   const ordersQuery = React.useMemo(() => {
-      if (!user?.uid || !currentRole) return null;
-      const ordersRef = collection(firestore, 'orders');
+    if (!user?.uid || !currentRole) return null;
+    const ordersRef = collection(firestore, 'orders');
 
-      if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
-          return query(ordersRef, orderBy('date', 'desc'));
-      }
+    if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
+        return query(ordersRef, orderBy('date', 'desc'));
+    }
 
-      if (currentRole === 'Partner') {
-          return query(ordersRef, where('assignedToUid', '==', user.uid), orderBy('date', 'desc'));
-      }
-      
-      return query(ordersRef, where('userId', '==', user.uid), orderBy('date', 'desc'));
+    if (currentRole === 'Partner') {
+        return query(ordersRef, where('assignedToUid', '==', user.uid), orderBy('date', 'desc'));
+    }
+    
+    // Default to customer view
+    return query(ordersRef, where('userId', '==', user.uid), orderBy('date', 'desc'));
   }, [user?.uid, currentRole, firestore]);
   
   const invoicesQuery = React.useMemo(() => {
@@ -864,14 +865,4 @@ export default function OrdersPage() {
 
     return <OrdersPageContent />;
 }
-
-
-
-
-
-
-    
-
-    
-
 

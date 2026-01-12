@@ -707,30 +707,18 @@ function OrdersPageContent() {
       if (!user?.uid || !currentRole) return null;
       const ordersRef = collection(firestore, 'orders');
 
-      if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
-          return query(ordersRef, orderBy('date', 'desc'));
-      }
-
-      if (currentRole === 'Partner') {
-          return query(ordersRef, where('assignedToUid', '==', user.uid), orderBy('date', 'desc'));
-      }
-      
+      // This is the "My Orders" page, so it should always filter by the current user.
       return query(ordersRef, where('userId', '==', user.uid), orderBy('date', 'desc'));
+
   }, [user?.uid, currentRole, firestore]);
   
   const invoicesQuery = React.useMemo(() => {
       if (!user?.uid || !currentRole) return null;
       const invoicesRef = collection(firestore, 'salesInvoices');
-  
-      if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
-          return query(invoicesRef, orderBy('date', 'desc'));
-      }
-  
-      if (currentRole === 'Partner') {
-          return query(invoicesRef, where('assignedToUid', '==', user.uid), orderBy('date', 'desc'));
-      }
-  
+      
+      // Customers should only see their own invoices.
       return query(invoicesRef, where('customerId', '==', user.uid), orderBy('date', 'desc'));
+      
   }, [user?.uid, currentRole, firestore]);
 
 
@@ -786,7 +774,7 @@ function OrdersPageContent() {
 
   return (
     <>
-      <PageHeader title="Sales Orders" />
+      <PageHeader title="My Orders" />
        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -841,7 +829,7 @@ function OrdersPageContent() {
             <Card>
                 <CardContent className="p-12 text-center">
                     <h3 className="text-xl font-medium">No orders found</h3>
-                    <p className="text-muted-foreground">No orders match the current criteria.</p>
+                    <p className="text-muted-foreground">You haven't placed any orders yet.</p>
                 </CardContent>
             </Card>
         )}
@@ -864,14 +852,4 @@ export default function OrdersPage() {
 
     return <OrdersPageContent />;
 }
-
-
-
-
-
-
-    
-
-    
-
 
