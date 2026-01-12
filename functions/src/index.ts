@@ -22,8 +22,8 @@ const db = getFirestore();
  * Aggressive helper to ensure every customer has their OWN specific ledger.
  * It strictly ignores the generic "customer-advances" account.
  */
-const findOrCreateSpecificCustomerLedger = async (transaction: admin.firestore.Transaction, order: Order | SalesInvoice): Promise<string> => {
-    const userId = 'userId' in order ? order.userId : order.customerId;
+const findOrCreateSpecificCustomerLedger = async (transaction: admin.firestore.Transaction, order: Order | SalesInvoice | PaymentSubmission): Promise<string> => {
+    const userId = order.userId;
     const customerName = order.customerName;
     const customerEmail = 'customerEmail' in order ? order.customerEmail : '';
 
@@ -80,7 +80,6 @@ const findOrCreateSpecificCustomerLedger = async (transaction: admin.firestore.T
 
 export const verifyUpiPaymentAndCreateOrder = onCall(async (request) => {
     const { order, upiTransactionId } = request.data;
-    const userId = order.userId;
 
     // --- 1. UPI Verification (Simulated) ---
     // In a real app, you would call your payment gateway's API here.
@@ -590,7 +589,7 @@ export const onPaymentApproved = onDocumentUpdated("paymentSubmissions/{id}", as
   const after = event.data.after.data() as PaymentSubmission;
 
   // Trigger when Admin changes status from 'Pending' to 'Approved'
-  if (before.status === 'Pending' && after.status === 'Approved') {
+  if (before.status !== 'Approved' && after.status === 'Approved') {
     const orderRef = db.collection('orders').doc(after.orderId);
     
     return db.runTransaction(async (transaction) => {
@@ -608,7 +607,7 @@ export const onPaymentApproved = onDocumentUpdated("paymentSubmissions/{id}", as
       ].filter(Boolean).join('\n');
 
       // Create a JV for THIS specific payment amount
-      const customerLedgerId = await findOrCreateSpecificCustomerLedger(transaction, orderData);
+      const customerLedgerId = await findOrCreateSpecificCustomerLedger(transaction, after);
       const companySnap = await transaction.get(db.doc("company/info"));
       const primaryUpi = companySnap.data()?.primaryUpiId;
       let bankAccountId: string | null = null;

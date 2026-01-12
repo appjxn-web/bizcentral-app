@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -257,7 +258,6 @@ export default function CheckoutPage() {
         customerName: userProfile.name || user.displayName || 'Guest',
         customerEmail: user.email || 'N/A',
         date: new Date().toISOString(),
-        status: 'Awaiting Payment Confirmation', // New status
         items: orderItems,
         subtotal,
         discount,
@@ -265,18 +265,18 @@ export default function CheckoutPage() {
         sgst,
         igst: igst,
         grandTotal,
-        paymentReceived: advanceAmount,
+        paymentReceived: advanceAmount, // The advance being paid now
         balance: grandTotal - advanceAmount,
         commission: 0,
         pickupPointId: selectedPickupPointId,
         assignedToUid: pickupPoints?.find(p => p.id === selectedPickupPointId)?.ownerUid || null,
-        paymentDetails: `UPI Transaction ID: ${upiTransactionId}`,
         createdAt: new Date().toISOString(),
     };
     
     try {
-        const orderRef = doc(collection(firestore, 'orders'));
-        await setDoc(orderRef, newOrderPayload);
+        const functions = getFunctions();
+        const verifyAndCreate = httpsCallable(functions, 'verifyUpiPaymentAndCreateOrder');
+        await verifyAndCreate({ order: newOrderPayload, upiTransactionId });
 
         toast({ title: 'Order Placed!', description: `Your order is awaiting payment confirmation.` });
         localStorage.removeItem('cart');
