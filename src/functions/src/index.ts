@@ -618,13 +618,12 @@ export const onPaymentApproved = onDocumentUpdated("paymentSubmissions/{id}", as
       let receivingAccountId: string | null = null;
             
       if (after.paymentMethod === 'Cash') {
-        // If cash, we need to find the specific cash account (e.g., the partner's)
-        const userSnap = await transaction.get(db.doc(`users/${after.recordedByUid}`));
-        const userProfile = userSnap.data() as UserProfile;
-        if (userProfile && userProfile.coaLedgerId) {
-            receivingAccountId = userProfile.coaLedgerId;
+        const recorderSnap = await transaction.get(db.doc(`users/${after.recordedByUid}`));
+        const recorderProfile = recorderSnap.data() as UserProfile;
+        
+        if (recorderProfile && recorderProfile.coaLedgerId) {
+            receivingAccountId = recorderProfile.coaLedgerId;
         } else {
-            // Fallback to a generic cash account if specific one not found
             const cashLedgerSnap = await transaction.get(db.collection('coa_ledgers').where('name', '==', 'Cash in Hand').limit(1));
             if (!cashLedgerSnap.empty) {
                 receivingAccountId = cashLedgerSnap.docs[0].id;
@@ -642,12 +641,12 @@ export const onPaymentApproved = onDocumentUpdated("paymentSubmissions/{id}", as
         }
       }
 
-      if (receivingAccountId) {
+      if (receivingAccountId && customerLedgerId) {
         const jvRef = db.collection("journalVouchers").doc();
         transaction.set(jvRef, {
             id: jvRef.id,
             date: new Date().toISOString().split("T")[0],
-            narration: `Payment for Order #${orderData.orderNumber || orderData.id} via ${after.paymentMethod}. Ref: ${after.transactionDetails}`,
+            narration: `Receipt for Order #${orderData.orderNumber || orderData.id}. Method: ${after.paymentMethod}. Ref: ${after.transactionDetails}`,
             voucherType: "Receipt Voucher",
             entries: [
                 { accountId: receivingAccountId, debit: after.amount, credit: 0 },
@@ -708,6 +707,8 @@ export const onPaymentApproved = onDocumentUpdated("paymentSubmissions/{id}", as
 
 
     
+
+
 
 
 

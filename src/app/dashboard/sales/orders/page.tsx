@@ -165,7 +165,7 @@ function PayBalanceDialog({ order, companyInfo, balance }: { order: Order; compa
     setIsSubmitting(true);
     try {
       const submissionData: Omit<PaymentSubmission, 'id'> = {
-        userId: order.userId,
+        userId: order.userId, 
         recordedByUid: user.uid,
         customerName: order.customerName,
         orderId: order.id,
@@ -372,31 +372,8 @@ function CancelOrderDialog({ order, onConfirm, open, onOpenChange }: { order: Or
 
 function PartnerPickupDetails({ userId }: { userId: string }) {
     const firestore = useFirestore();
-    const [partner, setPartner] = React.useState<UserProfile | null>(null);
-    const [loading, setLoading] = React.useState(true);
-
-    React.useEffect(() => {
-        if (!userId) {
-            setLoading(false);
-            return;
-        };
-        
-        const fetchPartner = async () => {
-            try {
-                const docSnap = await getDoc(doc(firestore, 'users', userId));
-                if (docSnap.exists()) {
-                    setPartner(docSnap.data() as UserProfile);
-                }
-            } catch (e) {
-                console.error("Error loading partner:", e);
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        fetchPartner();
-    }, [userId, firestore]);
-
+    const { data: partner, loading } = useDoc<UserProfile>(userId ? doc(firestore, 'users', userId) : null);
+    
     if (loading) return <p className="text-sm text-muted-foreground">Loading partner details...</p>;
     if (!partner) return <p className="text-sm text-destructive">Could not load partner details.</p>;
     
@@ -886,5 +863,6 @@ export default function OrdersPage() {
 
     return <OrdersPageContent />;
 }
+
 
 

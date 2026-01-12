@@ -83,6 +83,7 @@ export interface UserProfile {
   mobile?: string;
   walletBalance?: number;
   commissionPayable?: number;
+  coaLedgerId?: string;
 }
 
 export interface Product {
@@ -239,6 +240,7 @@ export interface PaymentSubmission {
   proofUrl?: string;
   status: 'Pending' | 'Approved' | 'Rejected';
   submittedAt: Timestamp;
+  recordedByUid?: string;
 }
     
 
@@ -248,3 +250,4 @@ export interface PaymentSubmission {
 
 
     
+

@@ -165,7 +165,7 @@ function PayBalanceDialog({ order, companyInfo, balance }: { order: Order; compa
     setIsSubmitting(true);
     try {
       const submissionData: Omit<PaymentSubmission, 'id'> = {
-        userId: order.userId,
+        userId: order.userId, 
         recordedByUid: user.uid,
         customerName: order.customerName,
         orderId: order.id,
@@ -372,31 +372,8 @@ function CancelOrderDialog({ order, onConfirm, open, onOpenChange }: { order: Or
 
 function PartnerPickupDetails({ userId }: { userId: string }) {
     const firestore = useFirestore();
-    const [partner, setPartner] = React.useState<UserProfile | null>(null);
-    const [loading, setLoading] = React.useState(true);
-
-    React.useEffect(() => {
-        if (!userId) {
-            setLoading(false);
-            return;
-        };
-        
-        const fetchPartner = async () => {
-            try {
-                const docSnap = await getDoc(doc(firestore, 'users', userId));
-                if (docSnap.exists()) {
-                    setPartner(docSnap.data() as UserProfile);
-                }
-            } catch (e) {
-                console.error("Error loading partner:", e);
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        fetchPartner();
-    }, [userId, firestore]);
-
+    const { data: partner, loading } = useDoc<UserProfile>(userId ? doc(firestore, 'users', userId) : null);
+    
     if (loading) return <p className="text-sm text-muted-foreground">Loading partner details...</p>;
     if (!partner) return <p className="text-sm text-destructive">Could not load partner details.</p>;
     
@@ -463,28 +440,30 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
     const { data: userProfile } = useDoc<UserProfile>(userProfileRef);
 
     const paymentSubmissionsQuery = React.useMemo(() => {
-        if (!order.id || !user?.uid || !firestore) return null;
-        
-        const submissionsRef = collection(firestore, 'paymentSubmissions');
+      if (!order.id || !user?.uid || !firestore) return null;
       
-        // Security Filter for queries
-        if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
-          return query(
-            submissionsRef, 
-            where('orderId', '==', order.id), 
-            orderBy('submittedAt', 'desc')
-          );
-        }
-      
-        const securityField = currentRole === 'Partner' ? 'assignedToUid' : 'userId';
-      
+      const submissionsRef = collection(firestore, 'paymentSubmissions');
+    
+      // 1. Admins/Accounts Managers see all submissions for this order
+      if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
         return query(
-          submissionsRef,
-          where('orderId', '==', order.id),
-          where(securityField, '==', user.uid), // THIS IS THE REQUIRED SECURITY FILTER
+          submissionsRef, 
+          where('orderId', '==', order.id), 
           orderBy('submittedAt', 'desc')
         );
-      }, [order.id, user?.uid, currentRole, firestore]);
+      }
+    
+      // 2. Security Filter for Customers and Partners
+      // This matches the security rules exactly (userId or assignedToUid)
+      const securityField = currentRole === 'Partner' ? 'assignedToUid' : 'userId';
+    
+      return query(
+        submissionsRef,
+        where('orderId', '==', order.id),
+        where(securityField, '==', user.uid), // THIS IS THE REQUIRED SECURITY FILTER
+        orderBy('submittedAt', 'desc')
+      );
+    }, [order.id, user?.uid, currentRole, firestore]);
 
     const { data: paymentSubmissions } = useCollection<PaymentSubmission>(paymentSubmissionsQuery);
     
@@ -886,5 +865,6 @@ export default function OrdersPage() {
 
     return <OrdersPageContent />;
 }
+
 
 
