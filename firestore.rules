@@ -62,7 +62,7 @@ service cloud.firestore {
     
     // Global registered products collection for admins
     match /registeredProducts/{id} {
-       allow read, list: if isAdmin();
+       allow read, list: if signedIn() && (isAdmin() || resource.data.customerId == request.auth.uid || resource.data.ownerId == request.auth.uid);
     }
 
     // --- 6. PUBLIC CONTENT ---
