@@ -121,7 +121,7 @@ function QuotationPageContent() {
                                     Convert to SO
                                 </Button>
                                 <Button variant="outline" size="sm" asChild>
-                                  <Link href={`/dashboard/sales/quotation/view?id=${q.id}`}>
+                                  <Link href={`/dashboard/sales/quotation/view?id=${q.quotationNumber || q.id}`}>
                                       View
                                   </Link>
                                 </Button>

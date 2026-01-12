@@ -453,7 +453,13 @@ export const handleQuotationCreation = onDocumentCreated("quotations/{docId}", a
       const allData = allDocs.docs.map(d => d.data());
       const newId = getNextDocNumber('Sales Quotation', prefixes, allData as any[]);
       
-      return snapshot.ref.update({ quotationNumber: newId, id: FieldValue.delete() });
+      const createdByUid = (data as any).createdBy;
+
+      return snapshot.ref.update({ 
+        quotationNumber: newId, 
+        id: FieldValue.delete(),
+        createdByUid: createdByUid, // Add createdByUid
+     });
     } catch (error) { return null; }
 });
 
@@ -715,6 +721,7 @@ export const onPaymentApproved = onDocumentUpdated("paymentSubmissions/{id}", as
 
 
     
+
 
 
 
