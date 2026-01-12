@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -480,19 +481,21 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
         const approvedSubmissions = (paymentSubmissions || []).filter(p => p.status === 'Approved');
         const totalPaidFromSubmissions = approvedSubmissions.reduce((sum, p) => sum + p.amount, 0);
 
-        const totalPaid = (order.paymentReceived || 0) + totalPaidFromSubmissions;
+        // The initial advance is the order's total paymentReceived minus all approved manual submissions
+        const initialAdvance = (order.paymentReceived || 0) - totalPaidFromSubmissions;
+        const totalPaid = (order.paymentReceived || 0);
         const balance = order.grandTotal - totalPaid;
         
-        const history = (paymentSubmissions || []).map(p => ({
+        const history = approvedSubmissions.map(p => ({
             amount: p.amount,
             date: p.submittedAt.toDate(),
             details: `Ref: ${p.transactionDetails || 'N/A'}`,
             status: p.status,
         }));
         
-        if (order.paymentReceived && order.paymentReceived > 0) {
+        if (initialAdvance > 0) {
             history.unshift({
-                amount: order.paymentReceived,
+                amount: initialAdvance,
                 date: order.createdAt?.toDate ? order.createdAt.toDate() : new Date(order.date),
                 details: 'Initial Advance',
                 status: 'Approved'
@@ -886,3 +889,5 @@ export default function MyOrdersPage() {
 
     return <MyOrdersPageContent />;
 }
+
+    
