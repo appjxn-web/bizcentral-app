@@ -88,7 +88,7 @@ service cloud.firestore {
 
     // --- 7. HR (FIX for Reimbursement) ---
     match /reimbursementRequests/{id} {
-        allow read, list: if isAdmin() || (signedIn() && request.query.where.createdByUid == request.auth.uid);
+        allow read, list: if isAdmin() || (signedIn() && resource.data.createdByUid == request.auth.uid);
         allow create: if signedIn() && request.resource.data.createdByUid == request.auth.uid;
         allow update, delete: if isAdmin();
     }
