@@ -28,7 +28,7 @@ import {
 
 import { PageHeader } from '@/components/page-header';
 import { cn } from '@/lib/utils';
-import type { Order, OrderStatus, UserProfile, UserRole, WorkOrder, PickupPoint, SalesOrder, RefundRequest, SalesInvoice, Party, CompanyInfo, PaymentSubmission, CoaLedger } from '@/lib/types';
+import type { Order, OrderStatus, UserProfile, UserRole, WorkOrder, PickupPoint, SalesOrder, RefundRequest, SalesInvoice, Party, CompanyInfo, PaymentSubmission, CoaLedger, JournalVoucher } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -437,15 +437,20 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
     const { data: companyInfo } = useDoc(doc(firestore, 'company', 'info'));
     const [isCancelDialogOpen, setIsCancelDialogOpen] = React.useState(false);
     const { toast } = useToast();
+    
     const userProfileRef = user ? doc(firestore, 'users', user.uid) : null;
     const { data: userProfile } = useDoc<UserProfile>(userProfileRef);
 
+    const customerPartyRef = React.useMemo(() => {
+        if(!order.userId || !firestore) return null;
+        return doc(firestore, 'parties', order.userId);
+    }, [order.userId, firestore]);
+    const { data: customerParty } = useDoc<Party>(customerPartyRef);
+
     const paymentSubmissionsQuery = React.useMemo(() => {
         if (!order.id || !user?.uid || !firestore) return null;
-        
         const submissionsRef = collection(firestore, 'paymentSubmissions');
       
-        // Security Filter for queries
         if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
           return query(
             submissionsRef, 
@@ -459,30 +464,54 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
         return query(
           submissionsRef,
           where('orderId', '==', order.id),
-          where(securityField, '==', user.uid), // THIS IS THE REQUIRED SECURITY FILTER
+          where('userId', '==', order.userId), // Both customer and partner see the customer's submissions
           orderBy('submittedAt', 'desc')
         );
-      }, [order.id, user?.uid, currentRole, firestore]);
+      }, [order.id, user?.uid, currentRole, firestore, order.userId]);
+
+    const allJvsQuery = React.useMemo(() => {
+      if (!customerParty?.coaLedgerId) return null;
+      // This is still broad but necessary without deeper query support on arrays
+      return query(collection(firestore, 'journalVouchers'));
+    }, [customerParty]);
 
     const { data: paymentSubmissions } = useCollection<PaymentSubmission>(paymentSubmissionsQuery);
+    const { data: allJournalVouchers } = useCollection<JournalVoucher>(allJvsQuery);
     
     const { totalPaid, balanceDue, paymentHistory } = React.useMemo(() => {
         const approvedSubmissions = (paymentSubmissions || []).filter(p => p.status === 'Approved');
-        const totalFromSubmissions = approvedSubmissions.reduce((sum, p) => sum + p.amount, 0);
-
-        const history = approvedSubmissions.map(p => ({
+        
+        const historyFromSubmissions = approvedSubmissions.map(p => ({
             amount: p.amount,
             date: p.submittedAt.toDate(),
             details: `Ref: ${p.transactionDetails || 'N/A'} (${p.paymentMethod})`,
             status: p.status,
-        })).sort((a, b) => a.date.getTime() - b.date.getTime());
+            type: 'submission'
+        }));
+
+        const jvHistory = (allJournalVouchers || [])
+            .filter(jv => jv.entries.some(e => e.accountId === customerParty?.coaLedgerId && e.credit && e.credit > 0))
+            .map(jv => {
+                 const creditEntry = jv.entries.find(e => e.accountId === customerParty?.coaLedgerId)!;
+                 return {
+                    amount: creditEntry.credit || 0,
+                    date: jv.createdAt.toDate(),
+                    details: jv.narration,
+                    status: 'Approved',
+                    type: 'jv'
+                 }
+            });
         
+        const combinedHistory = [...historyFromSubmissions, ...jvHistory].sort((a,b) => a.date.getTime() - b.date.getTime());
+        const totalFromCombined = combinedHistory.reduce((sum, p) => sum + p.amount, 0);
+
         return {
-            totalPaid: totalFromSubmissions,
-            balanceDue: order.grandTotal - totalFromSubmissions,
-            paymentHistory: history,
+            totalPaid: totalFromCombined,
+            balanceDue: order.grandTotal - totalFromCombined,
+            paymentHistory: combinedHistory,
         }
-    }, [order, paymentSubmissions]);
+    }, [order, paymentSubmissions, allJournalVouchers, customerParty]);
+
 
     const refundQuery = order.status === 'Canceled' && user
       ? query(collection(firestore, 'refundRequests'), where('customerId', '==', user.uid), where('orderId', '==', order.id))
@@ -623,7 +652,7 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
                                     <p className="text-xs font-semibold">Payment History:</p>
                                     {paymentHistory.map((p, i) => (
                                         <p key={i} className="text-xs text-muted-foreground font-mono whitespace-pre-wrap">
-                                            {format(p.date, 'dd/MM/yy')}: {formatIndianCurrency(p.amount)} - {p.details} ({p.status})
+                                            {format(p.date, 'dd/MM/yy')}: {formatIndianCurrency(p.amount)} - {p.details}
                                         </p>
                                     ))}
                                 </div>
@@ -704,19 +733,19 @@ function OrdersPageContent() {
   const { currentRole } = useRole();
   
   const ordersQuery = React.useMemo(() => {
-    if (!user?.uid || !currentRole) return null;
-    const ordersRef = collection(firestore, 'orders');
+      if (!user?.uid || !currentRole) return null;
+      const ordersRef = collection(firestore, 'orders');
 
-    if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
-        return query(ordersRef, orderBy('date', 'desc'));
-    }
+      if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
+          return query(ordersRef, orderBy('date', 'desc'));
+      }
 
-    if (currentRole === 'Partner') {
-        return query(ordersRef, where('assignedToUid', '==', user.uid), orderBy('date', 'desc'));
-    }
-    
-    // Default to customer view
-    return query(ordersRef, where('userId', '==', user.uid), orderBy('date', 'desc'));
+      if (currentRole === 'Partner') {
+          return query(ordersRef, where('assignedToUid', '==', user.uid), orderBy('date', 'desc'));
+      }
+      
+      // Default to customer view
+      return query(ordersRef, where('userId', '==', user.uid), orderBy('date', 'desc'));
   }, [user?.uid, currentRole, firestore]);
   
   const invoicesQuery = React.useMemo(() => {
@@ -731,6 +760,7 @@ function OrdersPageContent() {
           return query(invoicesRef, where('assignedToUid', '==', user.uid), orderBy('date', 'desc'));
       }
   
+      // Default to customer view
       return query(invoicesRef, where('customerId', '==', user.uid), orderBy('date', 'desc'));
   }, [user?.uid, currentRole, firestore]);
 
@@ -865,4 +895,3 @@ export default function OrdersPage() {
 
     return <OrdersPageContent />;
 }
-
