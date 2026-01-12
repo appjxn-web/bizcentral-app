@@ -619,7 +619,12 @@ export const onPaymentApproved = onDocumentUpdated("paymentSubmissions/{id}", as
       const primaryUpi = companySnap.data()?.primaryUpiId;
       let bankAccountId: string | null = null;
             
-      if (primaryUpi) {
+      if (after.paymentMethod === 'Cash') {
+        const cashLedgerSnap = await transaction.get(db.collection('coa_ledgers').where('name', '==', 'Cash in Hand').limit(1));
+        if (!cashLedgerSnap.empty) {
+            bankAccountId = cashLedgerSnap.docs[0].id;
+        }
+      } else if (primaryUpi) {
           const ledgerSearchQuery = db.collection("coa_ledgers").where("bank.upiId", "==", primaryUpi).limit(1);
           const ledgerSearch = await transaction.get(ledgerSearchQuery);
           if (!ledgerSearch.empty) {
@@ -642,7 +647,7 @@ export const onPaymentApproved = onDocumentUpdated("paymentSubmissions/{id}", as
             createdByUid: after.userId,
         });
       } else {
-        console.error("No bank account found for primary UPI. Cannot create JV for payment submission:", after.id);
+        console.error("No bank/cash account found for payment. Cannot create JV for payment submission:", after.id);
       }
 
       // Update order with the incremented amounts and new status
@@ -693,5 +698,6 @@ export const onPaymentApproved = onDocumentUpdated("paymentSubmissions/{id}", as
 
 
     
+
 
 
