@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -164,7 +165,8 @@ function PayBalanceDialog({ order, companyInfo, balance }: { order: Order; compa
     setIsSubmitting(true);
     try {
       const submissionData: Omit<PaymentSubmission, 'id'> = {
-        userId: user.uid,
+        userId: order.userId,
+        recordedByUid: user.uid,
         customerName: order.customerName,
         orderId: order.id,
         assignedToUid: order.assignedToUid || null,
@@ -465,7 +467,7 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
       
       const submissionsRef = collection(firestore, 'paymentSubmissions');
 
-      // Security Filter: Admins can see all, others can only see theirs by user or assignment
+      // Security Filter for queries
       if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
         return query(
           submissionsRef, 
@@ -482,7 +484,7 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
         orderBy('submittedAt', 'desc')
       );
     }, [order.id, user?.uid, currentRole, firestore]);
-    
+
     const { data: paymentSubmissions } = useCollection<PaymentSubmission>(paymentSubmissionsQuery);
     
     const { totalPaid, balanceDue, paymentHistory } = React.useMemo(() => {
@@ -883,3 +885,4 @@ export default function OrdersPage() {
 
     return <OrdersPageContent />;
 }
+

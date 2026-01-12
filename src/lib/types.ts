@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import type { Timestamp } from 'firebase/firestore';
@@ -131,7 +132,8 @@ export interface PayoutRequest {
 
 export interface PaymentSubmission {
   id: string;
-  userId: string;
+  userId: string; // The customer who owns the order
+  recordedByUid?: string; // The user (partner/admin) who recorded the manual payment
   customerName: string;
   orderId: string;
   amount: number;

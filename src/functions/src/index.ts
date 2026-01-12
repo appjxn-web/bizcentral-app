@@ -615,24 +615,34 @@ export const onPaymentApproved = onDocumentUpdated("paymentSubmissions/{id}", as
 
       // Create a JV for THIS specific payment amount
       const customerLedgerId = await findOrCreateSpecificCustomerLedger(transaction, after);
-      const companySnap = await transaction.get(db.doc("company/info"));
-      const primaryUpi = companySnap.data()?.primaryUpiId;
-      let bankAccountId: string | null = null;
+      let receivingAccountId: string | null = null;
             
       if (after.paymentMethod === 'Cash') {
-        const cashLedgerSnap = await transaction.get(db.collection('coa_ledgers').where('name', '==', 'Cash in Hand').limit(1));
-        if (!cashLedgerSnap.empty) {
-            bankAccountId = cashLedgerSnap.docs[0].id;
+        // If cash, we need to find the specific cash account (e.g., the partner's)
+        const userSnap = await transaction.get(db.doc(`users/${after.recordedByUid}`));
+        const userProfile = userSnap.data() as UserProfile;
+        if (userProfile && userProfile.coaLedgerId) {
+            receivingAccountId = userProfile.coaLedgerId;
+        } else {
+            // Fallback to a generic cash account if specific one not found
+            const cashLedgerSnap = await transaction.get(db.collection('coa_ledgers').where('name', '==', 'Cash in Hand').limit(1));
+            if (!cashLedgerSnap.empty) {
+                receivingAccountId = cashLedgerSnap.docs[0].id;
+            }
         }
-      } else if (primaryUpi) {
-          const ledgerSearchQuery = db.collection("coa_ledgers").where("bank.upiId", "==", primaryUpi).limit(1);
-          const ledgerSearch = await transaction.get(ledgerSearchQuery);
-          if (!ledgerSearch.empty) {
-              bankAccountId = ledgerSearch.docs[0].id;
-          }
+      } else { // UPI / Bank etc.
+        const companySnap = await transaction.get(db.doc("company/info"));
+        const primaryUpi = companySnap.data()?.primaryUpiId;
+        if (primaryUpi) {
+            const ledgerSearchQuery = db.collection("coa_ledgers").where("bank.upiId", "==", primaryUpi).limit(1);
+            const ledgerSearch = await transaction.get(ledgerSearchQuery);
+            if (!ledgerSearch.empty) {
+                receivingAccountId = ledgerSearch.docs[0].id;
+            }
+        }
       }
 
-      if (bankAccountId) {
+      if (receivingAccountId) {
         const jvRef = db.collection("journalVouchers").doc();
         transaction.set(jvRef, {
             id: jvRef.id,
@@ -640,11 +650,11 @@ export const onPaymentApproved = onDocumentUpdated("paymentSubmissions/{id}", as
             narration: `Payment for Order #${orderData.orderNumber || orderData.id} via ${after.paymentMethod}. Ref: ${after.transactionDetails}`,
             voucherType: "Receipt Voucher",
             entries: [
-                { accountId: bankAccountId, debit: after.amount, credit: 0 },
+                { accountId: receivingAccountId, debit: after.amount, credit: 0 },
                 { accountId: customerLedgerId, debit: 0, credit: after.amount }, 
             ],
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
-            createdByUid: after.userId,
+            createdByUid: after.recordedByUid || after.userId,
         });
       } else {
         console.error("No bank/cash account found for payment. Cannot create JV for payment submission:", after.id);
