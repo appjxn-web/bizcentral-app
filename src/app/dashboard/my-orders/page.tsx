@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -177,6 +176,7 @@ function PayBalanceDialog({ order, companyInfo, balance }: { order: Order; compa
         status: 'Pending',
         submittedAt: Timestamp.now(),
         receivingAccountId: paymentType === 'manual' ? receivingAccountId : null,
+        
       };
 
       const newSubmissionRef = await addDoc(collection(firestore, 'paymentSubmissions'), submissionData);
@@ -873,3 +873,4 @@ export default function OrdersPage() {
     
 
     
+

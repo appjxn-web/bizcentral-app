@@ -1,5 +1,4 @@
 
-
 'use server';
 import {
   onDocumentCreated,
@@ -100,7 +99,7 @@ export const verifyUpiPaymentAndCreateOrder = onCall(async (request) => {
 
     // --- 2. Database Operations within a Transaction ---
     try {
-        await db.runTransaction(async (transaction) => {
+        await db.runTransaction(async (transaction) {
             const orderRef = db.collection('orders').doc();
             
             // INSTEAD OF JV: Create a payment submission for the advance
@@ -615,7 +614,6 @@ export const onPaymentApproved = onDocumentUpdated("paymentSubmissions/{id}", as
 
       // Create a JV for THIS specific payment amount
       const customerLedgerId = await findOrCreateSpecificCustomerLedger(transaction, after);
-      // **FIXED LOGIC START**
       // PRIORITY 1: Directly use the receiving account ID if provided by the frontend.
       let receivingAccountId: string | null = after.receivingAccountId || null;
             
@@ -653,7 +651,6 @@ export const onPaymentApproved = onDocumentUpdated("paymentSubmissions/{id}", as
             }
           }
       }
-      // **FIXED LOGIC END**
 
       if (receivingAccountId && customerLedgerId) {
         const jvRef = db.collection("journalVouchers").doc();
@@ -735,3 +732,4 @@ export const onPaymentApproved = onDocumentUpdated("paymentSubmissions/{id}", as
     
 
     
+
