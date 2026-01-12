@@ -165,7 +165,7 @@ function PayBalanceDialog({ order, companyInfo, balance }: { order: Order; compa
     setIsSubmitting(true);
     try {
       const submissionData: Omit<PaymentSubmission, 'id'> = {
-        userId: order.userId, 
+        userId: order.userId,
         recordedByUid: user.uid,
         customerName: order.customerName,
         orderId: order.id,
@@ -841,8 +841,8 @@ function OrdersPageContent() {
         ) : (
             <Card>
                 <CardContent className="p-12 text-center">
-                    <h3 className="text-xl font-medium">No orders yet</h3>
-                    <p className="text-muted-foreground">You haven't placed any orders yet. Start shopping to see your orders here.</p>
+                    <h3 className="text-xl font-medium">No orders found</h3>
+                    <p className="text-muted-foreground">No orders match the current criteria.</p>
                 </CardContent>
             </Card>
         )}
@@ -865,6 +865,7 @@ export default function OrdersPage() {
 
     return <OrdersPageContent />;
 }
+
 
 
 
