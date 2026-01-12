@@ -613,15 +613,13 @@ export const onPaymentApproved = onDocumentUpdated("paymentSubmissions/{id}", as
           `Approved: ${new Date().toISOString()} - ${after.amount} - Ref: ${after.transactionDetails}`
       ].filter(Boolean).join('\n');
 
-      // 1. CREDIT SIDE: The Customer Account
-      // findOrCreateSpecificCustomerLedger uses after.userId (which is the Customer)
+      // Create a JV for THIS specific payment amount
       const customerLedgerId = await findOrCreateSpecificCustomerLedger(transaction, after);
-
-      // 2. DEBIT SIDE: The Receiving Account (Partner Cash or Bank)
-      // PRIORITY 1: Use the specific account ID if provided with the submission
+      // **FIXED LOGIC START**
+      // PRIORITY 1: Directly use the receiving account ID if provided by the frontend.
       let receivingAccountId: string | null = after.receivingAccountId || null;
             
-      // PRIORITY 2: Fallback logic for older records or different payment flows
+      // PRIORITY 2 (Fallback): If no specific account ID is given, use the old logic.
       if (!receivingAccountId) {
           if (after.paymentMethod === 'Cash' && after.recordedByUid) {
             // If Partner received cash, use THEIR specific ledger account (e.g., JXN Sikar Cash Account)
@@ -643,8 +641,7 @@ export const onPaymentApproved = onDocumentUpdated("paymentSubmissions/{id}", as
                     receivingAccountId = "L-1.1.1-1"; // Final Fallback: Generic Cash in Hand
                 }
             }
-          } else { 
-            // UPI / BANK Logic: Use the company's primary bank account
+          } else { // UPI / Bank etc.
             const companySnap = await transaction.get(db.doc("company/info"));
             const primaryUpi = companySnap.data()?.primaryUpiId;
             if (primaryUpi) {
@@ -656,7 +653,7 @@ export const onPaymentApproved = onDocumentUpdated("paymentSubmissions/{id}", as
             }
           }
       }
-
+      // **FIXED LOGIC END**
 
       if (receivingAccountId && customerLedgerId) {
         const jvRef = db.collection("journalVouchers").doc();
@@ -732,6 +729,8 @@ export const onPaymentApproved = onDocumentUpdated("paymentSubmissions/{id}", as
 
 
 
+
+    
 
     
 

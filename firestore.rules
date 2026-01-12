@@ -101,19 +101,23 @@ service cloud.firestore {
     
     // --- PAYMENT SUBMISSIONS ---
     match /paymentSubmissions/{submissionId} {
+      // Allow individual view
       allow get: if signedIn() && (
         isAdmin() || 
         resource.data.userId == request.auth.uid || 
         resource.data.assignedToUid == request.auth.uid
       );
+      
+      // Allow listing/queries
+      // This matches the frontend filters exactly
       allow list: if signedIn() && (
         isAdmin() || 
         request.query.where.userId == request.auth.uid ||
         request.query.where.assignedToUid == request.auth.uid
       );
+      
       allow create: if signedIn();
-      allow update: if isAdmin();
-      allow delete: if isAdmin();
+      allow update, delete: if isAdmin();
     }
     
     // --- DISTRIBUTED COUNTERS ---
@@ -236,3 +240,5 @@ service cloud.firestore {
   }
 }
 
+
+    
