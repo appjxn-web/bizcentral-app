@@ -449,21 +449,21 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
     const { data: customerParty } = useDoc<Party>(customerPartyRef);
     
     const paymentSubmissionsQuery = React.useMemo(() => {
-      if (!order.id || !user?.uid || !firestore) return null;
-      const submissionsRef = collection(firestore, 'paymentSubmissions');
-    
-      if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
-        return query(submissionsRef, where('orderId', '==', order.id), orderBy('submittedAt', 'desc'));
-      }
-    
-      const securityField = currentRole === 'Partner' ? 'assignedToUid' : 'userId';
-      return query(
-        submissionsRef,
-        where('orderId', '==', order.id),
-        where(securityField, '==', user.uid),
-        orderBy('submittedAt', 'desc')
-      );
-    }, [order.id, user?.uid, currentRole, firestore]);
+        if (!order.id || !user?.uid || !firestore) return null;
+        const submissionsRef = collection(firestore, 'paymentSubmissions');
+      
+        if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
+          return query(submissionsRef, where('orderId', '==', order.id), orderBy('submittedAt', 'desc'));
+        }
+      
+        const securityField = currentRole === 'Partner' ? 'assignedToUid' : 'userId';
+        return query(
+          submissionsRef,
+          where('orderId', '==', order.id),
+          where(securityField, '==', user.uid),
+          orderBy('submittedAt', 'desc')
+        );
+      }, [order.id, user?.uid, currentRole, firestore]);
 
     const allJvsQuery = React.useMemo(() => {
       if (!customerParty?.coaLedgerId) return null;
@@ -474,7 +474,13 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
     const { data: allJournalVouchers } = useCollection<JournalVoucher>(allJvsQuery);
     
     const { totalPaid, balanceDue, paymentHistory } = React.useMemo(() => {
-        // Source 1: Approved Journal Vouchers related to this order
+        if (!customerParty || !allJournalVouchers) {
+             const totalFromSubs = (paymentSubmissions || [])
+                .filter(p => p.status === 'Approved')
+                .reduce((sum, p) => sum + p.amount, 0);
+            return { totalPaid: totalFromSubs, balanceDue: order.grandTotal - totalFromSubs, paymentHistory: (paymentSubmissions || []) };
+        }
+
         const jvHistory = (allJournalVouchers || [])
             .filter(jv => jv.narration?.includes(order.orderNumber || order.id) && jv.entries.some(e => e.accountId === customerParty?.coaLedgerId && e.credit && e.credit > 0))
             .map(jv => {
@@ -487,24 +493,27 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
                     type: 'jv'
                  }
             });
-
-        // Source 2: Pending submissions not yet converted to JVs
+        
+        const approvedSubmissionDetails = (paymentSubmissions || [])
+            .filter(p => p.status === 'Approved')
+            .map(p => `Ref: ${p.transactionDetails}`);
+        
         const pendingSubmissions = (paymentSubmissions || [])
             .filter(p => p.status === 'Pending')
             .map(p => ({
                 amount: p.amount,
                 date: p.submittedAt.toDate(),
-                details: `Ref: ${p.transactionDetails || 'N/A'} (${p.paymentMethod})`,
+                details: `Ref: ${p.transactionDetails || 'N/A'} (${p.paymentMethod}) - PENDING`,
                 status: p.status,
                 type: 'submission'
             }));
 
         const combinedHistory = [...jvHistory, ...pendingSubmissions].sort((a,b) => a.date.getTime() - b.date.getTime());
-        const totalFromCombined = jvHistory.reduce((sum, p) => sum + p.amount, 0);
+        const totalPaidAmount = jvHistory.reduce((sum, p) => sum + p.amount, 0);
 
         return {
-            totalPaid: totalFromCombined,
-            balanceDue: order.grandTotal - totalFromCombined,
+            totalPaid: totalPaidAmount,
+            balanceDue: order.grandTotal - totalPaidAmount,
             paymentHistory: combinedHistory,
         }
     }, [order, paymentSubmissions, allJournalVouchers, customerParty]);
@@ -568,10 +577,10 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
     const nextStatusOptions: Record<OrderStatus, OrderStatus[]> = {
       'Awaiting Payment': ['Ordered', 'Canceled'],
       'Awaiting Payment Confirmation': ['Ordered', 'Canceled'],
-      'Ordered': ['Manufacturing', 'Ready for Dispatch', 'Shipped'],
-      'Ready for Dispatch': balanceDue <= 0 ? ['Invoice Sent', 'Shipped'] : [],
-      'Invoice Sent': balanceDue <= 0 ? ['Shipped', 'Delivered'] : [],
-      'Shipped': balanceDue <= 0 ? ['Delivered'] : [],
+      'Ordered': balanceDue <= 0 ? ['Ready for Dispatch'] : [],
+      'Ready for Dispatch': ['Shipped'],
+      'Invoice Sent': ['Shipped'],
+      'Shipped': ['Delivered'],
       'Manufacturing': ['Ready for Dispatch'],
       'Delivered': [],
       'Canceled': [],
@@ -647,7 +656,7 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
                             {paymentHistory && paymentHistory.length > 0 && !refundRequest && (
                                 <div>
                                     <p className="text-xs font-semibold">Payment History:</p>
-                                    {paymentHistory.map((p, i) => (
+                                    {(paymentHistory as any[]).map((p, i) => (
                                         <p key={i} className="text-xs text-muted-foreground font-mono whitespace-pre-wrap">
                                             {format(p.date, 'dd/MM/yy')}: {formatIndianCurrency(p.amount)} - {p.details}
                                         </p>
@@ -703,7 +712,7 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
                                         </Link>
                                     </Button>
                                   </>
-                                ) : (order.status === 'Ready for Dispatch' || order.status === 'Shipped') && ['Admin', 'Accounts Manager', 'Sales Manager'].includes(currentRole) && (
+                                ) : (balanceDue <= 0 && ['Ordered', 'Ready for Dispatch'].includes(order.status)) && ['Admin', 'Accounts Manager', 'Sales Manager', 'Partner'].includes(currentRole) && (
                                      <Button size="sm" onClick={() => {
                                          localStorage.setItem('invoiceDataToCreate', JSON.stringify(order));
                                          router.push('/dashboard/sales/create-invoice');
