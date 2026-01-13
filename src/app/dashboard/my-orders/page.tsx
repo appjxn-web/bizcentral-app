@@ -24,6 +24,7 @@ import {
   RefreshCcw,
   Receipt,
   FileUp,
+  Ticket,
 } from 'lucide-react';
 
 import { PageHeader } from '@/components/page-header';
@@ -464,10 +465,10 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
         return query(
           submissionsRef,
           where('orderId', '==', order.id),
-          where('userId', '==', order.userId), // Both customer and partner see the customer's submissions
+          where(securityField, '==', user.uid), 
           orderBy('submittedAt', 'desc')
         );
-      }, [order.id, user?.uid, currentRole, firestore, order.userId]);
+      }, [order.id, user?.uid, currentRole, firestore]);
 
     const allJvsQuery = React.useMemo(() => {
       if (!customerParty?.coaLedgerId) return null;
@@ -575,7 +576,7 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
       'Ready for Dispatch': balanceDue <= 0 ? ['Invoice Sent', 'Shipped'] : [],
       'Invoice Sent': balanceDue <= 0 ? ['Shipped', 'Delivered'] : [],
       'Shipped': balanceDue <= 0 ? ['Delivered'] : [],
-      'Manufacturing': ['Ready for Dispatch', 'Shipped'],
+      'Manufacturing': ['Ready for Dispatch'],
       'Delivered': [],
       'Canceled': [],
       'Cancellation Requested': ['Ordered', 'Canceled'],
@@ -692,12 +693,20 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
                                     </Button>
                                 )}
                                 {existingInvoice ? (
-                                  <Button variant="outline" size="sm" asChild>
-                                    <Link href={`/dashboard/sales/invoice/view?id=${existingInvoice.invoiceNumber}`}>
-                                      <Receipt className="mr-2 h-4 w-4" />
-                                      View Invoice
-                                    </Link>
-                                  </Button>
+                                  <>
+                                    <Button variant="outline" size="sm" asChild>
+                                        <Link href={`/dashboard/sales/invoice/view?id=${existingInvoice.invoiceNumber}`}>
+                                        <Receipt className="mr-2 h-4 w-4" />
+                                        View Invoice
+                                        </Link>
+                                    </Button>
+                                    <Button variant="outline" size="sm" asChild>
+                                        <Link href={`/dashboard/sales/orders/gate-pass?id=${order.orderNumber}`}>
+                                            <Ticket className="mr-2 h-4 w-4" />
+                                            Generate Gate Pass
+                                        </Link>
+                                    </Button>
+                                  </>
                                 ) : (order.status === 'Ready for Dispatch' || order.status === 'Shipped') && ['Admin', 'Accounts Manager', 'Sales Manager'].includes(currentRole) && (
                                      <Button size="sm" onClick={() => {
                                          localStorage.setItem('invoiceDataToCreate', JSON.stringify(order));
@@ -895,3 +904,5 @@ export default function OrdersPage() {
 
     return <OrdersPageContent />;
 }
+
+

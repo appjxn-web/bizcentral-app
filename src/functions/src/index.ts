@@ -109,6 +109,7 @@ export const verifyUpiPaymentAndCreateOrder = onCall(async (request) => {
                 userId: order.userId,
                 customerName: order.customerName,
                 orderId: orderRef.id,
+                assignedToUid: order.assignedToUid || null,
                 amount: order.paymentReceived,
                 paymentMethod: 'UPI / Online',
                 transactionDetails: upiTransactionId,
@@ -721,6 +722,7 @@ export const onPaymentApproved = onDocumentUpdated("paymentSubmissions/{id}", as
 
 
     
+
 
 
 
