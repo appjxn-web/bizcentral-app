@@ -15,7 +15,6 @@ service cloud.firestore {
       allow list: if isAdmin();
       allow write: if isOwner(userId) || isAdmin();
       
-      // FIXED: Allow anyone signed in to CREATE a notification (so partners can notify customers)
       match /notifications/{id} { 
         allow read: if isOwner(userId) || isAdmin();
         allow create: if signedIn(); 
@@ -30,16 +29,14 @@ service cloud.firestore {
     // --- 3. LOGISTICS (Orders & Invoices) ---
     match /orders/{orderId} {
       allow get: if signedIn() && (isAdmin() || resource.data.userId == request.auth.uid || resource.data.assignedToUid == request.auth.uid);
-      // FIXED: Using resource.data for list allows robust queries with orderBy
-      allow list: if signedIn() && (isAdmin() || resource.data.userId == request.auth.uid || resource.data.assignedToUid == request.auth.uid);
+      allow list: if signedIn() && (isAdmin() || request.query.where.userId == request.auth.uid || request.query.where.assignedToUid == request.auth.uid);
       allow create: if signedIn();
       allow update: if signedIn() && (isAdmin() || resource.data.userId == request.auth.uid || resource.data.assignedToUid == request.auth.uid || request.resource.data.assignedToUid == request.auth.uid);
     }
 
     match /salesInvoices/{invoiceId} {
-      // FIX: Corrected list rule to use resource.data, which is more robust and works with Firestore's query capabilities.
-      // This allows a user to get an invoice if they are the customer OR the assigned partner.
-      allow get, list: if signedIn() && (isAdmin() || resource.data.customerId == request.auth.uid || resource.data.assignedToUid == request.auth.uid);
+      allow get: if signedIn();
+      allow list: if signedIn() && (isAdmin() || request.query.where.customerId == request.auth.uid || request.query.where.assignedToUid == request.auth.uid);
       allow create, update: if signedIn() && (isAdmin() || getRole() == 'Partner');
     }
 
@@ -86,5 +83,3 @@ service cloud.firestore {
     }
   }
 }
-
-    
