@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -21,13 +22,14 @@ import {
 import { Button } from '@/components/ui/button';
 import { CheckCircle, XCircle, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { useFirestore, useCollection } from '@/firebase';
-import { collection, doc, updateDoc, query, orderBy } from 'firebase/firestore';
+import { useFirestore, useCollection, useUser } from '@/firebase';
+import { collection, doc, updateDoc, query, orderBy, where, or } from 'firebase/firestore';
 import type { PaymentSubmission } from '@/lib/types';
 import { format } from 'date-fns';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { useRole } from '../../_components/role-provider';
 
 
 function getStatusBadgeVariant(status: string) {
@@ -132,12 +134,29 @@ function PaymentTable({
 export default function PaymentApprovalPage() {
   const { toast } = useToast();
   const firestore = useFirestore();
+  const { user } = useUser();
+  const { currentRole } = useRole();
 
-  // ONLY query paymentSubmissions
-  const allPaymentsQuery = query(
-    collection(firestore, 'paymentSubmissions'),
-    orderBy('submittedAt', 'desc')
-  );
+  const allPaymentsQuery = React.useMemo(() => {
+    if (!user || !firestore) return null;
+    const baseQuery = collection(firestore, 'paymentSubmissions');
+
+    // Admins see everything, ordered by most recent
+    if (['Admin', 'CEO', 'Accounts Manager'].includes(currentRole)) {
+      return query(baseQuery, orderBy('submittedAt', 'desc'));
+    }
+    
+    // Other roles see only their relevant submissions
+    return query(
+        baseQuery,
+        or(
+            where('userId', '==', user.uid),
+            where('assignedToUid', '==', user.uid)
+        ),
+        orderBy('submittedAt', 'desc')
+    );
+  }, [user, firestore, currentRole]);
+
 
   const { data: allPayments, loading } = useCollection<PaymentSubmission>(allPaymentsQuery);
   const [processingId, setProcessingId] = React.useState<string | null>(null);
