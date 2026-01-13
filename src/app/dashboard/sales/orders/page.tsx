@@ -475,7 +475,7 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
         const history = (paymentSubmissions || []).map(p => ({
             amount: p.amount,
             date: p.submittedAt.toDate(),
-            details: `Ref: ${p.transactionDetails || 'N/A'} (${p.paymentMethod}) - ${p.status}`,
+            details: `${format(p.submittedAt.toDate(), 'dd/MM/yy')}: ${formatIndianCurrency(p.amount)} - Ref: ${p.transactionDetails || 'N/A'} (${p.paymentMethod}) - ${p.status}`,
         })).sort((a,b) => a.date.getTime() - b.date.getTime());
 
         return {
@@ -870,7 +870,4 @@ export default function OrdersPage() {
 }
 
     
-
-
-
 
