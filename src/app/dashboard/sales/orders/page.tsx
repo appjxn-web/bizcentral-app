@@ -557,38 +557,45 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
     const availableStatuses = nextStatusOptions[order.status] || [];
     
     const handleGenerateInvoice = async () => {
-      if (!firestore || !user) return;
+        if (!firestore || !user) return;
+        try {
+            const batch = writeBatch(firestore);
+            const invoiceRef = doc(collection(firestore, 'salesInvoices'));
+            
+            const invoiceData: Partial<SalesInvoice> = {
+                id: invoiceRef.id,
+                orderId: order.id,
+                orderNumber: order.orderNumber,
+                customerId: order.userId,
+                customerName: order.customerName,
+                date: new Date().toISOString().split('T')[0],
+                items: order.items,
+                subtotal: order.subtotal,
+                discount: order.discount,
+                taxableAmount: order.subtotal - order.discount,
+                cgst: order.cgst,
+                sgst: order.sgst,
+                igst: isInterstate ? order.cgst + order.sgst : 0,
+                grandTotal: order.grandTotal,
+                amountPaid: order.paymentReceived || 0,
+                balanceDue: order.balance || 0,
+                status: (order.balance || 0) <= 0 ? 'Paid' : 'Unpaid',
+                assignedToUid: order.assignedToUid,
+                createdByUid: user.uid,
+            };
+            
+            batch.set(invoiceRef, invoiceData, { merge: true });
+            
+            const orderRef = doc(firestore, 'orders', order.id);
+            batch.update(orderRef, { status: 'Invoice Sent' });
 
-      const orderRef = doc(firestore, 'orders', order.id);
-      
-      try {
-          const invoiceData = {
-              orderId: order.id,
-              orderNumber: order.orderNumber,
-              customerId: order.userId,
-              customerName: order.customerName,
-              date: new Date().toISOString().split('T')[0],
-              items: order.items,
-              subtotal: order.subtotal,
-              discount: order.discount,
-              taxableAmount: order.subtotal - order.discount,
-              cgst: order.cgst,
-              sgst: order.sgst,
-              grandTotal: order.grandTotal,
-              amountPaid: order.grandTotal,
-              balanceDue: 0,
-              status: 'Paid' as 'Paid',
-              assignedToUid: order.assignedToUid,
-              createdByUid: user.uid,
-          };
-          
-          await addDoc(collection(firestore, 'salesInvoices'), invoiceData);
-          
-          toast({ title: 'Invoice Generated', description: 'The sales invoice has been created.' });
-      } catch (e) {
-          console.error("Error generating invoice:", e);
-          toast({ variant: 'destructive', title: 'Invoice Generation Failed' });
-      }
+            await batch.commit();
+
+            toast({ title: 'Invoice Generated', description: 'The sales invoice has been created.' });
+        } catch (e) {
+            console.error("Error generating invoice:", e);
+            toast({ variant: 'destructive', title: 'Invoice Generation Failed' });
+        }
     };
     
     return (
@@ -714,8 +721,8 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
                                         </Link>
                                     </Button>
                                   </>
-                                ) : (order.status === 'Ready for Dispatch' && balanceDue <= 0) && (
-                                     <Button size="sm" onClick={handleGenerateInvoice}>
+                                ) : order.status === 'Ready for Dispatch' && balanceDue <= 0 && (
+                                    <Button size="sm" onClick={handleGenerateInvoice}>
                                         <PlusCircle className="mr-2 h-4 w-4" />
                                         Generate Invoice
                                     </Button>

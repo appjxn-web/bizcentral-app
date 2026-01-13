@@ -191,12 +191,12 @@ export default function InvoiceViewPage() {
             <div className="flex h-screen items-center justify-center">
                 <Loader2 className="animate-spin h-8 w-8" />
             </div>
-        );
+        )
     }
     
     if (!invoiceData) {
         return (
-            <div className="p-8 text-center space-y-4">
+             <div className="p-8 text-center space-y-4">
                 <h1 className="text-2xl font-bold text-destructive">Invoice Data Not Found</h1>
                 <p className="text-muted-foreground">Could not load the invoice details for ID: {invoiceId}.</p>
                 <Button variant="outline" onClick={() => window.history.back()}>
