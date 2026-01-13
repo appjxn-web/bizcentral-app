@@ -57,7 +57,7 @@ import {
 import Image from 'next/image';
 import { Separator } from '@/components/ui/separator';
 import { useFirestore, useCollection, useUser, useDoc } from '@/firebase';
-import { collection, query, orderBy, doc, where, or, updateDoc, writeBatch, serverTimestamp, addDoc, Timestamp, getDoc } from 'firebase/firestore';
+import { collection, query, orderBy, doc, where, or, updateDoc, writeBatch, serverTimestamp, addDoc, Timestamp, getDoc, getDocs } from 'firebase/firestore';
 import { OrderStatusTracker } from '../../my-orders/_components/order-status';
 import {
   Dialog,
@@ -625,7 +625,7 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
                                     <p className="text-xs font-semibold">Payment History:</p>
                                     {(paymentHistory as any[]).map((p, i) => (
                                         <p key={i} className="text-xs text-muted-foreground font-mono whitespace-pre-wrap">
-                                            {format(p.date, 'dd/MM/yy')}: {formatIndianCurrency(p.amount)} - {p.details}
+                                            {p.details}
                                         </p>
                                     ))}
                                 </div>
@@ -679,15 +679,7 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
                                         </Link>
                                     </Button>
                                   </>
-                                ) : (order.status === 'Ready for Dispatch') && balanceDue <= 0 && ['Admin', 'Partner'].includes(currentRole) && (
-                                     <Button size="sm" onClick={() => {
-                                         localStorage.setItem('invoiceDataToCreate', JSON.stringify(order));
-                                         router.push('/dashboard/sales/create-invoice');
-                                     }}>
-                                        <PlusCircle className="mr-2 h-4 w-4" />
-                                        Generate Invoice
-                                    </Button>
-                                )}
+                                ) : null}
                             </div>
                         </div>
                       </div>
@@ -878,5 +870,6 @@ export default function OrdersPage() {
 }
 
     
+
 
 
