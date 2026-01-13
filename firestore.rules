@@ -68,8 +68,8 @@ service cloud.firestore {
         // Corrected rule for querying
         allow list: if signedIn() && (
           isAdmin() || 
-          request.query.where.customerId == request.auth.uid ||
-          request.query.where.assignedToUid == request.auth.uid
+          (request.query.limit <= 100 && request.query.where.customerId == request.auth.uid) ||
+          (request.query.limit <= 100 && request.query.where.assignedToUid == request.auth.uid)
         );
         allow create, update: if signedIn() && (isAdmin() || getRole() == 'Partner');
     }
