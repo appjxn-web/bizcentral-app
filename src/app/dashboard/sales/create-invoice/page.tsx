@@ -1,4 +1,5 @@
 
+      
 'use client';
 
 import * as React from 'react';
@@ -136,7 +137,6 @@ export default function CreateInvoicePage() {
   const [orderDocumentId, setOrderDocumentId] = React.useState<string | null>(null);
   const [assignedToUid, setAssignedToUid] = React.useState<string | null>(null);
   
-  const { data: allProducts, loading: productsLoading } = useCollection<Product>(query(collection(firestore, 'products'), where('saleable', '==', true)));
   const allSalesInvoicesQuery = React.useMemo(() => {
     if (!authUser || !currentRole) return null;
     const baseQuery = collection(firestore, 'salesInvoices');
@@ -149,6 +149,8 @@ export default function CreateInvoicePage() {
     return query(baseQuery, where('customerId', '==', authUser.uid));
   }, [authUser, currentRole, firestore]);
   const { data: allSalesInvoices, loading: invoicesLoading } = useCollection<SalesInvoice>(allSalesInvoicesQuery);
+
+  const { data: allProducts, loading: productsLoading } = useCollection<Product>(query(collection(firestore, 'products'), where('saleable', '==', true)));
   const { data: settingsData } = useDoc<any>(doc(firestore, 'company', 'settings'));
   const { data: allJournalVouchers } = useCollection<JournalVoucher>(collection(firestore, 'journalVouchers'));
 
@@ -207,19 +209,23 @@ export default function CreateInvoicePage() {
         // ... (existing Edit Mode logic is fine)
       } else {
         const rawData = localStorage.getItem('invoiceDataToCreate');
-        if (rawData && allProducts && allProducts.length > 0) {
+        if (rawData && allProducts && allProducts.length > 0 && authUser) {
           setIsFromSalesOrder(true);
           const data = JSON.parse(rawData);
           
-          // 1. SET CUSTOMER
           setSelectedPartyId(data.userId || data.customerId);
           setOrderDocumentId(data.id);
           setAssignedToUid(data.assignedToUid);
 
-          // 2. FETCH ACTUAL PAYMENTS (The Fix for Double Totals)
-          // We query the truth (Submissions) rather than the buggy Order field
           const submissionsRef = collection(firestore, 'paymentSubmissions');
-          const q = query(submissionsRef, where('orderId', '==', data.id), where('status', '==', 'Approved'));
+          const securityField = currentRole === 'Partner' ? 'assignedToUid' : 'userId';
+          const q = query(
+            submissionsRef, 
+            where('orderId', '==', data.id), 
+            where('status', '==', 'Approved'),
+            where(securityField, '==', authUser.uid)
+          );
+          
           const snap = await getDocs(q);
           
           let actualPaidTotal = 0;
@@ -235,21 +241,22 @@ export default function CreateInvoicePage() {
           setBookingAmount(actualPaidTotal);
           setPaymentDetails(historyLines.join('\n'));
 
-          // 3. MAP ITEMS
           const mappedItems = data.items.map((item: any, i: number) => {
             const product = allProducts.find(p => p.id === item.productId);
             const rate = item.price || item.rate || 0;
+            const quantity = item.quantity || item.qty || 1;
+            
             return {
               id: `item-${Date.now()}-${i}`,
               productId: item.productId,
               name: item.name || product?.name,
               hsn: product?.hsn || item.hsn || '',
-              quantity: item.quantity || item.qty || 1,
+              quantity: quantity,
               unit: product?.unit || item.unit || 'pcs',
               rate: rate,
               price: rate,
               gstRate: 18,
-              amount: rate * (item.quantity || item.qty || 1),
+              amount: rate * quantity,
               category: product?.category || item.category,
               discount: 0,
             };
@@ -268,7 +275,7 @@ export default function CreateInvoicePage() {
     };
 
     loadData();
-  }, [searchParams, firestore, allSalesInvoices, allProducts, parties, toast]);
+  }, [searchParams, firestore, allSalesInvoices, allProducts, parties, authUser, currentRole, toast]);
   
     React.useEffect(() => {
     const fetchEstimate = async () => {
@@ -840,3 +847,5 @@ export default function CreateInvoicePage() {
     </>
   );
 }
+
+    
