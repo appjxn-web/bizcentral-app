@@ -26,7 +26,7 @@ const findOrCreateSpecificCustomerLedger = async (transaction: admin.firestore.T
 
     const customerName = order.customerName;
     // Safely get email if it exists
-    const customerEmail = ('customerEmail' in order) ? (order as any).customerEmail : '';
+    const customerEmail = ('customerEmail' in order) ? order.customerEmail : '';
 
     const partyRef = db.collection('parties').doc(userId);
     const partySnap = await transaction.get(partyRef);
@@ -93,6 +93,22 @@ export const handleOrderCreation = onDocumentCreated("orders/{orderId}", async (
     await snap.ref.update({ orderNumber });
 });
 
+export const handleInvoiceCreation = onDocumentCreated("salesInvoices/{id}", async (event) => {
+    const snap = event.data;
+    if (!snap) return;
+
+    const settingsSnap = await db.doc('company/settings').get();
+    const prefixes = settingsSnap.data()?.prefixes;
+    const allInvoices = await db.collection('salesInvoices').get();
+
+    const invNumber = getNextDocNumber('Sales Invoice', prefixes, allInvoices.docs.map(d => d.data()) as any);
+    await snap.ref.update({ invoiceNumber: invNumber });
+});
+
+/**
+ * UNIFIED INVOICE TRIGGER: Handles Customer Ledgers, Sales JVs, COGS JVs, 
+ * and Role-Based Stock Deduction (Partner vs Warehouse).
+ */
 export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}", async (event) => {
     const snap = event.data;
     if (!snap) return;
@@ -269,3 +285,4 @@ export const onPaymentApproved = onDocumentUpdated("paymentSubmissions/{id}", as
     });
 });
     
+
