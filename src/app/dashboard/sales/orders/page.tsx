@@ -299,7 +299,7 @@ function PayBalanceDialog({ order, companyInfo, balance }: { order: Order; compa
                         </div>
                     </div>
                     <DialogFooter>
-                        <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
+                        <DialogClose asChild><Button type="button" variant="outline">Close</Button></DialogClose>
                         <Button type="button" onClick={() => handleSubmit('manual')} disabled={isSubmitting || !amountToPay || !receivingAccountId}>
                             {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                             Record Payment
@@ -449,74 +449,42 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
     const { data: customerParty } = useDoc<Party>(customerPartyRef);
     
     const paymentSubmissionsQuery = React.useMemo(() => {
-        if (!order.id || !user?.uid || !firestore) return null;
-        const submissionsRef = collection(firestore, 'paymentSubmissions');
-      
-        if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
-          return query(submissionsRef, where('orderId', '==', order.id), orderBy('submittedAt', 'desc'));
-        }
-      
-        const securityField = currentRole === 'Partner' ? 'assignedToUid' : 'userId';
-        return query(
-          submissionsRef,
-          where('orderId', '==', order.id),
-          where(securityField, '==', user.uid),
-          orderBy('submittedAt', 'desc')
-        );
-      }, [order.id, user?.uid, currentRole, firestore]);
-
-    const allJvsQuery = React.useMemo(() => {
-      if (!customerParty?.coaLedgerId) return null;
-      return query(collection(firestore, 'journalVouchers'));
-    }, [customerParty]);
+      if (!order.id || !user?.uid || !firestore) return null;
+      const submissionsRef = collection(firestore, 'paymentSubmissions');
+    
+      if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
+        return query(submissionsRef, where('orderId', '==', order.id), orderBy('submittedAt', 'desc'));
+      }
+    
+      const securityField = currentRole === 'Partner' ? 'assignedToUid' : 'userId';
+      return query(
+        submissionsRef,
+        where('orderId', '==', order.id),
+        where(securityField, '==', user.uid),
+        orderBy('submittedAt', 'desc')
+      );
+    }, [order.id, user?.uid, currentRole, firestore]);
 
     const { data: paymentSubmissions } = useCollection<PaymentSubmission>(paymentSubmissionsQuery);
-    const { data: allJournalVouchers } = useCollection<JournalVoucher>(allJvsQuery);
     
     const { totalPaid, balanceDue, paymentHistory } = React.useMemo(() => {
-        if (!customerParty || !allJournalVouchers) {
-             const totalFromSubs = (paymentSubmissions || [])
-                .filter(p => p.status === 'Approved')
-                .reduce((sum, p) => sum + p.amount, 0);
-            return { totalPaid: totalFromSubs, balanceDue: order.grandTotal - totalFromSubs, paymentHistory: (paymentSubmissions || []) };
-        }
+        const approvedPayments = (paymentSubmissions || [])
+            .filter(p => p.status === 'Approved');
 
-        const jvHistory = (allJournalVouchers || [])
-            .filter(jv => jv.narration?.includes(order.orderNumber || order.id) && jv.entries.some(e => e.accountId === customerParty?.coaLedgerId && e.credit && e.credit > 0))
-            .map(jv => {
-                 const creditEntry = jv.entries.find(e => e.accountId === customerParty?.coaLedgerId)!;
-                 return {
-                    amount: creditEntry.credit || 0,
-                    date: jv.createdAt.toDate(),
-                    details: jv.narration,
-                    status: 'Approved',
-                    type: 'jv'
-                 }
-            });
+        const totalPaidAmount = approvedPayments.reduce((sum, p) => sum + p.amount, 0);
         
-        const approvedSubmissionDetails = (paymentSubmissions || [])
-            .filter(p => p.status === 'Approved')
-            .map(p => `Ref: ${p.transactionDetails}`);
-        
-        const pendingSubmissions = (paymentSubmissions || [])
-            .filter(p => p.status === 'Pending')
-            .map(p => ({
-                amount: p.amount,
-                date: p.submittedAt.toDate(),
-                details: `Ref: ${p.transactionDetails || 'N/A'} (${p.paymentMethod}) - PENDING`,
-                status: p.status,
-                type: 'submission'
-            }));
-
-        const combinedHistory = [...jvHistory, ...pendingSubmissions].sort((a,b) => a.date.getTime() - b.date.getTime());
-        const totalPaidAmount = jvHistory.reduce((sum, p) => sum + p.amount, 0);
+        const history = (paymentSubmissions || []).map(p => ({
+            amount: p.amount,
+            date: p.submittedAt.toDate(),
+            details: `Ref: ${p.transactionDetails || 'N/A'} (${p.paymentMethod}) - ${p.status}`,
+        })).sort((a,b) => a.date.getTime() - b.date.getTime());
 
         return {
             totalPaid: totalPaidAmount,
             balanceDue: order.grandTotal - totalPaidAmount,
-            paymentHistory: combinedHistory,
+            paymentHistory: history,
         }
-    }, [order, paymentSubmissions, allJournalVouchers, customerParty]);
+    }, [order.grandTotal, paymentSubmissions]);
 
 
     const refundQuery = order.status === 'Canceled' && user
@@ -712,7 +680,7 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
                                         </Link>
                                     </Button>
                                   </>
-                                ) : (balanceDue <= 0 && ['Ordered', 'Ready for Dispatch'].includes(order.status)) && ['Admin', 'Accounts Manager', 'Sales Manager', 'Partner'].includes(currentRole) && (
+                                ) : balanceDue <= 0 && ['Ordered', 'Ready for Dispatch'].includes(order.status) && ['Admin', 'Partner'].includes(currentRole) && (
                                      <Button size="sm" onClick={() => {
                                          localStorage.setItem('invoiceDataToCreate', JSON.stringify(order));
                                          router.push('/dashboard/sales/create-invoice');
