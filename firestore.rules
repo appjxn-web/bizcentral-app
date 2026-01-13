@@ -43,7 +43,7 @@ service cloud.firestore {
         isAdmin() || 
         resource.data.userId == request.auth.uid || 
         resource.data.assignedToUid == request.auth.uid ||
-        request.resource.data.assignedToUid == request.auth.uid
+        (getRole() == 'Partner' && request.resource.data.assignedToUid == request.auth.uid)
       );
     }
 

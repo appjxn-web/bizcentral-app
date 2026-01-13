@@ -753,36 +753,44 @@ function OrdersPageContent() {
   }, [orders]);
   
   const handleStatusChange = async (order: Order, newStatus: OrderStatus) => {
-      try {
-          const batch = writeBatch(firestore);
-          const orderRef = doc(firestore, 'orders', order.id);
-          batch.update(orderRef, { status: newStatus });
-          
-          const notificationRef = doc(collection(firestore, 'users', order.userId, 'notifications'));
-          const orderNumber = (order as SalesOrder).orderNumber || order.id;
-
-          const notificationData = {
-              type: 'info',
-              title: 'Order Status Updated',
-              description: `Your order #${orderNumber} has been updated to "${newStatus}".`,
-              timestamp: serverTimestamp(),
-              read: false,
-          };
-          batch.set(notificationRef, notificationData);
-
-          await batch.commit();
-
-          toast({
-              title: 'Status Updated',
-              description: `Order status changed to "${newStatus}" and customer notified.`,
-          });
-      } catch (error) {
-          toast({
-              variant: 'destructive',
-              title: 'Update Failed',
-              description: 'Could not update order status.',
-          });
+    try {
+      const batch = writeBatch(firestore);
+      const orderRef = doc(firestore, 'orders', order.id);
+  
+      const updateData: any = { status: newStatus };
+  
+      if (currentRole === 'Partner' && user?.uid && !order.assignedToUid) {
+        updateData.assignedToUid = user.uid;
       }
+  
+      batch.update(orderRef, updateData);
+  
+      const notificationRef = doc(collection(firestore, 'users', order.userId, 'notifications'));
+      const orderNumber = (order as SalesOrder).orderNumber || order.id;
+  
+      const notificationData = {
+        type: 'info',
+        title: 'Order Status Updated',
+        description: `Your order #${orderNumber} has been updated to "${newStatus}".`,
+        timestamp: serverTimestamp(),
+        read: false,
+      };
+      batch.set(notificationRef, notificationData);
+  
+      await batch.commit();
+  
+      toast({
+        title: 'Status Updated',
+        description: `Order moved to "${newStatus}" successfully.`,
+      });
+    } catch (error) {
+      console.error("Status Update Error:", error);
+      toast({
+        variant: 'destructive',
+        title: 'Update Failed',
+        description: 'An error occurred. Check permissions or network and try again.',
+      });
+    }
   };
 
 
