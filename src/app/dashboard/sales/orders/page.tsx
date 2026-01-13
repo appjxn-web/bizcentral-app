@@ -475,7 +475,7 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
         const history = (paymentSubmissions || []).map(p => ({
             amount: p.amount,
             date: p.submittedAt.toDate(),
-            details: `${format(p.submittedAt.toDate(), 'dd/MM/yy')}: ${formatIndianCurrency(p.amount)} - Ref: ${p.transactionDetails || 'N/A'} (${p.paymentMethod}) - ${p.status}`,
+            details: `Ref: ${p.transactionDetails || 'N/A'} (${p.paymentMethod}) - ${p.status}`,
         })).sort((a,b) => a.date.getTime() - b.date.getTime());
 
         return {
@@ -542,16 +542,16 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
     const canChangeStatus = ['Admin', 'Partner', 'Sales Manager', 'CEO'].includes(currentRole);
     
     const nextStatusOptions: Record<OrderStatus, OrderStatus[]> = {
-      'Awaiting Payment': ['Ordered', 'Canceled'],
-      'Awaiting Payment Confirmation': ['Ordered', 'Canceled'],
-      'Ordered': balanceDue <= 0 ? ['Ready for Dispatch'] : [],
-      'Ready for Dispatch': ['Shipped'],
-      'Invoice Sent': ['Shipped'],
-      'Shipped': ['Delivered'],
-      'Manufacturing': ['Ready for Dispatch'],
-      'Delivered': [],
-      'Canceled': [],
-      'Cancellation Requested': ['Ordered', 'Canceled'],
+        'Awaiting Payment': ['Ordered', 'Canceled'],
+        'Awaiting Payment Confirmation': ['Ordered', 'Canceled'],
+        'Ordered': ['Manufacturing', 'Ready for Dispatch'],
+        'Ready for Dispatch': balanceDue > 0 ? ['Awaiting Payment'] : ['Shipped', 'Invoice Sent'],
+        'Invoice Sent': ['Shipped'],
+        'Shipped': ['Delivered'],
+        'Manufacturing': ['Ready for Dispatch'],
+        'Delivered': [],
+        'Canceled': [],
+        'Cancellation Requested': ['Ordered', 'Canceled'],
     };
     
     const availableStatuses = nextStatusOptions[order.status] || [];
@@ -625,7 +625,7 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
                                     <p className="text-xs font-semibold">Payment History:</p>
                                     {(paymentHistory as any[]).map((p, i) => (
                                         <p key={i} className="text-xs text-muted-foreground font-mono whitespace-pre-wrap">
-                                            {p.details}
+                                            {format(p.date, 'dd/MM/yy')}: {formatIndianCurrency(p.amount)} - {p.details}
                                         </p>
                                     ))}
                                 </div>
@@ -871,3 +871,6 @@ export default function OrdersPage() {
 
     
 
+
+
+    
