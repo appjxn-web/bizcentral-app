@@ -139,11 +139,12 @@ export default function InvoiceViewPage() {
     
         const items = invoiceData.items;
         const subtotal = items.reduce((acc: number, item: any) => acc + (item.rate * item.quantity), 0);
-        const totalDiscount = invoiceData.discount || 0;
-        const taxableAmount = subtotal - totalDiscount;
+        const totalDiscountAmount = invoiceData.discount || 0;
+        const taxableAmount = subtotal - totalDiscountAmount;
+
         const totalGst = items.reduce((acc: number, item: any) => {
             const itemSubtotal = item.rate * item.quantity;
-            const itemDiscount = subtotal > 0 ? itemSubtotal * (totalDiscount / subtotal) : 0;
+            const itemDiscount = subtotal > 0 ? itemSubtotal * (totalDiscountAmount / subtotal) : 0;
             const discountedAmount = itemSubtotal - itemDiscount;
             return acc + (discountedAmount * ((item.gstRate || 18) / 100));
         }, 0);
@@ -153,7 +154,7 @@ export default function InvoiceViewPage() {
         const sgst = isInterstate ? 0 : totalGst / 2;
         const igst = isInterstate ? totalGst : 0;
         
-        return { items, subtotal, totalDiscountAmount: totalDiscount, taxableAmount, cgst, sgst, igst, grandTotal };
+        return { items, subtotal, totalDiscountAmount, taxableAmount, cgst, sgst, igst, grandTotal };
       }, [invoiceData, isInterstate]);
 
 
@@ -204,7 +205,7 @@ export default function InvoiceViewPage() {
         );
     }
 
-    const { grandTotal, subtotal, discount, cgst, sgst, igst, items, totalDiscountAmount, taxableAmount } = calculations;
+    const { grandTotal, subtotal, totalDiscountAmount, taxableAmount, cgst, sgst, igst, items } = calculations;
     const creatorName = creatorData?.businessName || creatorData?.name || 'Authorized Signatory';
 
     return (
