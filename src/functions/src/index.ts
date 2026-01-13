@@ -5,13 +5,10 @@ import {
   onDocumentCreated,
   onDocumentUpdated,
   onDocumentWritten,
-  FirestoreEvent,
-  Change,
-  DocumentSnapshot,
 } from "firebase-functions/v2/firestore";
 import * as admin from "firebase-admin";
-import {getFirestore, FieldValue} from "firebase-admin/firestore";
-import type {Order, SalesInvoice, Party, Goal, UserProfile, CreditNote, DebitNote, RefundRequest, Product, StockTransferRequest, PaymentSubmission} from "./types";
+import {getFirestore} from "firebase-admin/firestore";
+import type {Order, SalesInvoice, Party, Goal, CreditNote, DebitNote, RefundRequest, StockTransferRequest, PaymentSubmission} from "./types";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { getNextDocNumber } from "./number-series";
 
@@ -235,7 +232,7 @@ export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}", a
             const productRef = db.doc(`products/${item.productId}`);
             const productSnap = await transaction.get(productRef);
             if (productSnap.exists) {
-                const product = productSnap.data() as Product;
+                const product = productSnap.data() as any;
                 totalCost += (product?.cost || 0) * item.quantity;
             }
         }
@@ -363,7 +360,7 @@ export const onDebitNoteCreated = onDocumentCreated("debitNotes/{noteId}", async
     await jvRef.set(jvData);
 });
 
-export const onStockTransfer = onDocumentUpdated("stockTransferRequests/{requestId}", async (event: FirestoreEvent<Change<DocumentSnapshot> | undefined, {requestId: string}>) => {
+export const onStockTransfer = onDocumentUpdated("stockTransferRequests/{requestId}", async (event) => {
     if (!event.data?.after) return;
 
     const before = event.data.before.data() as StockTransferRequest;
@@ -419,7 +416,7 @@ export const handleQuotationCreation = onDocumentCreated("quotations/{docId}", a
 
       return snapshot.ref.update({ 
         quotationNumber: newId, 
-        id: FieldValue.delete(),
+        id: admin.firestore.FieldValue.delete(),
         createdByUid: createdByUid, // Add createdByUid
      });
     } catch (error) { return null; }
@@ -428,7 +425,7 @@ export const handleQuotationCreation = onDocumentCreated("quotations/{docId}", a
 export const handleWorkOrderCreation = onDocumentCreated("workOrders/{id}", () => {});
 export const handleVoucherCreation = onDocumentCreated("journalVouchers/{id}", () => {});
 
-export const handleOrderUpdates = onDocumentUpdated("orders/{orderId}", async (event: FirestoreEvent<Change<DocumentSnapshot> | undefined, {orderId: string}>) => {
+export const handleOrderUpdates = onDocumentUpdated("orders/{orderId}", async (event) => {
     if (!event.data) {
       return;
     }
@@ -447,13 +444,13 @@ export const handleOrderUpdates = onDocumentUpdated("orders/{orderId}", async (e
                 const partnerId = after.assignedToUid!;
                 const partnerRef = db.doc(`users/${partnerId}`);
                 const partnerSnap = await transaction.get(partnerRef);
-                const partnerData = partnerSnap.data() as UserProfile | undefined;
+                const partnerData = partnerSnap.data() as any | undefined;
                 
                 if (partnerData && partnerData.partnerMatrix) {
                     let commissionTotal = after.commission || 0;
                     if (!commissionTotal) { // Recalculate if not already on the order
                         commissionTotal = after.items.reduce((acc, item) => {
-                            const rule = partnerData.partnerMatrix?.find(r => r.category === item.category);
+                            const rule = partnerData.partnerMatrix?.find((r:any) => r.category === item.category);
                             if (rule) {
                                 const itemTotal = item.price * item.quantity;
                                 return acc + (itemTotal * (rule.commissionRate / 100));
@@ -479,7 +476,7 @@ export const handleOrderUpdates = onDocumentUpdated("orders/{orderId}", async (e
             // --- 2. Referral Commission ---
             const userProfileRef = db.doc(`users/${after.userId}`);
             const userProfileSnap = await transaction.get(userProfileRef);
-            const userProfile = userProfileSnap.data() as UserProfile | undefined;
+            const userProfile = userProfileSnap.data() as any | undefined;
     
             if (userProfile?.referredBy) {
                 const referralsQuery = db.collection(`users/${userProfile.referredBy}/referrals`)
@@ -505,7 +502,7 @@ export const handleOrderUpdates = onDocumentUpdated("orders/{orderId}", async (e
     }
  });
 
-export const onMilestoneUpdate = onDocumentWritten("goals/{goalId}/milestones/{milestoneId}", async (event: FirestoreEvent<Change<DocumentSnapshot> | undefined>) => { 
+export const onMilestoneUpdate = onDocumentWritten("goals/{goalId}/milestones/{milestoneId}", async (event) => { 
     const goalId = event.params.goalId;
     const goalRef = db.collection("goals").doc(goalId);
 
@@ -587,7 +584,7 @@ export const onPaymentApproved = onDocumentUpdated("paymentSubmissions/{id}", as
         if (!receivingAccountId) {
             if (after.paymentMethod === 'Cash' && after.recordedByUid) {
                 const recorderSnap = await transaction.get(db.doc(`users/${after.recordedByUid}`));
-                const recorderProfile = recorderSnap.data() as UserProfile | undefined;
+                const recorderProfile = recorderSnap.data() as any | undefined;
                 receivingAccountId = recorderProfile?.coaLedgerId || "L-1.1.1-1"; 
             } else { 
                 const companySnap = await transaction.get(db.doc("company/info"));
@@ -673,6 +670,7 @@ export const helloWorld = onCall((request) => {
 
 
     
+
 
 
 
