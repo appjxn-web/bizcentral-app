@@ -56,7 +56,7 @@ service cloud.firestore {
     
     match /quotations/{id} {
       allow get: if signedIn();
-      allow list: if isAdmin() || (signedIn() && request.query.where.createdBy == request.auth.uid);
+      allow list: if isAdmin() || (signedIn() && resource.data.createdBy == request.auth.uid);
       allow create: if signedIn();
       allow update: if signedIn() && (isAdmin() || resource.data.createdBy == request.auth.uid);
     }
@@ -92,19 +92,30 @@ service cloud.firestore {
         allow read, list: if true;
         allow write: if isAdmin();
     }
+    
+    match /pickupPoints/{id} {
+      allow read, list: if true;
+      allow write: if isAdmin();
+    }
+
+    match /locations/{id} {
+      allow read, list: if true;
+      allow write: if isAdmin();
+    }
+    
+    match /company/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
 
     // --- 7. HR (FIX for Reimbursement) ---
     match /reimbursementRequests/{id} {
-        allow read, list: if isAdmin() || (signedIn() && resource.data.createdByUid == request.auth.uid);
+        allow read, list: if signedIn() && (isAdmin() || resource.data.createdByUid == request.auth.uid);
         allow create: if signedIn() && request.resource.data.createdByUid == request.auth.uid;
         allow update, delete: if isAdmin();
     }
 
-    // --- 8. MISC SETTINGS & PAYMENTS ---
-    match /pickupPoints/{id} { allow read, list: if true; allow write: if isAdmin(); }
-    match /locations/{id} { allow read, list: if true; allow write: if isAdmin(); }
-    match /company/{id} { allow read: if true; allow write: if isAdmin(); }
-    
+    // --- 8. MISC PAYMENTS ---
     match /paymentSubmissions/{id} {
       allow read, list: if signedIn() && (isAdmin() || resource.data.userId == request.auth.uid || resource.data.assignedToUid == request.auth.uid);
       allow create: if signedIn();
