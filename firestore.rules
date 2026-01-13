@@ -36,6 +36,8 @@ service cloud.firestore {
     }
 
     match /salesInvoices/{invoiceId} {
+      // FIX: Corrected list rule to use resource.data, which is more robust and works with Firestore's query capabilities.
+      // This allows a user to get an invoice if they are the customer OR the assigned partner.
       allow get, list: if signedIn() && (isAdmin() || resource.data.customerId == request.auth.uid || resource.data.assignedToUid == request.auth.uid);
       allow create, update: if signedIn() && (isAdmin() || getRole() == 'Partner');
     }
