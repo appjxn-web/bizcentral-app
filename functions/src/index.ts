@@ -109,8 +109,7 @@ export const verifyUpiPaymentAndCreateOrder = onCall(async (request) => {
                 userId: order.userId,
                 customerName: order.customerName,
                 orderId: orderRef.id,
-                // ADD THIS LINE:
-                assignedToUid: order.assignedToUid || null, 
+                assignedToUid: order.assignedToUid || null,
                 amount: order.paymentReceived,
                 paymentMethod: 'UPI / Online',
                 transactionDetails: upiTransactionId,
@@ -617,60 +616,48 @@ export const onPaymentApproved = onDocumentUpdated("paymentSubmissions/{id}", as
                  console.error("Could not determine receiving account. JV not created for payment:", after.id);
             }
 
-            const newPaymentReceived = (orderData.paymentReceived || 0) + after.amount;
-            const newBalance = orderData.grandTotal - newPaymentReceived;
-
-            const newPaymentDetailsString = [
-                orderData.paymentDetails || '',
-                `Approved: ${new Date().toISOString()} - ${after.amount} - Ref: ${after.transactionDetails}`
-            ].filter(Boolean).join('\n');
+            // 3. Update Order Totals
+            const newTotalPaid = (orderData.paymentReceived || 0) + after.amount;
+            const newBalance = orderData.grandTotal - newTotalPaid;
             
-            const nextStatus = newBalance <= 0 ? 'Ready for Dispatch' : 'Ordered';
-
             transaction.update(orderRef, {
-                paymentReceived: newPaymentReceived,
+                paymentReceived: newTotalPaid,
                 balance: newBalance,
-                paymentDetails: newPaymentDetailsString,
-                status: nextStatus
+                status: newBalance <= 0 ? 'Ready for Dispatch' : 'Ordered'
             });
-            
-            if (newBalance <= 0) {
-                const prefixesSnap = await transaction.get(db.doc('company/settings'));
-                const prefixes = prefixesSnap.data()?.prefixes;
-                
-                const allInvoicesSnap = await transaction.get(db.collection('salesInvoices'));
-                const allInvoices = allInvoicesSnap.docs.map(d => d.data());
 
-                const newInvoiceId = getNextDocNumber('Sales Invoice', prefixes, allInvoices as any[]);
-                const invoiceRef = db.doc(`salesInvoices/${newInvoiceId}`);
+            // 4. AUTOMATIC INVOICE GENERATION
+            if (newBalance <= 0) {
+                const invoiceRef = db.collection("salesInvoices").doc();
+                const settingsSnap = await transaction.get(db.doc('company/settings'));
+                const prefixes = settingsSnap.data()?.prefixes;
+                const allInvoices = await db.collection('salesInvoices').get();
                 
-                const taxableAmount = orderData.subtotal - (orderData.discount || 0);
-                
+                // Use your existing number series logic
+                const invNumber = getNextDocNumber('Sales Invoice', prefixes, allInvoices.docs.map(d => d.data()) as any);
+
                 transaction.set(invoiceRef, {
-                    id: newInvoiceId,
-                    invoiceNumber: newInvoiceId,
-                    orderId: after.orderId,
+                    id: invoiceRef.id,
+                    invoiceNumber: invNumber,
+                    orderId: orderData.id,
                     orderNumber: orderData.orderNumber,
                     customerId: orderData.userId,
                     customerName: orderData.customerName,
-                    coaLedgerId: customerLedgerId,
-                    date: new Date().toISOString().split("T")[0],
+                    date: new Date().toISOString().split('T')[0],
                     items: orderData.items,
                     subtotal: orderData.subtotal,
-                    discount: orderData.discount || 0,
-                    taxableAmount: taxableAmount,
+                    discount: orderData.discount,
+                    taxableAmount: orderData.subtotal - orderData.discount,
                     cgst: orderData.cgst,
                     sgst: orderData.sgst,
-                    igst: 0, // Assuming interstate logic is handled elsewhere
+                    igst: (orderData as any).igst || 0,
                     grandTotal: orderData.grandTotal,
-                    amountPaid: newPaymentReceived,
-                    balanceDue: newBalance,
+                    amountPaid: orderData.grandTotal,
+                    balanceDue: 0,
                     status: 'Paid',
-                    assignedToUid: orderData.assignedToUid || null,
-                    createdByUid: after.recordedByUid || after.userId,
+                    assignedToUid: orderData.assignedToUid,
+                    createdByUid: 'system_auto_generate'
                 });
-
-                transaction.update(orderRef, { status: 'Invoice Sent' });
             }
         });
     }

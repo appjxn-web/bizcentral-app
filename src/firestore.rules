@@ -1,3 +1,4 @@
+
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -14,10 +15,16 @@ service cloud.firestore {
       allow list: if isAdmin();
       allow write: if isOwner(userId) || isAdmin();
       
-      match /notifications/{id} { allow read, write: if isOwner(userId) || isAdmin(); }
+      // FIXED: Allow create if signed in so Partners can send notifications to Customers
+      match /notifications/{id} { 
+        allow read: if isOwner(userId) || isAdmin();
+        allow create: if signedIn(); 
+        allow update, delete: if isAdmin();
+      }
       match /wallet/main { allow read, write: if isOwner(userId) || isAdmin(); }
       match /referrals/{id} { allow read, write: if isOwner(userId) || isAdmin(); }
       match /registeredProducts/{id} { allow read, list: if isOwner(userId) || isAdmin(); }
+      match /stock/{productId} { allow read: if isOwner(userId); } // Allow partners to read their own stock
     }
 
     // --- 3. QUOTATIONS (Fixes current Partner error) ---
@@ -37,7 +44,15 @@ service cloud.firestore {
         resource.data.assignedToUid == request.auth.uid
       );
       allow create: if signedIn();
-      allow update: if isAdmin() || (signedIn() && (resource.data.userId == request.auth.uid || resource.data.assignedToUid == request.auth.uid));
+      // PERMANENT FIX: Allow update if user is the Customer, the Assigned Partner, 
+      // OR if a Partner is currently assigning themselves (claiming) the order.
+      allow update: if signedIn() && (
+        isAdmin() || 
+        resource.data.userId == request.auth.uid || 
+        resource.data.assignedToUid == request.auth.uid ||
+        (getRole() == 'Partner' && request.resource.data.assignedToUid == request.auth.uid)
+      );
+      allow delete: if isAdmin();
     }
 
     // --- 5. SALES INVOICES ---
@@ -74,6 +89,12 @@ service cloud.firestore {
         allow create: if signedIn() && request.resource.data.createdByUid == request.auth.uid;
         allow update, delete: if isAdmin();
     }
+    // NEW RULE FOR VACANCIES
+    match /vacancies/{vacancyId} {
+      allow get, list: if true;
+      allow write: if isAdmin();
+    }
+
 
     // --- 9. ACCOUNTING ---
     match /coa_ledgers/{id} { allow read: if signedIn(); allow write: if isAdmin(); }
@@ -86,6 +107,7 @@ service cloud.firestore {
     match /posts/{id} { allow read, list: if true; allow write: if isAdmin(); }
     match /offers/{id} { allow read, list: if true; allow write: if isAdmin(); }
     match /pickupPoints/{id} { allow read, list: if true; allow write: if isAdmin(); }
+    match /locations/{id} { allow read, list: if true; allow write: if isAdmin(); }
     match /company/{id} { allow read: if true; allow write: if isAdmin(); }
     
     match /paymentSubmissions/{id} {

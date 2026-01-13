@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -543,11 +544,11 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
     const nextStatusOptions: Record<OrderStatus, OrderStatus[]> = {
       'Awaiting Payment': ['Ordered', 'Canceled'],
       'Awaiting Payment Confirmation': ['Ordered', 'Canceled'],
-      'Ordered': ['Manufacturing', 'Ready for Dispatch', 'Awaiting Payment'],
-      'Ready for Dispatch': balanceDue > 0 ? ['Awaiting Payment'] : ['Shipped', 'Invoice Sent'],
+      'Ordered': ['Manufacturing', 'Ready for Dispatch'],
+      'Manufacturing': ['Ready for Dispatch'],
+      'Ready for Dispatch': balanceDue > 0 ? ['Awaiting Payment'] : ['Shipped'], // Removed 'Invoice Sent' (it's auto)
       'Invoice Sent': ['Shipped'],
       'Shipped': ['Delivered'],
-      'Manufacturing': ['Ready for Dispatch'],
       'Delivered': [],
       'Canceled': [],
       'Cancellation Requested': ['Ordered', 'Canceled'],
@@ -878,9 +879,5 @@ export default function OrdersPage() {
 
     return <OrdersPageContent />;
 }
-
-    
-
-
 
     
