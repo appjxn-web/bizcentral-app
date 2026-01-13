@@ -545,8 +545,8 @@ function OrderCard({ order, allSalesInvoices, onStatusChange, onGenerateInvoice 
     const nextStatusOptions: Record<OrderStatus, OrderStatus[]> = {
       'Awaiting Payment': ['Ordered', 'Canceled'],
       'Awaiting Payment Confirmation': ['Ordered', 'Canceled'],
-      'Ordered': ['Manufacturing', 'Ready for Dispatch', 'Canceled'],
-      'Manufacturing': ['Ready for Dispatch', 'Canceled'],
+      'Ordered': ['Manufacturing', 'Ready for Dispatch'],
+      'Manufacturing': ['Ready for Dispatch'],
       'Ready for Dispatch': balanceDue > 0 ? ['Awaiting Payment'] : ['Shipped'],
       'Invoice Sent': ['Shipped'],
       'Shipped': ['Delivered'],
@@ -807,13 +807,13 @@ function OrdersPageContent() {
     }
 
     try {
-        const invoiceData = {
+        const invoiceData: Partial<SalesInvoice> = {
             orderId: order.id,
             orderNumber: (order as SalesOrder).orderNumber || order.id,
             customerId: order.userId,
             customerName: order.customerName,
             date: new Date().toISOString().split('T')[0],
-            items: order.items,
+            items: order.items.map(item => ({...item, discount: order.discount, amount: item.price * item.quantity})),
             subtotal: order.subtotal,
             discount: order.discount,
             taxableAmount: order.subtotal - order.discount,
@@ -823,12 +823,13 @@ function OrdersPageContent() {
             grandTotal: order.grandTotal,
             amountPaid: order.grandTotal,
             balanceDue: 0,
-            status: 'Paid' as 'Paid' | 'Unpaid' | 'Overdue',
+            status: 'Paid',
             assignedToUid: order.assignedToUid,
             createdByUid: user?.uid,
         };
 
-        await addDoc(collection(firestore, 'salesInvoices'), invoiceData);
+        const newInvoiceRef = doc(collection(firestore, 'salesInvoices'));
+        await setDoc(newInvoiceRef, {...invoiceData, id: newInvoiceRef.id});
         
         toast({ title: 'Invoice Generation Triggered', description: `Invoice for order ${order.id} is being generated in the background.` });
     } catch (error) {
