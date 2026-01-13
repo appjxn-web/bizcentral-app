@@ -442,21 +442,20 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
     const userProfileRef = user ? doc(firestore, 'users', user.uid) : null;
     const { data: userProfile } = useDoc<UserProfile>(userProfileRef);
 
-    const customerPartyRef = React.useMemo(() => {
-        if(!order.userId || !firestore) return null;
-        return doc(firestore, 'parties', order.userId);
-    }, [order.userId, firestore]);
-    const { data: customerParty } = useDoc<Party>(customerPartyRef);
-    
     const paymentSubmissionsQuery = React.useMemo(() => {
       if (!order.id || !user?.uid || !firestore) return null;
       const submissionsRef = collection(firestore, 'paymentSubmissions');
     
       if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
-        return query(submissionsRef, where('orderId', '==', order.id), orderBy('submittedAt', 'desc'));
+        return query(
+          submissionsRef, 
+          where('orderId', '==', order.id), 
+          orderBy('submittedAt', 'desc')
+        );
       }
     
       const securityField = currentRole === 'Partner' ? 'assignedToUid' : 'userId';
+    
       return query(
         submissionsRef,
         where('orderId', '==', order.id),
@@ -680,7 +679,7 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
                                         </Link>
                                     </Button>
                                   </>
-                                ) : balanceDue <= 0 && ['Ordered', 'Ready for Dispatch'].includes(order.status) && ['Admin', 'Partner'].includes(currentRole) && (
+                                ) : (order.status === 'Ordered' || order.status === 'Ready for Dispatch') && balanceDue <= 0 && ['Admin', 'Partner'].includes(currentRole) && (
                                      <Button size="sm" onClick={() => {
                                          localStorage.setItem('invoiceDataToCreate', JSON.stringify(order));
                                          router.push('/dashboard/sales/create-invoice');
@@ -879,3 +878,4 @@ export default function OrdersPage() {
 }
 
     
+
