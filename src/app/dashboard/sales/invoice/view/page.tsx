@@ -26,7 +26,7 @@ import { format } from 'date-fns';
 import { QRCodeSVG } from 'qrcode.react';
 import type { SalesInvoice, CompanyInfo, Party, Address, Order, CoaLedger, UserProfile } from '@/lib/types';
 import { useFirestore, useDoc, useCollection } from '@/firebase';
-import { collection, doc, query, where, limit } from 'firebase/firestore';
+import { collection, doc, query, where, limit, getDocs } from 'firebase/firestore';
 
 const numberToWords = (num: number): string => {
     if (num === null || num === undefined) return '';
@@ -85,25 +85,23 @@ const formatIndianCurrency = (num: number) => {
 
 export default function InvoiceViewPage() {
     const searchParams = useSearchParams();
-    const invoiceId = searchParams.get('id');
+    const invoiceId = searchParams.get('id'); // e.g., SI-2601-0001
     const pdfRef = React.useRef<HTMLDivElement>(null);
     const [isDownloading, setIsDownloading] = React.useState(false);
     
     const firestore = useFirestore();
-    const invoiceRef = invoiceId ? doc(firestore, 'salesInvoices', invoiceId) : null;
-    const { data: invoiceData, loading: invoiceLoading } = useDoc<SalesInvoice>(invoiceRef);
-    
-    const orderQuery = React.useMemo(() => {
-        if (!invoiceData?.orderNumber || !firestore) return null;
+
+    const invoiceQuery = React.useMemo(() => {
+        if (!invoiceId || !firestore) return null;
         return query(
-            collection(firestore, 'orders'),
-            where('orderNumber', '==', invoiceData.orderNumber),
+            collection(firestore, 'salesInvoices'),
+            where('invoiceNumber', '==', invoiceId),
             limit(1)
         );
-    }, [invoiceData, firestore]);
-    
-    const { data: orderResult, loading: orderLoading } = useCollection<Order>(orderQuery);
-    const orderData = orderResult?.[0];
+    }, [invoiceId, firestore]);
+
+    const { data: invoiceResult, loading: invoiceLoading } = useCollection<SalesInvoice>(invoiceQuery);
+    const invoiceData = invoiceResult?.[0]; // Get the first (and only) result
 
     const { data: companyInfo, loading: companyInfoLoading } = useDoc<CompanyInfo>(doc(firestore, 'company', 'info'));
     
@@ -184,7 +182,7 @@ export default function InvoiceViewPage() {
         setIsDownloading(false);
     };
 
-    const isLoading = invoiceLoading || companyInfoLoading || customerLoading || bankLedgerLoading || orderLoading || creatorLoading;
+    const isLoading = invoiceLoading || companyInfoLoading || customerLoading || bankLedgerLoading || creatorLoading;
 
     if (isLoading) {
         return (
@@ -219,7 +217,7 @@ export default function InvoiceViewPage() {
             </PageHeader>
             <Card>
                 <CardContent>
-                    <div className="max-w-4xl mx-auto p-8" ref={pdfRef}>
+                    <div className="max-w-4xl mx-auto p-8 font-sans" ref={pdfRef}>
                         <header className="flex justify-between items-start border-b pb-4">
                             <div>
                                 {companyInfo?.logo && (
@@ -227,7 +225,7 @@ export default function InvoiceViewPage() {
                                         src={companyInfo.logo} 
                                         alt="Company Logo" 
                                         width={175} 
-                                        height={45} 
+                                        height={40} 
                                         className="object-contain"
                                         crossOrigin="anonymous"
                                     />
@@ -354,7 +352,7 @@ export default function InvoiceViewPage() {
                         <div className="text-right my-4 text-xs md:text-sm font-semibold italic">
                             Amount in words: {numberToWords(grandTotal)}
                         </div>
-        
+                        
                         <footer className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-16">
                             <div className="text-xs space-y-4">
                                 <div className="flex gap-4 p-3 bg-slate-50 rounded-lg">

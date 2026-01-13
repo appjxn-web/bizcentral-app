@@ -546,8 +546,8 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
       'Awaiting Payment Confirmation': ['Ordered', 'Canceled'],
       'Ordered': ['Manufacturing', 'Ready for Dispatch'],
       'Manufacturing': ['Ready for Dispatch'],
-      'Ready for Dispatch': ['Shipped'], 
-      'Invoice Sent': ['Shipped'],
+      'Ready for Dispatch': balanceDue <= 0 ? ['Invoice Sent', 'Shipped'] : [],
+      'Invoice Sent': balanceDue <= 0 ? ['Shipped', 'Delivered'] : [],
       'Shipped': ['Delivered'],
       'Delivered': [],
       'Canceled': [],
@@ -557,45 +557,8 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
     const availableStatuses = nextStatusOptions[order.status] || [];
     
     const handleGenerateInvoice = async () => {
-        if (!firestore || !user) return;
-        try {
-            const batch = writeBatch(firestore);
-            const invoiceRef = doc(collection(firestore, 'salesInvoices'));
-            
-            const invoiceData: Partial<SalesInvoice> = {
-                id: invoiceRef.id,
-                orderId: order.id,
-                orderNumber: order.orderNumber,
-                customerId: order.userId,
-                customerName: order.customerName,
-                date: new Date().toISOString().split('T')[0],
-                items: order.items,
-                subtotal: order.subtotal,
-                discount: order.discount,
-                taxableAmount: order.subtotal - order.discount,
-                cgst: order.cgst,
-                sgst: order.sgst,
-                igst: isInterstate ? order.cgst + order.sgst : 0,
-                grandTotal: order.grandTotal,
-                amountPaid: order.paymentReceived || 0,
-                balanceDue: order.balance || 0,
-                status: (order.balance || 0) <= 0 ? 'Paid' : 'Unpaid',
-                assignedToUid: order.assignedToUid,
-                createdByUid: user.uid,
-            };
-            
-            batch.set(invoiceRef, invoiceData, { merge: true });
-            
-            const orderRef = doc(firestore, 'orders', order.id);
-            batch.update(orderRef, { status: 'Invoice Sent' });
-
-            await batch.commit();
-
-            toast({ title: 'Invoice Generated', description: 'The sales invoice has been created.' });
-        } catch (e) {
-            console.error("Error generating invoice:", e);
-            toast({ variant: 'destructive', title: 'Invoice Generation Failed' });
-        }
+      localStorage.setItem('invoiceDataToCreate', JSON.stringify(order));
+      router.push('/dashboard/sales/create-invoice');
     };
     
     return (
@@ -721,8 +684,8 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
                                         </Link>
                                     </Button>
                                   </>
-                                ) : order.status === 'Ready for Dispatch' && balanceDue <= 0 && (
-                                    <Button size="sm" onClick={handleGenerateInvoice}>
+                                ) : order.status === 'Ready for Dispatch' && balanceDue <= 0 && ['Admin', 'Accounts Manager', 'Sales Manager'].includes(currentRole) && (
+                                     <Button size="sm" onClick={handleGenerateInvoice}>
                                         <PlusCircle className="mr-2 h-4 w-4" />
                                         Generate Invoice
                                     </Button>
@@ -769,18 +732,18 @@ function OrdersPageContent() {
   }, [user?.uid, currentRole, firestore]);
   
   const invoicesQuery = React.useMemo(() => {
-    if (!user?.uid || !currentRole) return null;
-    const invoicesRef = collection(firestore, 'salesInvoices');
+      if (!user?.uid || !currentRole) return null;
+      const invoicesRef = collection(firestore, 'salesInvoices');
   
-    if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
-        return query(invoicesRef, orderBy('date', 'desc'));
-    }
+      if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
+          return query(invoicesRef, orderBy('date', 'desc'));
+      }
   
-    if (currentRole === 'Partner') {
-        return query(invoicesRef, where('assignedToUid', '==', user.uid), orderBy('date', 'desc'));
-    }
+      if (currentRole === 'Partner') {
+          return query(invoicesRef, where('assignedToUid', '==', user.uid), orderBy('date', 'desc'));
+      }
   
-    return query(invoicesRef, where('customerId', '==', user.uid), orderBy('date', 'desc'));
+      return query(invoicesRef, where('customerId', '==', user.uid), orderBy('date', 'desc'));
   }, [user?.uid, currentRole, firestore]);
 
 
