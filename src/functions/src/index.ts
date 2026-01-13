@@ -8,7 +8,6 @@ import {
 import * as admin from "firebase-admin";
 import {getFirestore} from "firebase-admin/firestore";
 import type {Order, SalesInvoice, Party, PaymentSubmission} from "./types";
-import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { getNextDocNumber } from "./number-series";
 
 if (admin.apps.length === 0) { admin.initializeApp(); }
@@ -80,56 +79,6 @@ const findOrCreateSpecificCustomerLedger = async (transaction: admin.firestore.T
     
     return newLedgerRef.id;
 };
-
-export const verifyUpiPaymentAndCreateOrder = onCall(async (request) => {
-    const { order, upiTransactionId } = request.data;
-
-    // --- 1. UPI Verification (Simulated) ---
-    // In a real app, you would call your payment gateway's API here.
-    // We'll simulate a successful check for demonstration.
-    console.log(`Verifying UPI transaction ID: ${upiTransactionId}...`);
-    const isPaymentValid = true; // Replace with actual API call result
-
-    if (!isPaymentValid) {
-        throw new HttpsError('invalid-argument', 'The UPI transaction ID is invalid or the payment was not received.');
-    }
-
-    // --- 2. Database Operations within a Transaction ---
-    try {
-        await db.runTransaction(async (transaction) => {
-            const orderRef = db.collection('orders').doc();
-            
-            // INSTEAD OF JV: Create a payment submission for the advance
-            const submissionRef = db.collection('paymentSubmissions').doc();
-            transaction.set(submissionRef, {
-                userId: order.userId,
-                customerName: order.customerName,
-                orderId: orderRef.id,
-                assignedToUid: order.assignedToUid || null,
-                amount: order.paymentReceived,
-                paymentMethod: 'UPI / Online',
-                transactionDetails: upiTransactionId,
-                status: 'Pending', // Requires Admin approval
-                submittedAt: admin.firestore.FieldValue.serverTimestamp(),
-            });
-
-            // Create order with 0 initial verified payment (Submission will update it)
-            const newOrderData = {
-              ...order,
-              id: orderRef.id,
-              paymentReceived: 0, // Set to 0 initially
-              balance: order.grandTotal, 
-              status: 'Awaiting Payment Confirmation',
-            };
-            transaction.set(orderRef, newOrderData);
-        });
-        return { success: true, orderId: "Order created, pending payment approval" };
-    } catch (error: any) { 
-        console.error("Order creation transaction failed:", error);
-        throw new HttpsError('internal', 'An error occurred while creating the order.', error.message);
-    }
-});
-
 
 export const handleOrderCreation = onDocumentCreated("orders/{orderId}", async (event) => {
     const snap = event.data;
@@ -338,7 +287,3 @@ export const onPaymentApproved = onDocumentUpdated("paymentSubmissions/{id}", as
 });
     
 
-export const helloWorld = onCall((request) => {
-    console.log("Hello from Firebase!");
-    return { message: "Hello from Firebase!" };
-});
