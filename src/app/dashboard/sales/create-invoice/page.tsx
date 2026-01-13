@@ -224,14 +224,14 @@ export default function CreateInvoicePage() {
       if (rawData && allProducts && allProducts.length > 0) {
           setIsFromSalesOrder(true);
           const data = JSON.parse(rawData);
-          setSelectedPartyId(data.customerId);
+          setSelectedPartyId(data.userId || data.customerId); // Use userId from sales order or customerId from quote
           setOrderDocumentId(data.id); // Set the document ID
           setAssignedToUid(data.assignedToUid); // Set the partner ID
 
           const mappedItems = data.items.map((item: any, i: number) => {
               const product = allProducts.find(p => p.id === item.productId);
               const rate = item.price || item.rate || 0;
-              const quantity = item.quantity || 1;
+              const quantity = item.quantity || item.qty || 1;
               
               return {
                   id: `item-${Date.now()}-${i}`,
@@ -256,7 +256,6 @@ export default function CreateInvoicePage() {
           setPaymentDetails(data.paymentDetails || '');
           setAppliedCoupons(data.appliedCoupons || []);
           
-          // Set invoice date to current date when generating from SO
           setInvoiceDate(format(new Date(), 'yyyy-MM-dd'));
           
           localStorage.removeItem('invoiceDataToCreate');
@@ -554,15 +553,6 @@ export default function CreateInvoicePage() {
   const balanceDue = calculations.grandTotal - bookingAmount;
   const qrUpiString = companyInfo ? `upi://pay?pa=${companyInfo.primaryUpiId || 'your-upi-id@okhdfcbank'}&pn=${encodeURIComponent(companyInfo.companyName || 'Your Company')}&am=${balanceDue.toFixed(2)}&cu=INR` : '';
 
-  const loading = productsLoading || partiesLoading || ledgersLoading || invoicesLoading;
-
-  if(loading) {
-    return (
-        <div className="flex items-center justify-center h-full">
-            <Loader2 className="h-8 w-8 animate-spin" />
-        </div>
-    )
-  }
 
   return (
     <>
@@ -844,3 +834,8 @@ export default function CreateInvoicePage() {
     </>
   );
 }
+
+  
+
+
+
