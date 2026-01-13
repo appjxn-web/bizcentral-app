@@ -79,7 +79,6 @@ import { useToast } from '@/hooks/use-toast';
 import { ref, uploadBytes, getDownloadURL, getStorage } from 'firebase/storage';
 import { Loader2 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { getNextDocNumber } from '@/lib/number-series';
 
 
 function getStatusBadgeVariant(status: Order['status'] | 'Refund Pending' | 'Refund Complete' | SalesInvoice['status']) {
@@ -430,7 +429,7 @@ function CompanyPickupDetails() {
   );
 }
 
-function OrderCard({ order, allSalesInvoices, onStatusChange, onGenerateInvoice }: { order: Order, allSalesInvoices: SalesInvoice[] | null, onStatusChange: (order: Order, newStatus: OrderStatus) => void, onGenerateInvoice: (order: Order) => void }) {
+function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, allSalesInvoices: SalesInvoice[] | null, onStatusChange: (order: Order, newStatus: OrderStatus) => void }) {
     const { user } = useUser();
     const router = useRouter();
     const { currentRole } = useRole();
@@ -556,6 +555,16 @@ function OrderCard({ order, allSalesInvoices, onStatusChange, onGenerateInvoice 
     };
     
     const availableStatuses = nextStatusOptions[order.status] || [];
+
+    const handleGenerateInvoice = async () => {
+        const hasPermission = ['Admin', 'CEO', 'Accounts Manager', 'Sales Manager'].includes(currentRole);
+        if (!hasPermission) {
+            toast({ variant: "destructive", title: "Permission Denied" });
+            return;
+        }
+        localStorage.setItem('invoiceDataToCreate', JSON.stringify(order));
+        router.push('/dashboard/sales/create-invoice');
+    };
     
     return (
       <>
@@ -681,8 +690,9 @@ function OrderCard({ order, allSalesInvoices, onStatusChange, onGenerateInvoice 
                                     </Button>
                                   </>
                                 ) : (order.status === 'Ready for Dispatch' && balanceDue <= 0 && canChangeStatus) && (
-                                    <Button size="sm" onClick={() => onGenerateInvoice(order)}>
-                                        <PlusCircle className="mr-2 h-4 w-4" /> Generate Invoice
+                                    <Button size="sm" onClick={handleGenerateInvoice}>
+                                        <PlusCircle className="mr-2 h-4 w-4" />
+                                        Generate Invoice
                                     </Button>
                                 )}
                             </div>
@@ -731,17 +741,14 @@ function OrdersPageContent() {
     if (!user?.uid || !currentRole) return null;
     const invoicesRef = collection(firestore, 'salesInvoices');
   
-    // Admins and financial roles can see all invoices
     if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
         return query(invoicesRef, orderBy('date', 'desc'));
     }
   
-    // Partners see invoices they are assigned to
     if (currentRole === 'Partner') {
         return query(invoicesRef, where('assignedToUid', '==', user.uid), orderBy('date', 'desc'));
     }
   
-    // Customers see their own invoices
     return query(invoicesRef, where('customerId', '==', user.uid), orderBy('date', 'desc'));
   }, [user?.uid, currentRole, firestore]);
 
@@ -801,45 +808,6 @@ function OrdersPageContent() {
     }
   };
 
-  const handleGenerateInvoice = async (order: Order) => {
-    if (!settingsData?.prefixes || !allSalesInvoices || !user) {
-        toast({ variant: 'destructive', title: 'Could not generate invoice', description: 'System settings are missing.' });
-        return;
-    }
-
-    try {
-        const invoiceData: Partial<SalesInvoice> = {
-            orderId: order.id,
-            orderNumber: (order as SalesOrder).orderNumber || order.id,
-            customerId: order.userId,
-            customerName: order.customerName,
-            date: new Date().toISOString().split('T')[0],
-            items: order.items.map(item => ({...item, discount: order.discount, amount: item.price * item.quantity})),
-            subtotal: order.subtotal,
-            discount: order.discount,
-            taxableAmount: order.subtotal - order.discount,
-            cgst: order.cgst,
-            sgst: order.sgst,
-            igst: (order as any).igst || 0,
-            grandTotal: order.grandTotal,
-            amountPaid: order.grandTotal,
-            balanceDue: 0,
-            status: 'Paid',
-            assignedToUid: order.assignedToUid,
-            createdByUid: user.uid,
-        };
-
-        const newInvoiceRef = doc(collection(firestore, 'salesInvoices'));
-        await setDoc(newInvoiceRef, {...invoiceData, id: newInvoiceRef.id});
-        
-        toast({ title: 'Invoice Generation Triggered', description: `An invoice for order ${order.id} is being generated.` });
-    } catch (error) {
-        console.error("Invoice generation error:", error);
-        toast({ variant: 'destructive', title: 'Invoice Generation Failed' });
-    }
-  };
-
-
   const loading = ordersLoading || invoicesLoading;
 
   return (
@@ -893,7 +861,7 @@ function OrdersPageContent() {
            <Card><CardContent className="p-12 text-center">Loading your orders...</CardContent></Card>
         ) : orders && orders.length > 0 ? (
             orders.map((order) => (
-                <OrderCard key={order.id} order={order} allSalesInvoices={allSalesInvoices} onStatusChange={handleStatusChange} onGenerateInvoice={handleGenerateInvoice} />
+                <OrderCard key={order.id} order={order} allSalesInvoices={allSalesInvoices} onStatusChange={handleStatusChange} onGenerateInvoice={() => {}} />
             ))
         ) : (
             <Card>
@@ -924,3 +892,4 @@ export default function OrdersPage() {
 }
 
     
+

@@ -1,4 +1,5 @@
 
+
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -43,7 +44,9 @@ service cloud.firestore {
         resource.data.userId == request.auth.uid || 
         resource.data.assignedToUid == request.auth.uid
       );
+      
       allow create: if signedIn();
+      
       // PERMANENT FIX: Allow update if user is the Customer, the Assigned Partner, 
       // OR if a Partner is currently assigning themselves (claiming) the order.
       allow update: if signedIn() && (
@@ -52,6 +55,7 @@ service cloud.firestore {
         resource.data.assignedToUid == request.auth.uid ||
         (getRole() == 'Partner' && request.resource.data.assignedToUid == request.auth.uid)
       );
+      
       allow delete: if isAdmin();
     }
 
