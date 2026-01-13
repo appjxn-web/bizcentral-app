@@ -109,6 +109,7 @@ export const verifyUpiPaymentAndCreateOrder = onCall(async (request) => {
                 userId: order.userId,
                 customerName: order.customerName,
                 orderId: orderRef.id,
+                assignedToUid: order.assignedToUid || null,
                 amount: order.paymentReceived,
                 paymentMethod: 'UPI / Online',
                 transactionDetails: upiTransactionId,
@@ -616,10 +617,8 @@ export const onPaymentApproved = onDocumentUpdated("paymentSubmissions/{id}", as
             const customerLedgerId = await findOrCreateSpecificCustomerLedger(transaction, after);
 
             // 2. DEBIT SIDE: The Receiving Account (Partner Cash or Bank)
-            // PRIORITY 1: Directly use the receiving account ID if provided by the frontend.
             let receivingAccountId: string | null = after.receivingAccountId || null;
             
-            // PRIORITY 2 (Fallback): If no specific account ID is given, use the old logic.
             if (!receivingAccountId) {
                 if (after.paymentMethod === 'Cash' && after.recordedByUid) {
                     const recorderSnap = await transaction.get(db.doc(`users/${after.recordedByUid}`));
@@ -634,10 +633,10 @@ export const onPaymentApproved = onDocumentUpdated("paymentSubmissions/{id}", as
                         if (!ledgerSearch.empty) {
                             receivingAccountId = ledgerSearch.docs[0].id;
                         } else {
-                            receivingAccountId = "L-1.1.1-1"; // Final Fallback: Generic Cash in Hand
+                            receivingAccountId = "L-1.1.1-1"; 
                         }
                     }
-                } else { // UPI / Bank etc.
+                } else { 
                     const companySnap = await transaction.get(db.doc("company/info"));
                     const primaryUpi = companySnap.data()?.primaryUpiId;
                     if (primaryUpi) {
@@ -668,18 +667,62 @@ export const onPaymentApproved = onDocumentUpdated("paymentSubmissions/{id}", as
                  console.error("Could not determine receiving account. JV not created for payment:", after.id);
             }
 
-            // 3. Update Order Totals
+            const newPaymentReceived = (orderData.paymentReceived || 0) + after.amount;
+            const newBalance = orderData.grandTotal - newPaymentReceived;
+
             const newPaymentDetailsString = [
                 orderData.paymentDetails || '',
                 `Approved: ${new Date().toISOString()} - ${after.amount} - Ref: ${after.transactionDetails}`
             ].filter(Boolean).join('\n');
             
+            const nextStatus = newBalance <= 0 ? 'Ready for Dispatch' : 'Ordered';
+
             transaction.update(orderRef, {
-                paymentReceived: admin.firestore.FieldValue.increment(after.amount),
-                balance: admin.firestore.FieldValue.increment(-after.amount),
+                paymentReceived: newPaymentReceived,
+                balance: newBalance,
                 paymentDetails: newPaymentDetailsString,
-                status: 'Ordered'
+                status: nextStatus
             });
+            
+            // --- AUTOMATIC INVOICE GENERATION ---
+            if (newBalance <= 0) {
+                const prefixesSnap = await transaction.get(db.doc('company/settings'));
+                const prefixes = prefixesSnap.data()?.prefixes;
+                
+                const allInvoicesSnap = await transaction.get(db.collection('salesInvoices'));
+                const allInvoices = allInvoicesSnap.docs.map(d => d.data());
+
+                const newInvoiceId = getNextDocNumber('Sales Invoice', prefixes, allInvoices as any[]);
+                const invoiceRef = db.doc(`salesInvoices/${newInvoiceId}`);
+                
+                const taxableAmount = orderData.subtotal - (orderData.discount || 0);
+                
+                transaction.set(invoiceRef, {
+                    id: newInvoiceId,
+                    invoiceNumber: newInvoiceId,
+                    orderId: after.orderId,
+                    orderNumber: orderData.orderNumber,
+                    customerId: orderData.userId,
+                    customerName: orderData.customerName,
+                    coaLedgerId: customerLedgerId,
+                    date: new Date().toISOString().split("T")[0],
+                    items: orderData.items,
+                    subtotal: orderData.subtotal,
+                    discount: orderData.discount || 0,
+                    taxableAmount: taxableAmount,
+                    cgst: orderData.cgst,
+                    sgst: orderData.sgst,
+                    igst: 0, // Assuming interstate logic is handled elsewhere for simplicity
+                    grandTotal: orderData.grandTotal,
+                    amountPaid: newPaymentReceived,
+                    balanceDue: newBalance,
+                    status: 'Paid',
+                    assignedToUid: orderData.assignedToUid || null,
+                    createdByUid: after.recordedByUid || after.userId,
+                });
+
+                transaction.update(orderRef, { status: 'Invoice Sent' });
+            }
         });
     }
 });
@@ -721,6 +764,11 @@ export const onPaymentApproved = onDocumentUpdated("paymentSubmissions/{id}", as
 
 
     
+
+
+
+
+
 
 
 

@@ -679,7 +679,7 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
                                         </Link>
                                     </Button>
                                   </>
-                                ) : (order.status === 'Ordered' || order.status === 'Ready for Dispatch') && balanceDue <= 0 && ['Admin', 'Partner'].includes(currentRole) && (
+                                ) : (order.status === 'Ready for Dispatch') && balanceDue <= 0 && ['Admin', 'Partner'].includes(currentRole) && (
                                      <Button size="sm" onClick={() => {
                                          localStorage.setItem('invoiceDataToCreate', JSON.stringify(order));
                                          router.push('/dashboard/sales/create-invoice');
@@ -878,4 +878,5 @@ export default function OrdersPage() {
 }
 
     
+
 
