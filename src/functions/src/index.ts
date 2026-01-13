@@ -149,28 +149,31 @@ export const handleOrderCreation = onDocumentCreated("orders/{orderId}", async (
     await snap.ref.update({ orderNumber });
 });
 
+/**
+ * UNIFIED INVOICE TRIGGER: Handles Customer Ledgers, Sales JVs, COGS JVs, 
+ * and Role-Based Stock Deduction (Partner vs Warehouse).
+ */
 export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}", async (event) => {
     const snap = event.data;
     if (!snap) return;
-    const invoice = snap.data() as SalesInvoice & { assignedToUid?: string, createdByUid?: string };
+    const invoice = snap.data() as SalesInvoice & { assignedToUid?: string | null, createdByUid?: string };
     
-    // Determine the ID of the person who gets the commission
     const partnerId = invoice.assignedToUid;
 
     try {
       await db.runTransaction(async (transaction) => {
+        // 1. ACCOUNTS: Get/Create Customer Ledger
         const customerLedgerId = await findOrCreateSpecificCustomerLedger(transaction, invoice);
         
-        // Helper specifically for use INSIDE this transaction
         const getLedgerIdByName = async (name: string): Promise<string | null> => {
             const ledgerQuery = db.collection('coa_ledgers').where('name', '==', name).limit(1);
-            const res = await transaction.get(ledgerQuery); // MUST use transaction.get
+            const res = await transaction.get(ledgerQuery);
             return res.empty ? null : res.docs[0].id;
         };
 
         const salesLedgerId = await getLedgerIdByName("Sales – Domestic") || "L-4.1-1";
 
-        // --- 1. Generate Sales Journal Voucher ---
+        // 2. SALES JOURNAL VOUCHER
         const salesEntries = [
           { accountId: customerLedgerId, debit: invoice.grandTotal, credit: 0 },
           { accountId: salesLedgerId, credit: invoice.taxableAmount, debit: 0 },
@@ -187,22 +190,24 @@ export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}", a
         transaction.set(salesJvRef, {
           id: salesJvRef.id,
           date: invoice.date,
-          narration: `Sales Invoice ${invoice.invoiceNumber} to ${invoice.customerName}`,
+          narration: `Invoice ${invoice.invoiceNumber} to ${invoice.customerName}`,
           entries: salesEntries,
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
           voucherType: "Sales Voucher",
           createdByUid: invoice.createdByUid || 'system',
         });
 
-        // --- 2. Handle Stock Deduction & COGS ---
+        // 3. STOCK DEDUCTION & COGS
         let totalCost = 0;
         const cogsLedgerId = await getLedgerIdByName("COST OF GOODS SOLD (COGS)");
         const finishedGoodsLedgerId = await getLedgerIdByName("Stock-in-Hand – Finished Goods");
 
         for (const item of invoice.items) {
-            // DEDUCT STOCK
-            // If assignedToUid exists, it's a Partner sale: deduct from their sub-collection
-            // Otherwise, deduct from main warehouse
+            /**
+             * CRITICAL LOGIC: 
+             * If invoice has assignedToUid, deduct from Partner stock: users/{partnerId}/stock/{prodId}
+             * Else, deduct from Warehouse: products/{prodId}
+             */
             const isPartnerSale = !!partnerId;
             const stockRef = isPartnerSale
                 ? db.doc(`users/${partnerId}/stock/${item.productId}`)
@@ -210,14 +215,11 @@ export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}", a
                 
             const fieldToDecrement = isPartnerSale ? 'quantity' : 'openingStock';
             
-            // FIX: Use transaction.set with merge: true instead of update.
-            // This ensures that if the partner stock doc doesn't exist yet, it is created with a negative value
-            // instead of crashing the function.
             transaction.set(stockRef, {
                 [fieldToDecrement]: admin.firestore.FieldValue.increment(-item.quantity)
             }, { merge: true });
             
-            // Fetch product cost for COGS
+            // Calculate COGS based on original product cost
             const productRef = db.doc(`products/${item.productId}`);
             const productSnap = await transaction.get(productRef);
             if (productSnap.exists) {
@@ -226,7 +228,7 @@ export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}", a
             }
         }
 
-        // Record COGS JV
+        // 4. COGS JOURNAL VOUCHER
         if (totalCost > 0 && cogsLedgerId && finishedGoodsLedgerId) {
             const cogsJvRef = db.collection("journalVouchers").doc();
             transaction.set(cogsJvRef, {
@@ -242,68 +244,15 @@ export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}", a
             });
         }
         
-        // --- 3. Partner Commission Logic ---
-        if (partnerId) {
-            const partnerRef = db.doc(`users/${partnerId}`);
-            const partnerSnap = await transaction.get(partnerRef);
-            const partnerData = partnerSnap.data() as UserProfile | undefined;
-            
-            if (partnerData && partnerData.partnerMatrix) {
-                let commissionTotal = invoice.items.reduce((acc, item) => {
-                    const rule = partnerData.partnerMatrix?.find(r => r.category === item.category);
-                    if (rule) {
-                        return acc + ((item.price * item.quantity) * (rule.commissionRate / 100));
-                    }
-                    return acc;
-                }, 0);
-
-                if (commissionTotal > 0) {
-                    const walletRef = db.doc(`users/${partnerId}/wallet/main`);
-                    transaction.set(walletRef, { 
-                        commissionPayable: admin.firestore.FieldValue.increment(commissionTotal) 
-                    }, { merge: true });
-                }
-            }
-        }
-        
-        // --- 4. Referral Commission ---
-        const customerRef = db.doc(`users/${invoice.customerId}`);
-        const customerSnap = await transaction.get(customerRef);
-        const customerData = customerSnap.data() as UserProfile | undefined;
-
-        if (customerData?.referredBy) {
-            const customerInvoicesQuery = db.collection('salesInvoices').where('customerId', '==', invoice.customerId).limit(2);
-            const customerInvoicesSnapshot = await transaction.get(customerInvoicesQuery);
-            
-            // Check if this is the customer's very first invoice
-            if (customerInvoicesSnapshot.size === 1) { 
-                const referralsQuery = db.collection('users').doc(customerData.referredBy).collection('referrals')
-                    .where('mobile', '==', customerData.mobile)
-                    .where('status', '==', 'Signed Up');
-                const referralsSnapshot = await transaction.get(referralsQuery);
-                
-                if (!referralsSnapshot.empty) {
-                    const referralDoc = referralsSnapshot.docs[0];
-                    const commissionPercentage = referralDoc.data().commission || 0;
-                    // Calculate commission on taxable amount, not grand total
-                    const referralCommission = invoice.taxableAmount * (commissionPercentage / 100);
-
-                    if (referralCommission > 0) {
-                        const referrerWalletRef = db.doc(`users/${customerData.referredBy}/wallet/main`);
-                        transaction.set(referrerWalletRef, { commissionPayable: admin.firestore.FieldValue.increment(referralCommission) }, { merge: true });
-                        transaction.update(referralDoc.ref, { status: 'First Purchased', commission: referralCommission });
-                    }
-                }
-            }
-        }
-
-        // Close out the order if applicable
+        // 5. UPDATE SOURCE ORDER STATUS
         if (invoice.orderId) {
-            transaction.update(db.collection('orders').doc(invoice.orderId), { status: 'Ready for Dispatch' });
+            transaction.update(db.collection('orders').doc(invoice.orderId), { 
+                status: 'Invoice Sent' 
+            });
         }
       });
     } catch (e) { 
-        console.error("Invoice logic failed:", e); 
+        console.error("Critical Invoice logic failed:", e); 
     }
 });
 
@@ -667,60 +616,50 @@ export const onPaymentApproved = onDocumentUpdated("paymentSubmissions/{id}", as
                  console.error("Could not determine receiving account. JV not created for payment:", after.id);
             }
 
-            const newPaymentReceived = (orderData.paymentReceived || 0) + after.amount;
-            const newBalance = orderData.grandTotal - newPaymentReceived;
-
-            const newPaymentDetailsString = [
-                orderData.paymentDetails || '',
-                `Approved: ${new Date().toISOString()} - ${after.amount} - Ref: ${after.transactionDetails}`
-            ].filter(Boolean).join('\n');
+            // 3. Update Order Totals
+            const newTotalPaid = (orderData.paymentReceived || 0) + after.amount;
+            const newBalance = orderData.grandTotal - newTotalPaid;
             
-            const nextStatus = newBalance <= 0 ? 'Ready for Dispatch' : 'Ordered';
-
             transaction.update(orderRef, {
-                paymentReceived: newPaymentReceived,
+                paymentReceived: newTotalPaid,
                 balance: newBalance,
-                paymentDetails: newPaymentDetailsString,
-                status: nextStatus
+                status: newBalance <= 0 ? 'Ready for Dispatch' : 'Ordered'
             });
-            
+
+            // 4. AUTOMATIC INVOICE GENERATION
             if (newBalance <= 0) {
-                const prefixesSnap = await transaction.get(db.doc('company/settings'));
-                const prefixes = prefixesSnap.data()?.prefixes;
+                const invoiceRef = db.collection("salesInvoices").doc();
+                const settingsSnap = await transaction.get(db.doc('company/settings'));
+                const prefixes = settingsSnap.data()?.prefixes;
                 
+                // Get all invoices within the transaction to ensure consistent numbering
                 const allInvoicesSnap = await transaction.get(db.collection('salesInvoices'));
                 const allInvoices = allInvoicesSnap.docs.map(d => d.data());
+                
+                const invNumber = getNextDocNumber('Sales Invoice', prefixes, allInvoices as any);
 
-                const newInvoiceId = getNextDocNumber('Sales Invoice', prefixes, allInvoices as any[]);
-                const invoiceRef = db.doc(`salesInvoices/${newInvoiceId}`);
-                
-                const taxableAmount = orderData.subtotal - (orderData.discount || 0);
-                
                 transaction.set(invoiceRef, {
-                    id: newInvoiceId,
-                    invoiceNumber: newInvoiceId,
-                    orderId: after.orderId,
+                    id: invoiceRef.id,
+                    invoiceNumber: invNumber,
+                    orderId: orderData.id,
                     orderNumber: orderData.orderNumber,
                     customerId: orderData.userId,
                     customerName: orderData.customerName,
-                    coaLedgerId: customerLedgerId,
-                    date: new Date().toISOString().split("T")[0],
+                    date: new Date().toISOString().split('T')[0],
                     items: orderData.items,
                     subtotal: orderData.subtotal,
-                    discount: orderData.discount || 0,
-                    taxableAmount: taxableAmount,
+                    discount: orderData.discount,
+                    taxableAmount: orderData.subtotal - orderData.discount,
                     cgst: orderData.cgst,
                     sgst: orderData.sgst,
-                    igst: 0, // Assuming interstate logic is handled elsewhere
+                    igst: (orderData as any).igst || 0,
                     grandTotal: orderData.grandTotal,
-                    amountPaid: newPaymentReceived,
-                    balanceDue: newBalance,
+                    amountPaid: orderData.grandTotal,
+                    balanceDue: 0,
                     status: 'Paid',
-                    assignedToUid: orderData.assignedToUid || null,
-                    createdByUid: after.recordedByUid || after.userId,
+                    assignedToUid: orderData.assignedToUid,
+                    createdByUid: 'system_auto_generate'
                 });
-
-                transaction.update(orderRef, { status: 'Invoice Sent' });
             }
         });
     }
@@ -763,6 +702,7 @@ export const onPaymentApproved = onDocumentUpdated("paymentSubmissions/{id}", as
 
 
     
+
 
 
 
