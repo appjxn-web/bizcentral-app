@@ -546,7 +546,7 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
       'Awaiting Payment Confirmation': ['Ordered', 'Canceled'],
       'Ordered': ['Manufacturing', 'Ready for Dispatch'],
       'Manufacturing': ['Ready for Dispatch'],
-      'Ready for Dispatch': balanceDue > 0 ? ['Awaiting Payment'] : ['Shipped'],
+      'Ready for Dispatch': ['Shipped'], 
       'Invoice Sent': ['Shipped'],
       'Shipped': ['Delivered'],
       'Delivered': [],
@@ -555,15 +555,40 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
     };
     
     const availableStatuses = nextStatusOptions[order.status] || [];
-
+    
     const handleGenerateInvoice = async () => {
-        const hasPermission = ['Admin', 'CEO', 'Accounts Manager', 'Sales Manager'].includes(currentRole);
-        if (!hasPermission) {
-            toast({ variant: "destructive", title: "Permission Denied" });
-            return;
-        }
-        localStorage.setItem('invoiceDataToCreate', JSON.stringify(order));
-        router.push('/dashboard/sales/create-invoice');
+      if (!firestore || !user) return;
+
+      const orderRef = doc(firestore, 'orders', order.id);
+      
+      try {
+          const invoiceData = {
+              orderId: order.id,
+              orderNumber: order.orderNumber,
+              customerId: order.userId,
+              customerName: order.customerName,
+              date: new Date().toISOString().split('T')[0],
+              items: order.items,
+              subtotal: order.subtotal,
+              discount: order.discount,
+              taxableAmount: order.subtotal - order.discount,
+              cgst: order.cgst,
+              sgst: order.sgst,
+              grandTotal: order.grandTotal,
+              amountPaid: order.grandTotal,
+              balanceDue: 0,
+              status: 'Paid' as 'Paid',
+              assignedToUid: order.assignedToUid,
+              createdByUid: user.uid,
+          };
+          
+          await addDoc(collection(firestore, 'salesInvoices'), invoiceData);
+          
+          toast({ title: 'Invoice Generated', description: 'The sales invoice has been created.' });
+      } catch (e) {
+          console.error("Error generating invoice:", e);
+          toast({ variant: 'destructive', title: 'Invoice Generation Failed' });
+      }
     };
     
     return (
@@ -689,8 +714,8 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
                                         </Link>
                                     </Button>
                                   </>
-                                ) : (order.status === 'Ready for Dispatch' && balanceDue <= 0 && canChangeStatus) && (
-                                    <Button size="sm" onClick={handleGenerateInvoice}>
+                                ) : (order.status === 'Ready for Dispatch' && balanceDue <= 0) && (
+                                     <Button size="sm" onClick={handleGenerateInvoice}>
                                         <PlusCircle className="mr-2 h-4 w-4" />
                                         Generate Invoice
                                     </Button>
@@ -719,7 +744,6 @@ function OrdersPageContent() {
   const { toast } = useToast();
   const { user } = useUser();
   const { currentRole } = useRole();
-  const { data: settingsData } = useDoc<any>(doc(firestore, 'company', 'settings'));
   
   const ordersQuery = React.useMemo(() => {
       if (!user?.uid || !currentRole) return null;
@@ -768,45 +792,46 @@ function OrdersPageContent() {
   }, [orders]);
   
   const handleStatusChange = async (order: Order, newStatus: OrderStatus) => {
-    if (!user) return;
-    try {
-        const batch = writeBatch(firestore);
-        const orderRef = doc(firestore, 'orders', order.id);
-        
-        const updateData: any = { status: newStatus };
+      if (!user) return;
+      try {
+          const batch = writeBatch(firestore);
+          const orderRef = doc(firestore, 'orders', order.id);
+          
+          const updateData: any = { status: newStatus };
 
-        if (currentRole === 'Partner' && !order.assignedToUid) {
-            updateData.assignedToUid = user.uid;
-        }
+          if (currentRole === 'Partner' && !order.assignedToUid) {
+              updateData.assignedToUid = user.uid;
+          }
 
-        batch.update(orderRef, updateData);
-        
-        const notificationRef = doc(collection(firestore, 'users', order.userId, 'notifications'));
-        const orderNumber = (order as SalesOrder).orderNumber || order.id;
+          batch.update(orderRef, updateData);
+          
+          const notificationRef = doc(collection(firestore, 'users', order.userId, 'notifications'));
+          const orderNumber = (order as SalesOrder).orderNumber || order.id;
 
-        batch.set(notificationRef, {
-            type: 'info',
-            title: 'Order Status Updated',
-            description: `Your order #${orderNumber} has been updated to "${newStatus}".`,
-            timestamp: serverTimestamp(),
-            read: false,
-        });
+          batch.set(notificationRef, {
+              type: 'info',
+              title: 'Order Status Updated',
+              description: `Your order #${orderNumber} has been updated to "${newStatus}".`,
+              timestamp: serverTimestamp(),
+              read: false,
+          });
 
-        await batch.commit();
+          await batch.commit();
 
-        toast({
-            title: 'Status Updated',
-            description: `Order moved to "${newStatus}" successfully.`,
-        });
-    } catch (error) {
-        console.error("Status Update Error:", error);
-        toast({
-            variant: 'destructive',
-            title: 'Update Failed',
-            description: 'Could not update order status.',
-        });
-    }
+          toast({
+              title: 'Status Updated',
+              description: `Order status changed to "${newStatus}" successfully.`,
+          });
+      } catch (error) {
+          console.error("Status Update Error:", error);
+          toast({
+              variant: 'destructive',
+              title: 'Update Failed',
+              description: 'Could not update order status.',
+          });
+      }
   };
+
 
   const loading = ordersLoading || invoicesLoading;
 
@@ -861,7 +886,7 @@ function OrdersPageContent() {
            <Card><CardContent className="p-12 text-center">Loading your orders...</CardContent></Card>
         ) : orders && orders.length > 0 ? (
             orders.map((order) => (
-                <OrderCard key={order.id} order={order} allSalesInvoices={allSalesInvoices} onStatusChange={handleStatusChange} onGenerateInvoice={() => {}} />
+                <OrderCard key={order.id} order={order} allSalesInvoices={allSalesInvoices} onStatusChange={handleStatusChange} />
             ))
         ) : (
             <Card>
@@ -892,4 +917,3 @@ export default function OrdersPage() {
 }
 
     
-

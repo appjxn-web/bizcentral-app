@@ -633,6 +633,10 @@ export const onPaymentApproved = onDocumentUpdated("paymentSubmissions/{id}", as
 });
     
 
+export const helloWorld = onCall((request) => {
+    console.log("Hello from Firebase!");
+    return { message: "Hello from Firebase!" };
+});
 
 
 
