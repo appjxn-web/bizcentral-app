@@ -26,7 +26,7 @@ const findOrCreateSpecificCustomerLedger = async (transaction: admin.firestore.T
 
     const customerName = order.customerName;
     // Safely get email if it exists
-    const customerEmail = ('customerEmail' in order) ? order.customerEmail : '';
+    const customerEmail = ('customerEmail' in order) ? (order as any).customerEmail : '';
 
     const partyRef = db.collection('parties').doc(userId);
     const partySnap = await transaction.get(partyRef);
@@ -285,4 +285,3 @@ export const onPaymentApproved = onDocumentUpdated("paymentSubmissions/{id}", as
     });
 });
     
-
