@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -57,7 +56,7 @@ import {
 import Image from 'next/image';
 import { Separator } from '@/components/ui/separator';
 import { useFirestore, useCollection, useUser, useDoc } from '@/firebase';
-import { collection, query, orderBy, doc, where, or, updateDoc, writeBatch, serverTimestamp, addDoc, Timestamp, getDoc, getDocs } from 'firebase/firestore';
+import { collection, query, orderBy, doc, where, or, updateDoc, writeBatch, serverTimestamp, addDoc, Timestamp, getDoc, getDocs, setDoc } from 'firebase/firestore';
 import { OrderStatusTracker } from '../../my-orders/_components/order-status';
 import {
   Dialog,
@@ -79,6 +78,7 @@ import { useToast } from '@/hooks/use-toast';
 import { ref, uploadBytes, getDownloadURL, getStorage } from 'firebase/storage';
 import { Loader2 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { getNextDocNumber } from '@/lib/number-series';
 
 
 function getStatusBadgeVariant(status: Order['status'] | 'Refund Pending' | 'Refund Complete' | SalesInvoice['status']) {
@@ -429,7 +429,7 @@ function CompanyPickupDetails() {
   );
 }
 
-function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, allSalesInvoices: SalesInvoice[] | null, onStatusChange: (order: Order, newStatus: OrderStatus) => void }) {
+function OrderCard({ order, allSalesInvoices, onStatusChange, onGenerateInvoice }: { order: Order, allSalesInvoices: SalesInvoice[] | null, onStatusChange: (order: Order, newStatus: OrderStatus) => void, onGenerateInvoice: (order: Order) => void }) {
     const { user } = useUser();
     const router = useRouter();
     const { currentRole } = useRole();
@@ -679,7 +679,13 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
                                         </Link>
                                     </Button>
                                   </>
-                                ) : null}
+                                ) : (
+                                  (order.status === 'Ready for Dispatch' && balanceDue <= 0 && canChangeStatus) && (
+                                    <Button size="sm" onClick={() => onGenerateInvoice(order)}>
+                                      <PlusCircle className="mr-2 h-4 w-4" /> Generate Invoice
+                                    </Button>
+                                  )
+                                )}
                             </div>
                         </div>
                       </div>
@@ -704,6 +710,7 @@ function OrdersPageContent() {
   const { toast } = useToast();
   const { user } = useUser();
   const { currentRole } = useRole();
+  const { data: settingsData } = useDoc<any>(doc(firestore, 'company', 'settings'));
   
   const ordersQuery = React.useMemo(() => {
       if (!user?.uid || !currentRole) return null;
@@ -759,14 +766,12 @@ function OrdersPageContent() {
         
         const updateData: any = { status: newStatus };
 
-        // If a Partner is changing the status, ensure they are assigned.
         if (currentRole === 'Partner' && user?.uid) {
             updateData.assignedToUid = user.uid;
         }
 
         batch.update(orderRef, updateData);
         
-        // Notification logic...
         const notificationRef = doc(collection(firestore, 'users', order.userId, 'notifications'));
         const orderNumber = (order as SalesOrder).orderNumber || order.id;
 
@@ -792,8 +797,48 @@ function OrdersPageContent() {
             description: 'Check if payment is confirmed or if you are assigned to this order.',
         });
     }
-};
+  };
 
+  const handleGenerateInvoice = async (order: Order) => {
+    if (!settingsData?.prefixes || !allSalesInvoices) {
+        toast({ variant: 'destructive', title: 'Could not generate invoice', description: 'System settings are missing.' });
+        return;
+    }
+    const newInvoiceId = getNextDocNumber('Sales Invoice', settingsData.prefixes, allSalesInvoices);
+    const invoiceRef = doc(firestore, 'salesInvoices', newInvoiceId);
+
+    const invoiceData = {
+        id: newInvoiceId,
+        invoiceNumber: newInvoiceId,
+        orderId: order.id,
+        orderNumber: (order as SalesOrder).orderNumber || order.id,
+        customerId: order.userId,
+        customerName: order.customerName,
+        date: new Date().toISOString().split('T')[0],
+        items: order.items,
+        subtotal: order.subtotal,
+        discount: order.discount,
+        taxableAmount: order.subtotal - order.discount,
+        cgst: order.cgst,
+        sgst: order.sgst,
+        igst: (order as any).igst || 0,
+        grandTotal: order.grandTotal,
+        amountPaid: order.grandTotal,
+        balanceDue: 0,
+        status: 'Paid',
+        assignedToUid: order.assignedToUid,
+        createdByUid: user?.uid,
+    };
+
+    try {
+        await setDoc(invoiceRef, invoiceData);
+        await updateDoc(doc(firestore, 'orders', order.id), { status: 'Invoice Sent' });
+        toast({ title: 'Invoice Generated!', description: `Invoice ${newInvoiceId} has been created.` });
+    } catch (error) {
+        console.error("Invoice generation error:", error);
+        toast({ variant: 'destructive', title: 'Invoice Generation Failed' });
+    }
+  };
 
   const loading = ordersLoading || invoicesLoading;
 
@@ -848,7 +893,7 @@ function OrdersPageContent() {
            <Card><CardContent className="p-12 text-center">Loading your orders...</CardContent></Card>
         ) : orders && orders.length > 0 ? (
             orders.map((order) => (
-                <OrderCard key={order.id} order={order} allSalesInvoices={allSalesInvoices} onStatusChange={handleStatusChange} />
+                <OrderCard key={order.id} order={order} allSalesInvoices={allSalesInvoices} onStatusChange={handleStatusChange} onGenerateInvoice={handleGenerateInvoice} />
             ))
         ) : (
             <Card>

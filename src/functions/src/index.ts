@@ -626,41 +626,8 @@ export const onPaymentApproved = onDocumentUpdated("paymentSubmissions/{id}", as
                 status: newBalance <= 0 ? 'Ready for Dispatch' : 'Ordered'
             });
 
-            // 4. AUTOMATIC INVOICE GENERATION
-            if (newBalance <= 0) {
-                const invoiceRef = db.collection("salesInvoices").doc();
-                const settingsSnap = await transaction.get(db.doc('company/settings'));
-                const prefixes = settingsSnap.data()?.prefixes;
-                
-                // Get all invoices within the transaction to ensure consistent numbering
-                const allInvoicesSnap = await transaction.get(db.collection('salesInvoices'));
-                const allInvoices = allInvoicesSnap.docs.map(d => d.data());
-                
-                const invNumber = getNextDocNumber('Sales Invoice', prefixes, allInvoices as any);
-
-                transaction.set(invoiceRef, {
-                    id: invoiceRef.id,
-                    invoiceNumber: invNumber,
-                    orderId: orderData.id,
-                    orderNumber: orderData.orderNumber,
-                    customerId: orderData.userId,
-                    customerName: orderData.customerName,
-                    date: new Date().toISOString().split('T')[0],
-                    items: orderData.items,
-                    subtotal: orderData.subtotal,
-                    discount: orderData.discount,
-                    taxableAmount: orderData.subtotal - orderData.discount,
-                    cgst: orderData.cgst,
-                    sgst: orderData.sgst,
-                    igst: (orderData as any).igst || 0,
-                    grandTotal: orderData.grandTotal,
-                    amountPaid: orderData.grandTotal,
-                    balanceDue: 0,
-                    status: 'Paid',
-                    assignedToUid: orderData.assignedToUid,
-                    createdByUid: 'system_auto_generate'
-                });
-            }
+            // 4. AUTOMATIC INVOICE GENERATION LOGIC REMOVED
+            // This is now handled manually by the partner via the frontend.
         });
     }
 });
@@ -702,6 +669,7 @@ export const onPaymentApproved = onDocumentUpdated("paymentSubmissions/{id}", as
 
 
     
+
 
 
 
