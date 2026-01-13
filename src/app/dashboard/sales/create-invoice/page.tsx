@@ -1,4 +1,5 @@
 
+
       
 'use client';
 
@@ -137,22 +138,9 @@ export default function CreateInvoicePage() {
   const [orderDocumentId, setOrderDocumentId] = React.useState<string | null>(null);
   const [assignedToUid, setAssignedToUid] = React.useState<string | null>(null);
   
-  const allSalesInvoicesQuery = React.useMemo(() => {
-    if (!authUser || !currentRole) return null;
-    const baseQuery = collection(firestore, 'salesInvoices');
-    if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
-        return baseQuery;
-    }
-    if (currentRole === 'Partner') {
-        return query(baseQuery, where('assignedToUid', '==', authUser.uid));
-    }
-    return query(baseQuery, where('customerId', '==', authUser.uid));
-  }, [authUser, currentRole, firestore]);
-  const { data: allSalesInvoices, loading: invoicesLoading } = useCollection<SalesInvoice>(allSalesInvoicesQuery);
-
   const { data: allProducts, loading: productsLoading } = useCollection<Product>(query(collection(firestore, 'products'), where('saleable', '==', true)));
+  const { data: allSalesInvoices } = useCollection<SalesInvoice>(collection(firestore, 'salesInvoices'));
   const { data: settingsData } = useDoc<any>(doc(firestore, 'company', 'settings'));
-  const { data: allJournalVouchers } = useCollection<JournalVoucher>(collection(firestore, 'journalVouchers'));
 
   const [paymentDate, setPaymentDate] = React.useState(format(new Date(), 'yyyy-MM-dd'));
   const [paymentMode, setPaymentMode] = React.useState('UPI');
@@ -213,19 +201,16 @@ export default function CreateInvoicePage() {
           setIsFromSalesOrder(true);
           const data = JSON.parse(rawData);
           
+          // 1. SET CUSTOMER
           setSelectedPartyId(data.userId || data.customerId);
           setOrderDocumentId(data.id);
-          setAssignedToUid(data.assignedToUid);
+          // Crucial: ensure the invoice carries the Partner's ID for stock deduction
+          setAssignedToUid(data.assignedToUid || (currentRole === 'Partner' ? authUser?.uid : null));
 
+          // 2. FETCH ACTUAL PAYMENTS (The Fix for Double Totals)
+          // We query the truth (Submissions) rather than the buggy Order field
           const submissionsRef = collection(firestore, 'paymentSubmissions');
-          const securityField = currentRole === 'Partner' ? 'assignedToUid' : 'userId';
-          const q = query(
-            submissionsRef, 
-            where('orderId', '==', data.id), 
-            where('status', '==', 'Approved'),
-            where(securityField, '==', authUser.uid)
-          );
-          
+          const q = query(submissionsRef, where('orderId', '==', data.id), where('status', '==', 'Approved'));
           const snap = await getDocs(q);
           
           let actualPaidTotal = 0;
@@ -235,31 +220,32 @@ export default function CreateInvoicePage() {
             const pay = doc.data();
             actualPaidTotal += (pay.amount || 0);
             const dateStr = pay.submittedAt?.toDate ? format(pay.submittedAt.toDate(), 'dd/MM/yy') : '';
-            historyLines.push(`Approved: ${dateStr} - ₹${pay.amount.toFixed(2)} - Ref: ${pay.transactionDetails}`);
+            historyLines.push(`${dateStr}: ₹${pay.amount.toFixed(2)} - Ref: ${pay.transactionDetails}`);
           });
 
           setBookingAmount(actualPaidTotal);
           setPaymentDetails(historyLines.join('\n'));
 
+          // 3. MAP ITEMS
           const mappedItems = data.items.map((item: any, i: number) => {
-            const product = allProducts.find(p => p.id === item.productId);
-            const rate = item.price || item.rate || 0;
-            const quantity = item.quantity || item.qty || 1;
-            
-            return {
-              id: `item-${Date.now()}-${i}`,
-              productId: item.productId,
-              name: item.name || product?.name,
-              hsn: product?.hsn || item.hsn || '',
-              quantity: quantity,
-              unit: product?.unit || item.unit || 'pcs',
-              rate: rate,
-              price: rate,
-              gstRate: 18,
-              amount: rate * quantity,
-              category: product?.category || item.category,
-              discount: 0,
-            };
+              const product = allProducts.find(p => p.id === item.productId);
+              const rate = item.price || item.rate || 0;
+              const quantity = item.quantity || item.qty || 1;
+              
+              return {
+                  id: `item-${Date.now()}-${i}`,
+                  productId: item.productId,
+                  name: item.name || product?.name,
+                  hsn: product?.hsn || item.hsn || '',
+                  quantity: quantity,
+                  unit: product?.unit || item.unit || 'pcs',
+                  rate: rate,
+                  price: rate,
+                  gstRate: 18,
+                  amount: rate * quantity,
+                  category: product?.category || item.category,
+                  discount: 0,
+              };
           });
 
           setItems(mappedItems);
