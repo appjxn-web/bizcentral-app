@@ -1,6 +1,4 @@
 
-
-      
 'use client';
 
 import * as React from 'react';
@@ -138,8 +136,7 @@ export default function CreateInvoicePage() {
   const [assignedToUid, setAssignedToUid] = React.useState<string | null>(null);
   
   const { data: allProducts, loading: productsLoading } = useCollection<Product>(query(collection(firestore, 'products'), where('saleable', '==', true)));
-  const { data: settingsData } = useDoc<any>(doc(firestore, 'company', 'settings'));
-
+  
   const [paymentDate, setPaymentDate] = React.useState(format(new Date(), 'yyyy-MM-dd'));
   const [paymentMode, setPaymentMode] = React.useState('UPI');
   const [paymentAmount, setPaymentAmount] = React.useState('');
@@ -188,14 +185,7 @@ export default function CreateInvoicePage() {
 
 
    React.useEffect(() => {
-    const editId = searchParams.get('id');
-    
     const loadData = async () => {
-      // This part for editing is complex and not fully implemented for all fields.
-      // Focusing on the primary use case: creating from sales order.
-      if (editId && firestore) {
-        // ... Logic to fetch and populate for editing would go here
-      } else {
         const rawData = localStorage.getItem('invoiceDataToCreate');
         if (rawData && allProducts && allProducts.length > 0 && authUser) {
           setIsFromSalesOrder(true);
@@ -252,11 +242,10 @@ export default function CreateInvoicePage() {
           localStorage.removeItem('invoiceDataToCreate');
           toast({ title: "Pre-filled from Sales Order" });
         }
-      }
     };
 
     loadData();
-  }, [searchParams, firestore, allProducts, authUser, currentRole, toast]);
+  }, [allProducts, authUser, currentRole, firestore, toast]);
   
     React.useEffect(() => {
     const fetchEstimate = async () => {
