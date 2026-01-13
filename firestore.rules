@@ -60,10 +60,16 @@ service cloud.firestore {
 
     // --- 5. SALES INVOICES ---
     match /salesInvoices/{invoiceId} {
-        allow get, list: if signedIn() && (
+        allow get: if signedIn() && (
           isAdmin() ||
           resource.data.customerId == request.auth.uid ||
           resource.data.assignedToUid == request.auth.uid
+        );
+        // Corrected rule for querying
+        allow list: if signedIn() && (
+          isAdmin() || 
+          request.query.where.customerId == request.auth.uid ||
+          request.query.where.assignedToUid == request.auth.uid
         );
         allow create, update: if signedIn() && (isAdmin() || getRole() == 'Partner');
     }
