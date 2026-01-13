@@ -1,5 +1,4 @@
 
-
 'use server';
 import {
   onDocumentCreated,
@@ -566,70 +565,48 @@ export const onPaymentApproved = onDocumentUpdated("paymentSubmissions/{id}", as
     const before = event.data.before.data() as PaymentSubmission;
 
     // Only run if status changes to 'Approved'
-    if (before.status === 'Approved' || after.status !== 'Approved') {
-        return;
-    }
-    
-    const orderRef = db.collection('orders').doc(after.orderId);
-    
-    return db.runTransaction(async (transaction) => {
-        const orderDoc = await transaction.get(orderRef);
-        if (!orderDoc.exists) {
-            console.error(`Order ${after.orderId} not found for payment submission ${after.id}`);
-            return;
-        }
-        const orderData = orderDoc.data() as Order;
-
-        // 1. Create Journal Voucher for this specific payment
-        const customerLedgerId = await findOrCreateSpecificCustomerLedger(transaction, after);
-        let receivingAccountId: string | null = after.receivingAccountId || null;
+    if (before.status !== 'Approved' && after.status === 'Approved') {
+        const orderRef = db.collection('orders').doc(after.orderId);
         
-        if (!receivingAccountId) {
-            if (after.paymentMethod === 'Cash' && after.recordedByUid) {
-                const recorderSnap = await transaction.get(db.doc(`users/${after.recordedByUid}`));
-                const recorderProfile = recorderSnap.data() as UserProfile | undefined;
-                receivingAccountId = recorderProfile?.coaLedgerId || "L-1.1.1-1"; 
-            } else { 
-                const companySnap = await transaction.get(db.doc("company/info"));
-                const primaryUpi = companySnap.data()?.primaryUpiId;
-                if (primaryUpi) {
-                    const ledgerSearchQuery = db.collection("coa_ledgers").where("bank.upiId", "==", primaryUpi).limit(1);
-                    const ledgerSearch = await transaction.get(ledgerSearchQuery);
-                    if (!ledgerSearch.empty) {
-                        receivingAccountId = ledgerSearch.docs[0].id;
-                    }
-                }
+        return db.runTransaction(async (transaction) => {
+            const orderDoc = await transaction.get(orderRef);
+            if (!orderDoc.exists) {
+              console.error(`Order ${after.orderId} not found for payment submission ${after.id}`);
+              return;
             }
-        }
-        
-        if (receivingAccountId && customerLedgerId) {
+            const orderData = orderDoc.data() as Order;
+
+            const customerLedgerId = await findOrCreateSpecificCustomerLedger(transaction, after);
+            
+            // USE THE ACCOUNT SELECTED IN THE UI (receivingAccountId)
+            const debitAccountId = after.receivingAccountId || "THgqiMNmVaXEg4yhtQ6a";
+
+            // 1. Create JV for THIS PAYMENT ONLY
             const jvRef = db.collection("journalVouchers").doc();
             transaction.set(jvRef, {
                 id: jvRef.id,
                 date: new Date().toISOString().split("T")[0],
-                narration: `Payment for Order #${orderData.orderNumber || orderData.id}. Method: ${after.paymentMethod}. Ref: ${after.transactionDetails}`,
+                narration: `Payment for Order #${orderData.orderNumber || after.orderId}. Ref: ${after.transactionDetails}`,
                 voucherType: "Receipt Voucher",
                 entries: [
-                    { accountId: receivingAccountId, debit: after.amount, credit: 0 },
+                    { accountId: debitAccountId, debit: after.amount, credit: 0 },
                     { accountId: customerLedgerId, debit: 0, credit: after.amount }, 
                 ],
                 createdAt: admin.firestore.FieldValue.serverTimestamp(),
                 createdByUid: after.recordedByUid || after.userId,
             });
-        } else {
-             console.error("Could not determine receiving account. JV not created for payment:", after.id);
-        }
 
-        // 2. Update Order Totals and Status
-        const newTotalPaid = (orderData.paymentReceived || 0) + after.amount;
-        const newBalance = orderData.grandTotal - newTotalPaid;
-        
-        transaction.update(orderRef, {
-            paymentReceived: newTotalPaid,
-            balance: newBalance,
-            status: newBalance <= 0 ? 'Ready for Dispatch' : 'Ordered'
+            // 2. Update Order Stats
+            const newTotalPaid = (orderData.paymentReceived || 0) + after.amount;
+            const newBalance = orderData.grandTotal - newTotalPaid;
+            
+            transaction.update(orderRef, {
+                paymentReceived: newTotalPaid,
+                balance: newBalance,
+                status: newBalance <= 0 ? 'Ready for Dispatch' : 'Ordered'
+            });
         });
-    });
+    }
 });
     
 
@@ -637,54 +614,3 @@ export const helloWorld = onCall((request) => {
     console.log("Hello from Firebase!");
     return { message: "Hello from Firebase!" };
 });
-
-
-
-
-
-
-    
-
-    
-
-      
-
-
-
-
-
-
-
-
-
-
-
-    
-
-    
-
-  
-
-
-
-
-    
-
-
-
-    
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
