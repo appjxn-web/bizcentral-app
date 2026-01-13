@@ -1,4 +1,3 @@
-
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -19,17 +18,19 @@ service cloud.firestore {
       match /wallet/main { allow read, write: if isOwner(userId) || isAdmin(); }
       match /referrals/{id} { allow read, write: if isOwner(userId) || isAdmin(); }
       match /registeredProducts/{id} { allow read, list: if isOwner(userId) || isAdmin(); }
+      match /stock/{productId} { allow read: if isOwner(userId); } // Allow partners to read their own stock
     }
 
-    // --- 3. QUOTATIONS ---
+    // --- 3. QUOTATIONS (Fixes current Partner error) ---
     match /quotations/{id} {
       allow get: if signedIn();
+      // AUTHORIZATION: Authorize the data itself rather than the query parameters
       allow list: if signedIn() && (isAdmin() || resource.data.createdBy == request.auth.uid);
       allow create: if signedIn();
       allow update: if signedIn() && (isAdmin() || resource.data.createdBy == request.auth.uid);
     }
 
-    // --- 4. GLOBAL ORDERS (FIXED) ---
+    // --- 4. GLOBAL ORDERS ---
     match /orders/{orderId} {
       allow get, list: if signedIn() && (
         isAdmin() || 

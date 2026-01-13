@@ -138,7 +138,18 @@ export default function CreateInvoicePage() {
   const [assignedToUid, setAssignedToUid] = React.useState<string | null>(null);
   
   const { data: allProducts, loading: productsLoading } = useCollection<Product>(query(collection(firestore, 'products'), where('saleable', '==', true)));
-  const { data: allSalesInvoices, loading: invoicesLoading } = useCollection<SalesInvoice>(collection(firestore, 'salesInvoices'));
+  const allSalesInvoicesQuery = React.useMemo(() => {
+    if (!authUser || !currentRole) return null;
+    const baseQuery = collection(firestore, 'salesInvoices');
+    if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
+        return baseQuery;
+    }
+    if (currentRole === 'Partner') {
+        return query(baseQuery, where('assignedToUid', '==', authUser.uid));
+    }
+    return query(baseQuery, where('customerId', '==', authUser.uid));
+  }, [authUser, currentRole, firestore]);
+  const { data: allSalesInvoices, loading: invoicesLoading } = useCollection<SalesInvoice>(allSalesInvoicesQuery);
   const { data: settingsData } = useDoc<any>(doc(firestore, 'company', 'settings'));
   const { data: allJournalVouchers } = useCollection<JournalVoucher>(collection(firestore, 'journalVouchers'));
 
@@ -833,6 +844,3 @@ export default function CreateInvoicePage() {
     </>
   );
 }
-
-  
-
