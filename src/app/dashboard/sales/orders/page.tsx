@@ -546,8 +546,8 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
       'Awaiting Payment Confirmation': ['Ordered', 'Canceled'],
       'Ordered': ['Manufacturing', 'Ready for Dispatch'],
       'Manufacturing': ['Ready for Dispatch'],
-      'Ready for Dispatch': balanceDue <= 0 ? ['Invoice Sent', 'Shipped'] : [],
-      'Invoice Sent': balanceDue <= 0 ? ['Shipped', 'Delivered'] : [],
+      'Ready for Dispatch': balanceDue <= 0 ? ['Shipped'] : ['Awaiting Payment'],
+      'Invoice Sent': ['Shipped'],
       'Shipped': ['Delivered'],
       'Delivered': [],
       'Canceled': [],
@@ -684,7 +684,7 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
                                         </Link>
                                     </Button>
                                   </>
-                                ) : order.status === 'Ready for Dispatch' && balanceDue <= 0 && ['Admin', 'Accounts Manager', 'Sales Manager'].includes(currentRole) && (
+                                ) : order.status === 'Ready for Dispatch' && balanceDue <= 0 && ['Admin', 'Accounts Manager', 'Sales Manager', 'Partner'].includes(currentRole) && (
                                      <Button size="sm" onClick={handleGenerateInvoice}>
                                         <PlusCircle className="mr-2 h-4 w-4" />
                                         Generate Invoice
@@ -775,7 +775,7 @@ function OrdersPageContent() {
 
           batch.update(orderRef, updateData);
           
-          const notificationRef = doc(collection(firestore, 'users', order.userId, 'notifications'));
+          const notificationRef = doc(collection(firestore, 'users', order.userId, 'notifications')));
           const orderNumber = (order as SalesOrder).orderNumber || order.id;
 
           batch.set(notificationRef, {
@@ -885,5 +885,7 @@ export default function OrdersPage() {
 
     return <OrdersPageContent />;
 }
+
+    
 
     
