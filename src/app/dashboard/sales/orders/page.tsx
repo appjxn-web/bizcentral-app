@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -299,7 +300,7 @@ function PayBalanceDialog({ order, companyInfo, balance }: { order: Order; compa
                         </div>
                     </div>
                     <DialogFooter>
-                        <DialogClose asChild><Button type="button" variant="outline">Close</Button></DialogClose>
+                        <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
                         <Button type="button" onClick={() => handleSubmit('manual')} disabled={isSubmitting || !amountToPay || !receivingAccountId}>
                             {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                             Record Payment
@@ -544,8 +545,8 @@ function OrderCard({ order, allSalesInvoices, onStatusChange, onGenerateInvoice 
     const nextStatusOptions: Record<OrderStatus, OrderStatus[]> = {
       'Awaiting Payment': ['Ordered', 'Canceled'],
       'Awaiting Payment Confirmation': ['Ordered', 'Canceled'],
-      'Ordered': ['Manufacturing', 'Ready for Dispatch'],
-      'Manufacturing': ['Ready for Dispatch'],
+      'Ordered': ['Manufacturing', 'Ready for Dispatch', 'Canceled'],
+      'Manufacturing': ['Ready for Dispatch', 'Canceled'],
       'Ready for Dispatch': balanceDue > 0 ? ['Awaiting Payment'] : ['Shipped'],
       'Invoice Sent': ['Shipped'],
       'Shipped': ['Delivered'],
@@ -766,7 +767,7 @@ function OrdersPageContent() {
         
         const updateData: any = { status: newStatus };
 
-        if (currentRole === 'Partner' && user?.uid) {
+        if (currentRole === 'Partner' && user?.uid && !order.assignedToUid) {
             updateData.assignedToUid = user.uid;
         }
 
@@ -804,36 +805,32 @@ function OrdersPageContent() {
         toast({ variant: 'destructive', title: 'Could not generate invoice', description: 'System settings are missing.' });
         return;
     }
-    const newInvoiceId = getNextDocNumber('Sales Invoice', settingsData.prefixes, allSalesInvoices);
-    const invoiceRef = doc(firestore, 'salesInvoices', newInvoiceId);
-
-    const invoiceData = {
-        id: newInvoiceId,
-        invoiceNumber: newInvoiceId,
-        orderId: order.id,
-        orderNumber: (order as SalesOrder).orderNumber || order.id,
-        customerId: order.userId,
-        customerName: order.customerName,
-        date: new Date().toISOString().split('T')[0],
-        items: order.items,
-        subtotal: order.subtotal,
-        discount: order.discount,
-        taxableAmount: order.subtotal - order.discount,
-        cgst: order.cgst,
-        sgst: order.sgst,
-        igst: (order as any).igst || 0,
-        grandTotal: order.grandTotal,
-        amountPaid: order.grandTotal,
-        balanceDue: 0,
-        status: 'Paid',
-        assignedToUid: order.assignedToUid,
-        createdByUid: user?.uid,
-    };
 
     try {
-        await setDoc(invoiceRef, invoiceData);
-        await updateDoc(doc(firestore, 'orders', order.id), { status: 'Invoice Sent' });
-        toast({ title: 'Invoice Generated!', description: `Invoice ${newInvoiceId} has been created.` });
+        const invoiceData = {
+            orderId: order.id,
+            orderNumber: (order as SalesOrder).orderNumber || order.id,
+            customerId: order.userId,
+            customerName: order.customerName,
+            date: new Date().toISOString().split('T')[0],
+            items: order.items,
+            subtotal: order.subtotal,
+            discount: order.discount,
+            taxableAmount: order.subtotal - order.discount,
+            cgst: order.cgst,
+            sgst: order.sgst,
+            igst: (order as any).igst || 0,
+            grandTotal: order.grandTotal,
+            amountPaid: order.grandTotal,
+            balanceDue: 0,
+            status: 'Paid' as 'Paid' | 'Unpaid' | 'Overdue',
+            assignedToUid: order.assignedToUid,
+            createdByUid: user?.uid,
+        };
+
+        await addDoc(collection(firestore, 'salesInvoices'), invoiceData);
+        
+        toast({ title: 'Invoice Generation Triggered', description: `Invoice for order ${order.id} is being generated in the background.` });
     } catch (error) {
         console.error("Invoice generation error:", error);
         toast({ variant: 'destructive', title: 'Invoice Generation Failed' });

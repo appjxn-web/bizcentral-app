@@ -158,6 +158,14 @@ export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}", a
     if (!snap) return;
     const invoice = snap.data() as SalesInvoice & { assignedToUid?: string | null, createdByUid?: string };
     
+    // Assign Invoice Number
+    const prefixesSnap = await db.doc('company/settings').get();
+    const prefixes = prefixesSnap.data()?.prefixes;
+    const allInvoices = await db.collection('salesInvoices').get();
+    const allInvoicesData = allInvoices.docs.map(d => d.data());
+    const invNumber = getNextDocNumber('Sales Invoice', prefixes, allInvoicesData as any[]);
+    await snap.ref.update({ invoiceNumber: invNumber });
+    
     const partnerId = invoice.assignedToUid;
 
     try {
@@ -190,7 +198,7 @@ export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}", a
         transaction.set(salesJvRef, {
           id: salesJvRef.id,
           date: invoice.date,
-          narration: `Invoice ${invoice.invoiceNumber} to ${invoice.customerName}`,
+          narration: `Invoice ${invNumber} to ${invoice.customerName}`,
           entries: salesEntries,
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
           voucherType: "Sales Voucher",
@@ -234,7 +242,7 @@ export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}", a
             transaction.set(cogsJvRef, {
                 id: cogsJvRef.id,
                 date: invoice.date,
-                narration: `COGS for Invoice ${invoice.invoiceNumber}`,
+                narration: `COGS for Invoice ${invNumber}`,
                 entries: [
                     { accountId: cogsLedgerId, debit: totalCost, credit: 0 },
                     { accountId: finishedGoodsLedgerId, debit: 0, credit: totalCost }
@@ -625,9 +633,6 @@ export const onPaymentApproved = onDocumentUpdated("paymentSubmissions/{id}", as
                 balance: newBalance,
                 status: newBalance <= 0 ? 'Ready for Dispatch' : 'Ordered'
             });
-
-            // 4. AUTOMATIC INVOICE GENERATION LOGIC REMOVED
-            // This is now handled manually by the partner via the frontend.
         });
     }
 });
@@ -669,6 +674,7 @@ export const onPaymentApproved = onDocumentUpdated("paymentSubmissions/{id}", as
 
 
     
+
 
 
 
