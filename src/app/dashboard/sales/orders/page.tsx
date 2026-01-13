@@ -542,16 +542,16 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
     const canChangeStatus = ['Admin', 'Partner', 'Sales Manager', 'CEO'].includes(currentRole);
     
     const nextStatusOptions: Record<OrderStatus, OrderStatus[]> = {
-        'Awaiting Payment': ['Ordered', 'Canceled'],
-        'Awaiting Payment Confirmation': ['Ordered', 'Canceled'],
-        'Ordered': ['Manufacturing', 'Ready for Dispatch'],
-        'Ready for Dispatch': balanceDue > 0 ? ['Awaiting Payment'] : ['Shipped', 'Invoice Sent'],
-        'Invoice Sent': ['Shipped'],
-        'Shipped': ['Delivered'],
-        'Manufacturing': ['Ready for Dispatch'],
-        'Delivered': [],
-        'Canceled': [],
-        'Cancellation Requested': ['Ordered', 'Canceled'],
+      'Awaiting Payment': ['Ordered', 'Canceled'],
+      'Awaiting Payment Confirmation': ['Ordered', 'Canceled'],
+      'Ordered': ['Manufacturing', 'Ready for Dispatch', 'Awaiting Payment'],
+      'Ready for Dispatch': balanceDue > 0 ? ['Awaiting Payment'] : ['Shipped', 'Invoice Sent'],
+      'Invoice Sent': ['Shipped'],
+      'Shipped': ['Delivered'],
+      'Manufacturing': ['Ready for Dispatch'],
+      'Delivered': [],
+      'Canceled': [],
+      'Cancellation Requested': ['Ordered', 'Canceled'],
     };
     
     const availableStatuses = nextStatusOptions[order.status] || [];
