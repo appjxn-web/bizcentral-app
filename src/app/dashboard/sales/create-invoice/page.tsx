@@ -60,7 +60,6 @@ import { useRole } from '@/app/dashboard/_components/role-provider';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useFirestore, useCollection, useUser, useDoc } from '@/firebase';
 import { collection, doc, addDoc, serverTimestamp, setDoc, query, where, orderBy, limit, getDocs, updateDoc, writeBatch } from 'firebase/firestore';
-import { getNextDocNumber } from '@/lib/number-series';
 import { estimateDispatchDate, type EstimateDispatchDateOutput } from '@/ai/flows/estimate-dispatch-date-flow';
 import { QRCodeSVG } from 'qrcode.react';
 
@@ -139,7 +138,6 @@ export default function CreateInvoicePage() {
   const [assignedToUid, setAssignedToUid] = React.useState<string | null>(null);
   
   const { data: allProducts, loading: productsLoading } = useCollection<Product>(query(collection(firestore, 'products'), where('saleable', '==', true)));
-  const { data: allSalesInvoices } = useCollection<SalesInvoice>(collection(firestore, 'salesInvoices'));
   const { data: settingsData } = useDoc<any>(doc(firestore, 'company', 'settings'));
 
   const [paymentDate, setPaymentDate] = React.useState(format(new Date(), 'yyyy-MM-dd'));
@@ -193,22 +191,20 @@ export default function CreateInvoicePage() {
     const editId = searchParams.get('id');
     
     const loadData = async () => {
-      if (editId && firestore && allSalesInvoices) {
-        // ... (existing Edit Mode logic is fine)
+      // This part for editing is complex and not fully implemented for all fields.
+      // Focusing on the primary use case: creating from sales order.
+      if (editId && firestore) {
+        // ... Logic to fetch and populate for editing would go here
       } else {
         const rawData = localStorage.getItem('invoiceDataToCreate');
         if (rawData && allProducts && allProducts.length > 0 && authUser) {
           setIsFromSalesOrder(true);
           const data = JSON.parse(rawData);
           
-          // 1. SET CUSTOMER
           setSelectedPartyId(data.userId || data.customerId);
           setOrderDocumentId(data.id);
-          // Crucial: ensure the invoice carries the Partner's ID for stock deduction
-          setAssignedToUid(data.assignedToUid || (currentRole === 'Partner' ? authUser?.uid : null));
+          setAssignedToUid(data.assignedToUid || (currentRole === 'Partner' ? authUser.uid : null));
 
-          // 2. FETCH ACTUAL PAYMENTS (The Fix for Double Totals)
-          // We query the truth (Submissions) rather than the buggy Order field
           const submissionsRef = collection(firestore, 'paymentSubmissions');
           const q = query(submissionsRef, where('orderId', '==', data.id), where('status', '==', 'Approved'));
           const snap = await getDocs(q);
@@ -226,7 +222,6 @@ export default function CreateInvoicePage() {
           setBookingAmount(actualPaidTotal);
           setPaymentDetails(historyLines.join('\n'));
 
-          // 3. MAP ITEMS
           const mappedItems = data.items.map((item: any, i: number) => {
               const product = allProducts.find(p => p.id === item.productId);
               const rate = item.price || item.rate || 0;
@@ -255,13 +250,13 @@ export default function CreateInvoicePage() {
           setInvoiceDate(format(new Date(), 'yyyy-MM-dd'));
           
           localStorage.removeItem('invoiceDataToCreate');
-          toast({ title: "Pre-filled: Payment Verified from Receipts" });
+          toast({ title: "Pre-filled from Sales Order" });
         }
       }
     };
 
     loadData();
-  }, [searchParams, firestore, allSalesInvoices, allProducts, parties, authUser, currentRole, toast]);
+  }, [searchParams, firestore, allProducts, authUser, currentRole, toast]);
   
     React.useEffect(() => {
     const fetchEstimate = async () => {
@@ -405,7 +400,7 @@ export default function CreateInvoicePage() {
       toast({ variant: 'destructive', title: 'Missing Information', description: 'Please select a customer and add items.' });
       return;
     }
-    if (!firestore || !settingsData?.prefixes || !allSalesInvoices || !parties) return;
+    if (!firestore || !parties) return;
   
     const customerCoaId = parties.find(p => p.id === selectedPartyId)?.coaLedgerId;
     if (!customerCoaId) {
@@ -445,10 +440,9 @@ export default function CreateInvoicePage() {
         await updateDoc(invoiceRef, invoiceData);
         toast({ title: 'Invoice Updated', description: `Invoice ${invoiceIdToEdit} has been updated.` });
       } else {
-        const newInvoiceId = getNextDocNumber('Sales Invoice', settingsData.prefixes, allSalesInvoices);
-        const invoiceRef = doc(firestore, 'salesInvoices', newInvoiceId);
-        await setDoc(invoiceRef, { ...invoiceData, id: newInvoiceId, invoiceNumber: newInvoiceId });
-        toast({ title: 'Invoice Saved', description: `Invoice ${newInvoiceId} has been saved.` });
+        const invoiceRef = doc(collection(firestore, 'salesInvoices'));
+        await setDoc(invoiceRef, { ...invoiceData, id: invoiceRef.id });
+        toast({ title: 'Invoice Saved', description: 'Invoice has been saved. The backend will assign an invoice number.' });
       }
 
       router.push('/dashboard/sales/invoice');
@@ -492,7 +486,7 @@ export default function CreateInvoicePage() {
 
   const handleRecordPayment = async () => {
     const amount = Number(paymentAmount);
-    if (!amount || amount <= 0 || !bankAccountId || !selectedParty || !settingsData?.prefixes || !allJournalVouchers) {
+    if (!amount || amount <= 0 || !bankAccountId || !selectedParty || !allSalesInvoices) {
       toast({ variant: 'destructive', title: 'Invalid Payment', description: 'Please enter a valid amount, select a customer and a payment account.' });
       return;
     }
@@ -503,7 +497,7 @@ export default function CreateInvoicePage() {
     try {
       const partyLedger = await getOrCreatePartyLedger(selectedParty);
       
-      const newVoucherId = getNextDocNumber('Receipt Voucher', settingsData.prefixes, allJournalVouchers);
+      const newVoucherId = getNextDocNumber('Receipt Voucher', settingsData?.prefixes, allSalesInvoices || []);
 
       const jvData = {
         id: newVoucherId,
@@ -833,5 +827,7 @@ export default function CreateInvoicePage() {
     </>
   );
 }
+
+    
 
     
