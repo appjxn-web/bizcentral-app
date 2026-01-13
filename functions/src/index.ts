@@ -149,6 +149,18 @@ export const handleOrderCreation = onDocumentCreated("orders/{orderId}", async (
     await snap.ref.update({ orderNumber });
 });
 
+export const handleInvoiceCreation = onDocumentCreated("salesInvoices/{id}", async (event) => {
+    const snap = event.data;
+    if (!snap) return;
+
+    const settingsSnap = await db.doc('company/settings').get();
+    const prefixes = settingsSnap.data()?.prefixes;
+    const allInvoices = await db.collection('salesInvoices').get();
+
+    const invNumber = getNextDocNumber('Sales Invoice', prefixes, allInvoices.docs.map(d => d.data()) as any);
+    await snap.ref.update({ invoiceNumber: invNumber });
+});
+
 /**
  * UNIFIED INVOICE TRIGGER: Handles Customer Ledgers, Sales JVs, COGS JVs, 
  * and Role-Based Stock Deduction (Partner vs Warehouse).
@@ -415,6 +427,7 @@ export const handleQuotationCreation = onDocumentCreated("quotations/{docId}", a
 
 export const handleWorkOrderCreation = onDocumentCreated("workOrders/{id}", () => {});
 export const handleVoucherCreation = onDocumentCreated("journalVouchers/{id}", () => {});
+
 export const handleOrderUpdates = onDocumentUpdated("orders/{orderId}", async (event: FirestoreEvent<Change<DocumentSnapshot> | undefined, {orderId: string}>) => {
     if (!event.data) {
       return;
@@ -491,6 +504,7 @@ export const handleOrderUpdates = onDocumentUpdated("orders/{orderId}", async (e
         });
     }
  });
+
 export const onMilestoneUpdate = onDocumentWritten("goals/{goalId}/milestones/{milestoneId}", async (event: FirestoreEvent<Change<DocumentSnapshot> | undefined>) => { 
     const goalId = event.params.goalId;
     const goalRef = db.collection("goals").doc(goalId);
@@ -655,6 +669,7 @@ export const onPaymentApproved = onDocumentUpdated("paymentSubmissions/{id}", as
 
 
     
+
 
 
 

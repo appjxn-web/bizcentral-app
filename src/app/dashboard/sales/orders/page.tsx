@@ -300,7 +300,7 @@ function PayBalanceDialog({ order, companyInfo, balance }: { order: Order; compa
                         </div>
                     </div>
                     <DialogFooter>
-                        <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
+                        <DialogClose asChild><Button type="button" variant="outline">Close</Button></DialogClose>
                         <Button type="button" onClick={() => handleSubmit('manual')} disabled={isSubmitting || !amountToPay || !receivingAccountId}>
                             {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                             Record Payment
@@ -493,7 +493,7 @@ function OrderCard({ order, allSalesInvoices, onStatusChange, onGenerateInvoice 
     const { data: refundRequests } = useCollection<RefundRequest>(refundQuery);
     const refundRequest = refundRequests?.[0];
 
-    const existingInvoice = allSalesInvoices?.find(inv => inv.orderNumber === (order as SalesOrder).orderNumber);
+    const existingInvoice = allSalesInvoices?.find(inv => inv.orderId === order.id);
 
     const canCancel = order.status === 'Ordered' || order.status === 'Manufacturing';
     
@@ -680,12 +680,10 @@ function OrderCard({ order, allSalesInvoices, onStatusChange, onGenerateInvoice 
                                         </Link>
                                     </Button>
                                   </>
-                                ) : (
-                                  (order.status === 'Ready for Dispatch' && balanceDue <= 0 && canChangeStatus) && (
+                                ) : (order.status === 'Ready for Dispatch' && balanceDue <= 0 && canChangeStatus) && (
                                     <Button size="sm" onClick={() => onGenerateInvoice(order)}>
-                                      <PlusCircle className="mr-2 h-4 w-4" /> Generate Invoice
+                                        <PlusCircle className="mr-2 h-4 w-4" /> Generate Invoice
                                     </Button>
-                                  )
                                 )}
                             </div>
                         </div>
@@ -718,31 +716,33 @@ function OrdersPageContent() {
       const ordersRef = collection(firestore, 'orders');
 
       if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
-          return query(ordersRef, orderBy('date', 'desc'));
+          return query(ordersRef, orderBy('createdAt', 'desc'));
       }
 
       if (currentRole === 'Partner') {
-          return query(ordersRef, where('assignedToUid', '==', user.uid), orderBy('date', 'desc'));
+          return query(ordersRef, where('assignedToUid', '==', user.uid), orderBy('createdAt', 'desc'));
       }
       
       // Default to customer view
-      return query(ordersRef, where('userId', '==', user.uid), orderBy('date', 'desc'));
+      return query(ordersRef, where('userId', '==', user.uid), orderBy('createdAt', 'desc'));
   }, [user?.uid, currentRole, firestore]);
   
   const invoicesQuery = React.useMemo(() => {
-      if (!user?.uid || !currentRole) return null;
-      const invoicesRef = collection(firestore, 'salesInvoices');
+    if (!user?.uid || !currentRole) return null;
+    const invoicesRef = collection(firestore, 'salesInvoices');
   
-      if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
-          return query(invoicesRef, orderBy('date', 'desc'));
-      }
+    // Admins and financial roles can see all invoices
+    if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
+        return query(invoicesRef, orderBy('date', 'desc'));
+    }
   
-      if (currentRole === 'Partner') {
-          return query(invoicesRef, where('assignedToUid', '==', user.uid), orderBy('date', 'desc'));
-      }
+    // Partners see invoices they are assigned to
+    if (currentRole === 'Partner') {
+        return query(invoicesRef, where('assignedToUid', '==', user.uid), orderBy('date', 'desc'));
+    }
   
-      // Default to customer view
-      return query(invoicesRef, where('customerId', '==', user.uid), orderBy('date', 'desc'));
+    // Customers see their own invoices
+    return query(invoicesRef, where('customerId', '==', user.uid), orderBy('date', 'desc'));
   }, [user?.uid, currentRole, firestore]);
 
 
@@ -761,13 +761,14 @@ function OrdersPageContent() {
   }, [orders]);
   
   const handleStatusChange = async (order: Order, newStatus: OrderStatus) => {
+    if (!user) return;
     try {
         const batch = writeBatch(firestore);
         const orderRef = doc(firestore, 'orders', order.id);
         
         const updateData: any = { status: newStatus };
 
-        if (currentRole === 'Partner' && user?.uid && !order.assignedToUid) {
+        if (currentRole === 'Partner' && !order.assignedToUid) {
             updateData.assignedToUid = user.uid;
         }
 
@@ -795,13 +796,13 @@ function OrdersPageContent() {
         toast({
             variant: 'destructive',
             title: 'Update Failed',
-            description: 'Check if payment is confirmed or if you are assigned to this order.',
+            description: 'Could not update order status.',
         });
     }
   };
 
   const handleGenerateInvoice = async (order: Order) => {
-    if (!settingsData?.prefixes || !allSalesInvoices) {
+    if (!settingsData?.prefixes || !allSalesInvoices || !user) {
         toast({ variant: 'destructive', title: 'Could not generate invoice', description: 'System settings are missing.' });
         return;
     }
@@ -825,18 +826,19 @@ function OrdersPageContent() {
             balanceDue: 0,
             status: 'Paid',
             assignedToUid: order.assignedToUid,
-            createdByUid: user?.uid,
+            createdByUid: user.uid,
         };
 
         const newInvoiceRef = doc(collection(firestore, 'salesInvoices'));
         await setDoc(newInvoiceRef, {...invoiceData, id: newInvoiceRef.id});
         
-        toast({ title: 'Invoice Generation Triggered', description: `Invoice for order ${order.id} is being generated in the background.` });
+        toast({ title: 'Invoice Generation Triggered', description: `An invoice for order ${order.id} is being generated.` });
     } catch (error) {
         console.error("Invoice generation error:", error);
         toast({ variant: 'destructive', title: 'Invoice Generation Failed' });
     }
   };
+
 
   const loading = ordersLoading || invoicesLoading;
 
