@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -298,7 +299,7 @@ function PayBalanceDialog({ order, companyInfo, balance }: { order: Order; compa
                         </div>
                     </div>
                     <DialogFooter>
-                        <DialogClose asChild><Button type="button" variant="outline">Close</Button></DialogClose>
+                        <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
                         <Button type="button" onClick={() => handleSubmit('manual')} disabled={isSubmitting || !amountToPay || !receivingAccountId}>
                             {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                             Record Payment
@@ -450,17 +451,12 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
     const paymentSubmissionsQuery = React.useMemo(() => {
       if (!order.id || !user?.uid || !firestore) return null;
       const submissionsRef = collection(firestore, 'paymentSubmissions');
-
+    
       if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
-        return query(
-          submissionsRef, 
-          where('orderId', '==', order.id), 
-          orderBy('submittedAt', 'desc')
-        );
+        return query(submissionsRef, where('orderId', '==', order.id), orderBy('submittedAt', 'desc'));
       }
     
       const securityField = currentRole === 'Partner' ? 'assignedToUid' : 'userId';
-    
       return query(
         submissionsRef,
         where('orderId', '==', order.id),
@@ -478,18 +474,9 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
     const { data: allJournalVouchers } = useCollection<JournalVoucher>(allJvsQuery);
     
     const { totalPaid, balanceDue, paymentHistory } = React.useMemo(() => {
-        const approvedSubmissions = (paymentSubmissions || []).filter(p => p.status === 'Approved');
-        
-        const historyFromSubmissions = approvedSubmissions.map(p => ({
-            amount: p.amount,
-            date: p.submittedAt.toDate(),
-            details: `Ref: ${p.transactionDetails || 'N/A'} (${p.paymentMethod})`,
-            status: p.status,
-            type: 'submission'
-        }));
-
+        // Source 1: Approved Journal Vouchers related to this order
         const jvHistory = (allJournalVouchers || [])
-            .filter(jv => jv.entries.some(e => e.accountId === customerParty?.coaLedgerId && e.credit && e.credit > 0))
+            .filter(jv => jv.narration?.includes(order.orderNumber || order.id) && jv.entries.some(e => e.accountId === customerParty?.coaLedgerId && e.credit && e.credit > 0))
             .map(jv => {
                  const creditEntry = jv.entries.find(e => e.accountId === customerParty?.coaLedgerId)!;
                  return {
@@ -500,9 +487,20 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
                     type: 'jv'
                  }
             });
-        
-        const combinedHistory = [...historyFromSubmissions, ...jvHistory].sort((a,b) => a.date.getTime() - b.date.getTime());
-        const totalFromCombined = combinedHistory.reduce((sum, p) => sum + p.amount, 0);
+
+        // Source 2: Pending submissions not yet converted to JVs
+        const pendingSubmissions = (paymentSubmissions || [])
+            .filter(p => p.status === 'Pending')
+            .map(p => ({
+                amount: p.amount,
+                date: p.submittedAt.toDate(),
+                details: `Ref: ${p.transactionDetails || 'N/A'} (${p.paymentMethod})`,
+                status: p.status,
+                type: 'submission'
+            }));
+
+        const combinedHistory = [...jvHistory, ...pendingSubmissions].sort((a,b) => a.date.getTime() - b.date.getTime());
+        const totalFromCombined = jvHistory.reduce((sum, p) => sum + p.amount, 0);
 
         return {
             totalPaid: totalFromCombined,
