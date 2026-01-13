@@ -29,7 +29,7 @@ service cloud.firestore {
     // --- 3. LOGISTICS (Orders & Invoices) ---
     match /orders/{orderId} {
       allow get: if signedIn() && (isAdmin() || resource.data.userId == request.auth.uid || resource.data.assignedToUid == request.auth.uid);
-      // Logic: Using resource.data for list allows robust queries with orderBy
+      // FIXED: Using resource.data for list allows robust queries with orderBy
       allow list: if signedIn() && (isAdmin() || resource.data.userId == request.auth.uid || resource.data.assignedToUid == request.auth.uid);
       allow create: if signedIn();
       allow update: if signedIn() && (isAdmin() || resource.data.userId == request.auth.uid || resource.data.assignedToUid == request.auth.uid || request.resource.data.assignedToUid == request.auth.uid);
