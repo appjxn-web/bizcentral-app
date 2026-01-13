@@ -93,22 +93,6 @@ export const handleOrderCreation = onDocumentCreated("orders/{orderId}", async (
     await snap.ref.update({ orderNumber });
 });
 
-export const handleInvoiceCreation = onDocumentCreated("salesInvoices/{id}", async (event) => {
-    const snap = event.data;
-    if (!snap) return;
-
-    const settingsSnap = await db.doc('company/settings').get();
-    const prefixes = settingsSnap.data()?.prefixes;
-    const allInvoices = await db.collection('salesInvoices').get();
-
-    const invNumber = getNextDocNumber('Sales Invoice', prefixes, allInvoices.docs.map(d => d.data()) as any);
-    await snap.ref.update({ invoiceNumber: invNumber });
-});
-
-/**
- * UNIFIED INVOICE TRIGGER: Handles Customer Ledgers, Sales JVs, COGS JVs, 
- * and Role-Based Stock Deduction (Partner vs Warehouse).
- */
 export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}", async (event) => {
     const snap = event.data;
     if (!snap) return;
