@@ -669,18 +669,61 @@ export const onPaymentApproved = onDocumentUpdated("paymentSubmissions/{id}", as
                  console.error("Could not determine receiving account. JV not created for payment:", after.id);
             }
 
-            // 3. Update Order Totals
+            // 3. Update Order Totals and check if balance is paid
+            const newPaymentReceived = (orderData.paymentReceived || 0) + after.amount;
+            const newBalance = orderData.grandTotal - newPaymentReceived;
+
             const newPaymentDetailsString = [
                 orderData.paymentDetails || '',
                 `Approved: ${new Date().toISOString()} - ${after.amount} - Ref: ${after.transactionDetails}`
             ].filter(Boolean).join('\n');
             
             transaction.update(orderRef, {
-                paymentReceived: admin.firestore.FieldValue.increment(after.amount),
-                balance: admin.firestore.FieldValue.increment(-after.amount),
+                paymentReceived: newPaymentReceived,
+                balance: newBalance,
                 paymentDetails: newPaymentDetailsString,
-                status: 'Ordered'
+                status: newBalance <= 0 ? 'Ready for Dispatch' : 'Ordered'
             });
+
+             // 4. AUTOMATIC INVOICE GENERATION if balance is paid off
+            if (newBalance <= 0) {
+                const prefixesSnap = await db.doc('company/settings').get();
+                const prefixes = prefixesSnap.data()?.prefixes;
+                const allInvoicesSnap = await db.collection('salesInvoices').get();
+                const allInvoices = allInvoicesSnap.docs.map(d => d.data());
+
+                const newInvoiceId = getNextDocNumber('Sales Invoice', prefixes, allInvoices as any[]);
+                const invoiceRef = db.doc(`salesInvoices/${newInvoiceId}`);
+                
+                const taxableAmount = orderData.subtotal - (orderData.discount || 0);
+                const totalGst = orderData.cgst + orderData.sgst; // Simplified
+                
+                transaction.set(invoiceRef, {
+                    id: newInvoiceId,
+                    invoiceNumber: newInvoiceId,
+                    orderId: after.orderId,
+                    orderNumber: orderData.orderNumber,
+                    customerId: orderData.userId,
+                    customerName: orderData.customerName,
+                    coaLedgerId: customerLedgerId,
+                    date: new Date().toISOString().split("T")[0],
+                    items: orderData.items,
+                    subtotal: orderData.subtotal,
+                    discount: orderData.discount || 0,
+                    taxableAmount: taxableAmount,
+                    cgst: orderData.cgst,
+                    sgst: orderData.sgst,
+                    igst: 0,
+                    grandTotal: orderData.grandTotal,
+                    amountPaid: newPaymentReceived,
+                    balanceDue: newBalance,
+                    status: 'Paid',
+                    assignedToUid: orderData.assignedToUid || null,
+                    createdByUid: after.recordedByUid || after.userId,
+                });
+
+                transaction.update(orderRef, { status: 'Invoice Sent' });
+            }
         });
     }
 });
@@ -722,6 +765,7 @@ export const onPaymentApproved = onDocumentUpdated("paymentSubmissions/{id}", as
 
 
     
+
 
 
 
