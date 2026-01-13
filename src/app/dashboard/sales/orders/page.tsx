@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -447,28 +446,28 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
         return doc(firestore, 'parties', order.userId);
     }, [order.userId, firestore]);
     const { data: customerParty } = useDoc<Party>(customerPartyRef);
-
+    
     const paymentSubmissionsQuery = React.useMemo(() => {
-        if (!order.id || !user?.uid || !firestore) return null;
-        const submissionsRef = collection(firestore, 'paymentSubmissions');
-      
-        if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
-          return query(
-            submissionsRef, 
-            where('orderId', '==', order.id), 
-            orderBy('submittedAt', 'desc')
-          );
-        }
-      
-        const securityField = currentRole === 'Partner' ? 'assignedToUid' : 'userId';
-      
+      if (!order.id || !user?.uid || !firestore) return null;
+      const submissionsRef = collection(firestore, 'paymentSubmissions');
+
+      if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
         return query(
-          submissionsRef,
-          where('orderId', '==', order.id),
-          where('userId', '==', order.userId), // Both customer and partner see the customer's submissions
+          submissionsRef, 
+          where('orderId', '==', order.id), 
           orderBy('submittedAt', 'desc')
         );
-      }, [order.id, user?.uid, currentRole, firestore, order.userId]);
+      }
+    
+      const securityField = currentRole === 'Partner' ? 'assignedToUid' : 'userId';
+    
+      return query(
+        submissionsRef,
+        where('orderId', '==', order.id),
+        where(securityField, '==', user.uid),
+        orderBy('submittedAt', 'desc')
+      );
+    }, [order.id, user?.uid, currentRole, firestore]);
 
     const allJvsQuery = React.useMemo(() => {
       if (!customerParty?.coaLedgerId) return null;
@@ -571,9 +570,9 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
     const nextStatusOptions: Record<OrderStatus, OrderStatus[]> = {
       'Awaiting Payment': ['Ordered', 'Canceled'],
       'Awaiting Payment Confirmation': ['Ordered', 'Canceled'],
-      'Ordered': ['Manufacturing', 'Ready for Dispatch'],
+      'Ordered': ['Manufacturing', 'Ready for Dispatch', 'Shipped'],
       'Ready for Dispatch': balanceDue <= 0 ? ['Invoice Sent', 'Shipped'] : [],
-      'Invoice Sent': balanceDue <= 0 ? ['Shipped'] : [],
+      'Invoice Sent': balanceDue <= 0 ? ['Shipped', 'Delivered'] : [],
       'Shipped': balanceDue <= 0 ? ['Delivered'] : [],
       'Manufacturing': ['Ready for Dispatch'],
       'Delivered': [],
@@ -904,3 +903,4 @@ export default function OrdersPage() {
     return <OrdersPageContent />;
 }
 
+    
