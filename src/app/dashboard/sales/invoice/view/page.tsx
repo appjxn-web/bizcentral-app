@@ -24,7 +24,7 @@ import {
 import { Download, Loader2, ArrowLeft } from 'lucide-react';
 import { format } from 'date-fns';
 import { QRCodeSVG } from 'qrcode.react';
-import type { SalesInvoice, CompanyInfo, Party, CoaLedger, Address, Order, Offer, UserProfile } from '@/lib/types';
+import type { SalesInvoice, CompanyInfo, Party, Address, Order, CoaLedger, UserProfile } from '@/lib/types';
 import { useFirestore, useDoc, useCollection } from '@/firebase';
 import { collection, doc, query, where, limit } from 'firebase/firestore';
 
@@ -188,8 +188,8 @@ export default function InvoiceViewPage() {
 
     if (isLoading) {
         return (
-            <div className="flex h-[50vh] items-center justify-center">
-                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <div className="flex h-screen items-center justify-center">
+                <Loader2 className="animate-spin h-8 w-8" />
             </div>
         );
     }
@@ -198,7 +198,7 @@ export default function InvoiceViewPage() {
         return (
             <div className="p-8 text-center space-y-4">
                 <h1 className="text-2xl font-bold text-destructive">Invoice Data Not Found</h1>
-                <p className="text-muted-foreground">Could not load the invoice details.</p>
+                <p className="text-muted-foreground">Could not load the invoice details for ID: {invoiceId}.</p>
                 <Button variant="outline" onClick={() => window.history.back()}>
                     <ArrowLeft className="mr-2 h-4 w-4" /> Go Back
                 </Button>
@@ -338,6 +338,14 @@ export default function InvoiceViewPage() {
                                      <TableRow className="text-base bg-muted/50">
                                         <TableCell colSpan={6} className="text-right font-bold py-2">Grand Total</TableCell>
                                         <TableCell className="text-right font-bold py-2">{formatIndianCurrency(grandTotal)}</TableCell>
+                                    </TableRow>
+                                     <TableRow>
+                                        <TableCell colSpan={6} className="text-right font-semibold">Amount Paid</TableCell>
+                                        <TableCell className="text-right font-semibold text-green-600">{formatIndianCurrency(invoiceData.amountPaid || 0)}</TableCell>
+                                    </TableRow>
+                                     <TableRow className="text-base">
+                                        <TableCell colSpan={6} className="text-right font-bold">Balance Due</TableCell>
+                                        <TableCell className="text-right font-bold text-red-600">{formatIndianCurrency(invoiceData.balanceDue || 0)}</TableCell>
                                     </TableRow>
                                 </TableFooter>
                             </Table>

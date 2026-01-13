@@ -1,5 +1,4 @@
 
-
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -66,7 +65,7 @@ service cloud.firestore {
           resource.data.customerId == request.auth.uid ||
           resource.data.assignedToUid == request.auth.uid
         );
-        allow create, update: if signedIn() && (isAdmin() || request.resource.data.assignedToUid == request.auth.uid);
+        allow create, update: if signedIn() && (isAdmin() || getRole() == 'Partner');
     }
 
     // --- 6. LEADS ---
