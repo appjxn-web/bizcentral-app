@@ -25,65 +25,6 @@ function monthRange(fromISO: string, toISO: string) {
 
 const { firestore: db } = initializeFirebase();
 
-export const reportsCacheService = {
-  async getLedgerTotals(companyId: string, fromDate: string, toDate: string) {
-    const totals = new Map<string, { dr: number; cr: number }>();
-    const jRef = collection(db, `companies/${companyId}/journal_entries`);
-
-    const fromDateObj = new Date(fromDate);
-    const toDateObj = new Date(toDate);
-    
-    // Adjust to ensure dates are treated as local timezone's start/end of day
-    fromDateObj.setHours(0,0,0,0);
-    toDateObj.setHours(23,59,59,999);
-
-    const firstMonthStr = fromDate.slice(0, 7);
-    const lastMonthStr = toDate.slice(0, 7);
-
-    const fullMonths = monthRange(fromDate, toDate);
-    const monthsToCacheFetch = new Set(fullMonths);
-
-    // --- Partial First Month Logic ---
-    const firstDayOfFirstMonth = new Date(fromDateObj.getFullYear(), fromDateObj.getMonth(), 1);
-    if (fromDateObj > firstDayOfFirstMonth) {
-      const endOfFirstMonth = new Date(fromDateObj.getFullYear(), fromDateObj.getMonth() + 1, 0);
-      const edgeEndDate = toMonthStr === firstMonthStr ? toDate : endOfFirstMonth.toISOString().slice(0, 10);
-      
-      const edge = await scanJournalEntriesTotals(companyId, fromDate, edgeEndDate);
-      for (const [k, v] of edge.entries()) addToTotals(totals, k, v.dr, v.cr);
-      monthsToCacheFetch.delete(firstMonthStr);
-    }
-    
-    // --- Partial Last Month Logic (if different from first month) ---
-    const lastDayOfLastMonth = new Date(toDateObj.getFullYear(), toDateObj.getMonth() + 1, 0);
-     if (toDateObj < lastDayOfLastMonth && firstMonthStr !== lastMonthStr) {
-      const startOfLastMonth = new Date(toDateObj.getFullYear(), toDateObj.getMonth(), 1).toISOString().slice(0, 10);
-      const edge = await scanJournalEntriesTotals(companyId, startOfLastMonth, toDate);
-      for (const [k, v] of edge.entries()) addToTotals(totals, k, v.dr, v.cr);
-      monthsToCacheFetch.delete(lastMonthStr);
-    }
-
-    // Fetch full months from cache
-    for (const month of Array.from(monthsToCacheFetch)) {
-      const cache = await loadMonthlyCacheTotals(companyId, month);
-      if (!cache?.ledgers) continue;
-      for (const [ledgerId, v] of Object.entries(cache.ledgers)) {
-        addToTotals(totals, ledgerId, Number(v.dr || 0), Number(v.cr || 0));
-      }
-    }
-
-    // Round final totals
-    for (const [k, v] of totals.entries()) {
-      totals.set(k, { dr: round2(v.dr), cr: round2(v.cr) });
-    }
-
-    return totals;
-  },
-};
-
-
-// --- Private Helpers ---
-
 function addToTotals(
   totals: Map<string, { dr: number; cr: number }>,
   ledgerId: string,
@@ -117,3 +58,52 @@ async function scanJournalEntriesTotals(companyId: string, from: string, to: str
   });
   return totals;
 }
+
+export async function getLedgerTotalsFromCache(companyId: string, fromDate: string, toDate: string) {
+    const totals = new Map<string, { dr: number; cr: number }>();
+    const jRef = collection(db, `companies/${companyId}/journal_entries`);
+
+    const fromDateObj = new Date(fromDate);
+    const toDateObj = new Date(toDate);
+    
+    fromDateObj.setHours(0,0,0,0);
+    toDateObj.setHours(23,59,59,999);
+
+    const firstMonthStr = fromDate.slice(0, 7);
+    const lastMonthStr = toDate.slice(0, 7);
+
+    const fullMonths = monthRange(fromDate, toDate);
+    const monthsToCacheFetch = new Set(fullMonths);
+
+    const firstDayOfFirstMonth = new Date(fromDateObj.getFullYear(), fromDateObj.getMonth(), 1);
+    if (fromDateObj > firstDayOfFirstMonth) {
+      const endOfFirstMonth = new Date(fromDateObj.getFullYear(), fromDateObj.getMonth() + 1, 0);
+      const edgeEndDate = toDate.slice(0,7) === firstMonthStr ? toDate : endOfFirstMonth.toISOString().slice(0, 10);
+      
+      const edge = await scanJournalEntriesTotals(companyId, fromDate, edgeEndDate);
+      for (const [k, v] of edge.entries()) addToTotals(totals, k, v.dr, v.cr);
+      monthsToCacheFetch.delete(firstMonthStr);
+    }
+    
+    const lastDayOfLastMonth = new Date(toDateObj.getFullYear(), toDateObj.getMonth() + 1, 0);
+     if (toDateObj < lastDayOfLastMonth && firstMonthStr !== lastMonthStr) {
+      const startOfLastMonth = new Date(toDateObj.getFullYear(), toDateObj.getMonth(), 1).toISOString().slice(0, 10);
+      const edge = await scanJournalEntriesTotals(companyId, startOfLastMonth, toDate);
+      for (const [k, v] of edge.entries()) addToTotals(totals, k, v.dr, v.cr);
+      monthsToCacheFetch.delete(lastMonthStr);
+    }
+
+    for (const month of Array.from(monthsToCacheFetch)) {
+      const cache = await loadMonthlyCacheTotals(companyId, month);
+      if (!cache?.ledgers) continue;
+      for (const [ledgerId, v] of Object.entries(cache.ledgers)) {
+        addToTotals(totals, ledgerId, Number(v.dr || 0), Number(v.cr || 0));
+      }
+    }
+
+    for (const [k, v] of totals.entries()) {
+      totals.set(k, { dr: round2(v.dr), cr: round2(v.cr) });
+    }
+
+    return totals;
+};

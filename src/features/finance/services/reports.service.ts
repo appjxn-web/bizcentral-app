@@ -1,5 +1,5 @@
 
-'use client';
+'use server';
 
 import {
   collection,
@@ -14,7 +14,7 @@ import {
 import { initializeFirebase } from "@/firebase";
 import { netFromOpening, round2 } from "@/features/finance/utils/accounting";
 import type { CoaGroup, CoaLedger, CoaNature } from '@/lib/types';
-import { reportsCacheService } from "./reports-cache.service";
+import { getLedgerTotalsFromCache } from "./reports-cache.service";
 
 const { firestore: db } = initializeFirebase();
 
@@ -93,7 +93,7 @@ export const reportsService = {
     const groupById = new Map(groups.map((g) => [g.id, g]));
 
     // 2) Get period totals using the cache service
-    const periodTotals = await reportsCacheService.getLedgerTotals(companyId, fromDate, toDate);
+    const periodTotals = await getLedgerTotalsFromCache(companyId, fromDate, toDate);
 
     // 3) Calculate opening balances by summing all journal entries BEFORE fromDate
     const openingNetByLedger = new Map<string, number>();
@@ -190,5 +190,3 @@ export const reportsService = {
     };
   },
 };
-
-    
