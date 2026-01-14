@@ -58,7 +58,7 @@ import { useRole } from '@/app/dashboard/_components/role-provider';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useFirestore, useCollection, useUser, useDoc } from '@/firebase';
 import { collection, doc, addDoc, serverTimestamp, setDoc, query, where, orderBy, limit, getDocs, updateDoc, writeBatch } from 'firebase/firestore';
-import { getNextDocNumber } from '@/lib/number-series';
+import { salesService } from '@/features/sales/services/sales.service';
 import { estimateDispatchDate, type EstimateDispatchDateOutput } from '@/ai/flows/estimate-dispatch-date-flow';
 import { QRCodeSVG } from 'qrcode.react';
 
@@ -137,7 +137,6 @@ export default function CreateInvoicePage() {
   const [assignedToUid, setAssignedToUid] = React.useState<string | null>(null);
   
   const { data: allProducts, loading: productsLoading } = useCollection<Product>(query(collection(firestore, 'products'), where('saleable', '==', true)));
-  const { data: allSalesInvoices, loading: invoicesLoading } = useCollection<SalesInvoice>(collection(firestore, 'salesInvoices'));
   const { data: settingsData } = useDoc<any>(doc(firestore, 'company', 'settings'));
 
   const [paymentDate, setPaymentDate] = React.useState(format(new Date(), 'yyyy-MM-dd'));
@@ -150,13 +149,10 @@ export default function CreateInvoicePage() {
   const [dispatchEstimate, setDispatchEstimate] = React.useState<EstimateDispatchDateOutput | null>(null);
   const [isEstimating, setIsEstimating] = React.useState(false);
   const [openProductCombobox, setOpenProductCombobox] = React.useState<string | null>(null);
-  const [isEditMode, setIsEditMode] = React.useState(false);
-  const [invoiceIdToEdit, setInvoiceIdToEdit] = React.useState<string | null>(null);
   const [isFromSalesOrder, setIsFromSalesOrder] = React.useState(false);
 
   const { data: parties, loading: partiesLoading } = useCollection<Party>(collection(firestore, 'parties'));
   const [selectedParty, setSelectedParty] = React.useState<Party | null>(null);
-  const [userProfile, setUserProfile] = React.useState<UserProfile | null>(null);
   
   const [appliedCoupons, setAppliedCoupons] = React.useState<Offer[]>([]);
   
@@ -179,15 +175,12 @@ export default function CreateInvoicePage() {
     return allProducts;
   }, [allProducts, partnerStock, currentRole]);
   
-  const { data: coaLedgers, loading: ledgersLoading } = useCollection<CoaLedger>(collection(firestore, 'coa_ledgers'));
-  const { data: companyInfo } = useDoc<CompanyInfo>(doc(firestore, 'company', 'info'));
+  React.useEffect(() => {
+    if (parties && selectedPartyId) {
+      setSelectedParty(parties.find(p => p.id === selectedPartyId) || null);
+    }
+  }, [selectedPartyId, parties]);
   
-  const paymentAccounts = React.useMemo(() => {
-    if (!coaLedgers) return [];
-    return coaLedgers.filter(l => l.groupId === '1.1.1');
-  }, [coaLedgers]);
-
-
    React.useEffect(() => {
     const loadData = async () => {
         const rawData = localStorage.getItem('invoiceDataToCreate');
@@ -198,25 +191,6 @@ export default function CreateInvoicePage() {
           setSelectedPartyId(data.customerId || data.userId);
           setOrderDocumentId(data.id);
           setAssignedToUid(data.assignedToUid || (currentRole === 'Partner' ? authUser.uid : null));
-          setSelectedParty(data.customer);
-          setUserProfile(data.userProfile);
-
-          const submissionsRef = collection(firestore, 'paymentSubmissions');
-          const q = query(submissionsRef, where('orderId', '==', data.id), where('status', '==', 'Approved'));
-          const snap = await getDocs(q);
-          
-          let actualPaidTotal = 0;
-          let historyLines: string[] = [];
-          
-          snap.forEach((doc) => {
-            const pay = doc.data();
-            actualPaidTotal += (pay.amount || 0);
-            const dateStr = pay.submittedAt?.toDate ? format(pay.submittedAt.toDate(), 'dd/MM/yy') : '';
-            historyLines.push(`${dateStr}: ₹${pay.amount.toFixed(2)} - Ref: ${pay.transactionDetails}`);
-          });
-
-          setBookingAmount(actualPaidTotal);
-          setPaymentDetails(historyLines.join('\n'));
 
           const mappedItems = data.items.map((item: any, i: number) => {
               const product = allProducts.find(p => p.id === item.productId);
@@ -242,6 +216,8 @@ export default function CreateInvoicePage() {
           setItems(mappedItems);
           setOverallDiscount(data.overallDiscount || 0);
           setSalesOrderNumber(data.orderNumber || data.id);
+          setBookingAmount(data.paymentReceived || 0);
+          setPaymentDetails(data.paymentDetails || '');
           setAppliedCoupons(data.appliedCoupons || []);
           setInvoiceDate(format(new Date(), 'yyyy-MM-dd'));
           
@@ -251,7 +227,7 @@ export default function CreateInvoicePage() {
     };
 
     loadData();
-  }, [allProducts, authUser, currentRole, firestore, toast]);
+  }, [allProducts, authUser, currentRole, toast]);
   
     React.useEffect(() => {
     const fetchEstimate = async () => {
@@ -282,7 +258,8 @@ export default function CreateInvoicePage() {
       fetchEstimate();
     }
   }, [items]);
-  
+
+
   const isInterstate = React.useMemo(() => {
     if (!selectedParty?.gstin) return false;
     return !companyGstin.startsWith(selectedParty.gstin.substring(0, 2));
@@ -313,17 +290,18 @@ export default function CreateInvoicePage() {
     if (isFromSalesOrder) {
         return overallDiscount; // Lock discount to what came from the sales order
     }
-    if (currentRole === 'Partner' && userProfile?.partnerMatrix) {
-        if (!items.length) return 0;
-        const maxDiscounts = items.map(item => {
-            const rule = userProfile.partnerMatrix?.find(r => r.category === item.category);
-            return rule?.maxDiscount ?? 0;
-        });
-        return Math.min(...maxDiscounts);
-    }
-    // Fallback for other roles (this can be expanded)
-    return 100;
-  }, [items, currentRole, userProfile, isFromSalesOrder, overallDiscount]);
+    const userRole = currentRole;
+    if (!userRole) return 0;
+    
+    if (!items.length) return getMaxDiscount(userRole, '');
+    
+    const maxDiscounts = items.map(item => {
+        const product = saleableProducts.find(p => p.id === item.productId);
+        return getMaxDiscount(userRole, product?.category || '');
+    });
+
+    return Math.min(...maxDiscounts);
+  }, [items, currentRole, saleableProducts, isFromSalesOrder, overallDiscount]);
 
   const isSaveDisabled = React.useMemo(() => {
     return overallDiscount > maxAllowedDiscount;
@@ -385,16 +363,23 @@ export default function CreateInvoicePage() {
   
   const handleSaveInvoice = async () => {
     if (isSaveDisabled) {
-        toast({ variant: 'destructive', title: 'Discount Exceeded', description: `Your maximum allowed discount is ${maxAllowedDiscount}%.` });
-        return;
+      toast({ variant: 'destructive', title: 'Discount Exceeded', description: `Your maximum allowed discount is ${maxAllowedDiscount}%.` });
+      return;
     }
     if (!selectedPartyId || items.length === 0 || !authUser) {
       toast({ variant: 'destructive', title: 'Missing Information', description: 'Please select a customer and add items.' });
       return;
     }
+    if (!firestore || !settingsData?.prefixes || !salesInvoices || !parties) return;
   
+    const customer = parties.find(p => p.id === selectedPartyId);
+    if (!customer) {
+        toast({ variant: 'destructive', title: 'Customer Not Found' });
+        return;
+    }
+
     try {
-      const invoiceData: Omit<SalesInvoice, 'id'> = {
+      const invoiceData = {
           orderId: orderDocumentId || '',
           orderNumber: salesOrderNumber,
           customerId: selectedPartyId,
@@ -410,123 +395,27 @@ export default function CreateInvoicePage() {
           grandTotal: calculations.grandTotal,
           amountPaid: bookingAmount,
           balanceDue: calculations.grandTotal - bookingAmount,
-          status: 'Unpaid',
+          status: 'Unpaid' as 'Unpaid',
           appliedCoupons: appliedCoupons,
           assignedToUid: assignedToUid,
-          createdByUid: authUser.uid
+          createdByUid: authUser.uid,
       };
       
-      const newInvoiceRef = await addDoc(collection(firestore, 'salesInvoices'), invoiceData);
+      await salesService.createSalesInvoice('default', invoiceData, authUser.uid);
       
       toast({ title: 'Invoice Created', description: `Invoice is being processed in the background.` });
       router.push('/dashboard/sales/invoice');
-    } catch (e) {
-        console.error(e);
-        toast({ variant: 'destructive', title: 'Save failed' });
-    }
-  };
-
-
-  const getOrCreatePartyLedger = async (party: Party): Promise<CoaLedger> => {
-    if (!coaLedgers) throw new Error("COA not loaded.");
-
-    if (party.coaLedgerId) {
-        const existingLedger = coaLedgers.find(l => l.id === party.coaLedgerId);
-        if (existingLedger) return existingLedger;
-    }
-
-    const ledgerName = party.name;
-    const existingLedgerByName = coaLedgers.find(l => l.name === ledgerName);
-    if (existingLedgerByName) {
-        const partyRef = doc(firestore, 'parties', party.id);
-        await updateDoc(partyRef, { coaLedgerId: existingLedgerByName.id });
-        return existingLedgerByName;
-    }
-    
-    const newLedgerData: Omit<CoaLedger, 'id' | 'createdAt' | 'updatedAt'> = {
-        name: ledgerName,
-        groupId: '1.1.2', // Trade Receivables
-        nature: 'ASSET' as CoaNature,
-        type: 'RECEIVABLE',
-        posting: { isPosting: true, normalBalance: 'DEBIT', isSystem: false, allowManualJournal: true },
-        status: 'ACTIVE',
-    };
-
-    const newLedgerRef = await addDoc(collection(firestore, 'coa_ledgers'), newLedgerData);
-    await updateDoc(doc(firestore, 'parties', party.id), { coaLedgerId: newLedgerRef.id });
-
-    // This is a simplification. In a real app, you'd refetch or get the created doc.
-    return { id: newLedgerRef.id, ...newLedgerData } as CoaLedger;
-  };
-
-  const handleRecordPayment = async () => {
-    const amount = Number(paymentAmount);
-    if (!amount || amount <= 0 || !bankAccountId || !selectedParty || !allSalesInvoices) {
-      toast({ variant: 'destructive', title: 'Invalid Payment', description: 'Please enter a valid amount, select a customer and a payment account.' });
-      return;
-    }
-  
-    const bankLedger = paymentAccounts.find(acc => acc.id === bankAccountId);
-    if (!bankLedger) return;
-  
-    try {
-      const partyLedger = await getOrCreatePartyLedger(selectedParty);
-      
-      const newVoucherId = getNextDocNumber('Receipt Voucher', settingsData?.prefixes, allSalesInvoices || []);
-
-      const jvData = {
-        id: newVoucherId,
-        voucherNumber: newVoucherId,
-        date: paymentDate,
-        narration: `Payment received from ${selectedParty.name} via ${bankLedger.name}. Ref: ${paymentRef}. SO#${salesOrderNumber}`,
-        voucherType: 'Receipt Voucher',
-        entries: [
-          { accountId: bankAccountId, debit: amount, credit: 0 },
-          { accountId: partyLedger.id, debit: 0, credit: amount }
-        ],
-        createdAt: serverTimestamp(),
-        createdByUid: authUser?.uid
-      };
-      
-      await setDoc(doc(firestore, 'journalVouchers', newVoucherId), jvData);
-  
-      setBookingAmount(prev => prev + amount);
-      const details = `Mode: ${bankLedger.name}, Ref: ${paymentRef}, Date: ${paymentDate}, Amount: ₹${amount.toFixed(2)}`;
-      setPaymentDetails(prev => prev ? `${prev}\n${details}` : details);
-      
-      const receiptData = {
-        type: 'Receipt',
-        id: newVoucherId,
-        date: paymentDate,
-        partyName: selectedParty.name,
-        amount: amount,
-        narration: jvData.narration,
-      };
-      
-      localStorage.setItem('receiptToPrint', JSON.stringify(receiptData));
-      window.open('/dashboard/finance-accounting/receipt/view', '_blank');
-
-      toast({ title: 'Payment Recorded', description: `A journal entry and receipt for ₹${amount.toFixed(2)} have been created.` });
-      
-      setIsPaymentDialogOpen(false);
-      setPaymentAmount('');
-      setPaymentRef('');
-      setBankAccountId('');
     } catch (e: any) {
-      console.error(e);
-      toast({ variant: 'destructive', title: 'Payment Failed', description: e.message });
+        console.error(e);
+        toast({ variant: 'destructive', title: 'Save failed', description: e.message });
     }
   };
-  
-  const balanceDue = calculations.grandTotal - bookingAmount;
-  const qrUpiString = companyInfo ? `upi://pay?pa=${companyInfo.primaryUpiId || 'your-upi-id@okhdfcbank'}&pn=${encodeURIComponent(companyInfo.companyName || 'Your Company')}&am=${balanceDue.toFixed(2)}&cu=INR` : '';
-
 
   return (
     <>
-      <PageHeader title={isEditMode ? 'Edit Invoice' : 'Create Invoice'}>
+      <PageHeader title="Create Invoice">
         <Button onClick={handleSaveInvoice} disabled={isSaveDisabled}>
-          <Save className="mr-2 h-4 w-4" /> {isEditMode ? 'Update' : 'Save'} Invoice
+          <Save className="mr-2 h-4 w-4" /> Save Invoice
         </Button>
       </PageHeader>
       
@@ -702,47 +591,8 @@ export default function CreateInvoicePage() {
                 </div>
                 <div className="space-y-2">
                     <Label htmlFor="payment-details">Payment Details</Label>
-                    <Textarea id="payment-details" value={paymentDetails} onChange={e => setPaymentDetails(e.target.value)} placeholder="e.g., Transaction ID, Cheque No." />
+                    <Textarea id="payment-details" value={paymentDetails} readOnly disabled placeholder="e.g., Transaction ID, Cheque No." />
                 </div>
-                <Dialog open={isPaymentDialogOpen} onOpenChange={setIsPaymentDialogOpen}>
-                    <DialogTrigger asChild>
-                        <Button variant="outline">Record Payment Received</Button>
-                    </DialogTrigger>
-                    <DialogContent>
-                        <DialogHeader>
-                            <DialogTitle>Record Payment</DialogTitle>
-                        </DialogHeader>
-                        <div className="py-4 space-y-4">
-                            <div className="space-y-2">
-                                <Label htmlFor="payment-date">Payment Date</Label>
-                                <Input id="payment-date" type="date" value={paymentDate} onChange={e => setPaymentDate(e.target.value)} />
-                            </div>
-                             <div className="space-y-2">
-                                <Label htmlFor="payment-account">Received In</Label>
-                                <Select value={bankAccountId} onValueChange={setBankAccountId}>
-                                    <SelectTrigger id="payment-account"><SelectValue placeholder="Select bank/cash account" /></SelectTrigger>
-                                    <SelectContent>
-                                        {paymentAccounts.map(acc => (
-                                            <SelectItem key={acc.id} value={acc.id}>{acc.name}</SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="payment-amount">Amount Received</Label>
-                                <Input id="payment-amount" type="number" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} placeholder="₹0.00" />
-                            </div>
-                             <div className="space-y-2">
-                                <Label htmlFor="payment-ref">Transaction Reference</Label>
-                                <Input id="payment-ref" value={paymentRef} onChange={e => setPaymentRef(e.target.value)} placeholder="e.g., UTR, Cheque No." />
-                            </div>
-                        </div>
-                        <DialogFooter>
-                            <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-                            <Button onClick={handleRecordPayment}>Record Payment</Button>
-                        </DialogFooter>
-                    </DialogContent>
-                </Dialog>
             </div>
             <div className="space-y-3 p-4 border rounded-md bg-muted/50">
               <div className="flex justify-between"><span>Subtotal</span><span className="font-mono">{formatIndianCurrency(calculations.subtotal)}</span></div>

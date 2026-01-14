@@ -1,3 +1,4 @@
+
 // ✅ Use this SAME file content for BOTH paths:
 // 1) functions/src/index.ts
 // 2) src/functions/src/index.ts
