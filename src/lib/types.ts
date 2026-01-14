@@ -1,5 +1,4 @@
 
-
 import type { UserProfile, UserRole } from '@/features/users/types/users.types';
 import type { CoaGroup, CoaLedger, JournalVoucher } from '@/features/finance/types/finance.types';
 
@@ -465,7 +464,7 @@ export interface Task {
   attachmentUrl?: string;
   proofImageUrl?: string;
   duration?: number; // Standard duration in minutes
-  actualDuration?: number; // Actual duration in minutes
+  actualDuration?: number; // Actual duration in seconds
   rating?: number; // 1-5 star rating
   startedAt?: string;
   pausedAt?: string;
@@ -794,7 +793,7 @@ export interface SalesInvoice {
     grandTotal: number;
     amountPaid: number;
     balanceDue: number;
-    status: 'Paid' | 'Unpaid' | 'Overdue';
+    status: 'DRAFT' | 'POSTING' | 'POSTED' | 'FAILED' | 'Paid' | 'Unpaid' | 'Overdue';
     dueDate?: string;
     appliedCoupons?: Offer[];
     deliveryDetails?: {
@@ -807,6 +806,10 @@ export interface SalesInvoice {
     };
     assignedToUid?: string;
     createdByUid?: string;
+    postedAt?: any;
+    postedBy?: string;
+    postError?: string;
+    voucherId?: string;
 }
 
 export interface CreditItem extends Omit<SalesInvoiceItem, 'discount' | 'amount'> {
@@ -1028,3 +1031,6 @@ export interface AuditLog {
   };
   context?: any;
 }
+
+
+    
