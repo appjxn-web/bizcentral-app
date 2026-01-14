@@ -64,6 +64,28 @@
         "nature": { "type": "string", "enum": ["ASSET", "LIABILITY", "EQUITY", "INCOME", "EXPENSE"] }
       },
       "required": ["name", "nature"]
+    },
+    "JournalVoucher": {
+      "title": "Journal Voucher",
+      "description": "A record of a financial transaction with double entries.",
+      "type": "object",
+      "properties": {
+        "date": { "type": "string", "format": "date" },
+        "narration": { "type": "string" },
+        "entries": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "accountId": { "type": "string" },
+              "debit": { "type": "number" },
+              "credit": { "type": "number" }
+            },
+            "required": ["accountId"]
+          }
+        }
+      },
+      "required": ["date", "narration", "entries"]
     }
   },
   "auth": {
@@ -89,6 +111,10 @@
     "/companies/{companyId}/coa_groups/{groupId}": {
       "schema": { "$ref": "#/entities/CoaGroup" },
       "description": "Company-specific Chart of Account groups."
+    },
+    "/companies/{companyId}/journalVouchers/{voucherId}": {
+      "schema": { "$ref": "#/entities/JournalVoucher" },
+      "description": "Company-specific immutable journal entries for accounting."
     }
   }
 }
