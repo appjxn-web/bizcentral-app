@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -24,11 +25,28 @@ import type { Party, Product, UserRole } from '@/lib/types';
 import { format } from 'date-fns';
 import { Separator } from '@/components/ui/separator';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command';
 import { cn } from '@/lib/utils';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useFirestore, useCollection, useUser } from '@/firebase';
-import { collection, query, where } from 'firebase/firestore';
+import { collection, query, where, doc } from 'firebase/firestore';
+import {
+    Form,
+    FormControl,
+    FormDescription,
+    FormField,
+    FormItem,
+    FormLabel,
+    FormMessage,
+} from "@/components/ui/form";
+
 
 const companyGstin = '08AAFCJ5369P1ZR';
 
@@ -245,12 +263,25 @@ export default function CreateInvoicePage() {
                             <div className="space-y-2">
                                 {fields.map((field, index) => (
                                     <div key={field.id} className="grid grid-cols-12 gap-2 border rounded-md p-3 items-end">
-                                        <div className="col-span-12 md:col-span-5"><FormField name={`items.${index}.productId`} render={({field}) => (
-                                            <FormItem><FormLabel>Product</FormLabel><Select onValueChange={field.onChange} defaultValue={field.value}>
-                                                <FormControl><SelectTrigger><SelectValue placeholder="Select an item" /></SelectTrigger></FormControl>
-                                                <SelectContent>{products?.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
-                                            </FormItem>
-                                        )}/></div>
+                                        <div className="col-span-12 md:col-span-5">
+                                            <FormField 
+                                                control={form.control}
+                                                name={`items.${index}.productId`}
+                                                render={({ field }) => (
+                                                    <FormItem>
+                                                        <FormLabel>Product</FormLabel>
+                                                        <FormControl>
+                                                            <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                                                <SelectTrigger><SelectValue placeholder="Select an item" /></SelectTrigger>
+                                                                <SelectContent>
+                                                                    {products?.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+                                                                </SelectContent>
+                                                            </Select>
+                                                        </FormControl>
+                                                    </FormItem>
+                                                )}
+                                            />
+                                        </div>
                                         <div className="col-span-6 md:col-span-2"><FormField name={`items.${index}.qty`} render={({field}) => (
                                             <FormItem><FormLabel>Qty</FormLabel><FormControl><Input type="number" {...field} onChange={e => field.onChange(Number(e.target.value))} /></FormControl></FormItem>
                                         )}/></div>
@@ -314,4 +345,3 @@ export default function CreateInvoicePage() {
         </div>
     );
 }
-
