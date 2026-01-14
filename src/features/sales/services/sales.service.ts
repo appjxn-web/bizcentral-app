@@ -1,35 +1,31 @@
 
 'use server';
 
-import { addDoc, collection, serverTimestamp, getDocs, query, where, doc, updateDoc, setDoc } from "firebase/firestore";
+import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { initializeFirebase } from "@/firebase";
 import { salesPaths } from "@/firebase/paths";
-import { salesInvoiceSchema, type SalesInvoiceInput } from "../schemas/sales.schema";
-import { inventoryRepo } from "@/features/inventory/services/inventory.repo";
-import { postingService } from "@/features/finance/services/posting.service";
-import { ledgerMappingService } from "@/features/finance/services/ledger-mapping.service";
-import type { Party, CoaLedger, UserProfile, SalesInvoice } from "@/lib/types";
+import type { SalesInvoice } from '@/lib/types';
 import { getNextDocNumber } from '@/lib/number-series';
-
 
 const { firestore: db } = initializeFirebase();
 
-function round2(n: number) {
-  return Math.round(n * 100) / 100;
-}
-
+/**
+ * This service is now only responsible for creating the initial DRAFT invoice document.
+ * The complex logic of stock deduction and accounting is handled atomically by the 
+ * `onInvoiceCreated` Cloud Function, which is triggered when this document is created.
+ */
 export const salesService = {
   async createSalesInvoice(companyId: string, input: Omit<SalesInvoice, 'id' | 'invoiceNumber'>, actorUid: string) {
 
-    // The core logic is now moved to the onInvoiceCreated Cloud Function for atomicity.
-    // This client-side service is now only responsible for creating the initial document.
-
-    const newDocRef = doc(collection(db, 'salesInvoices'));
+    const newDocRef = doc(collection(db, salesPaths.salesInvoices(companyId)));
     
+    // We only set the initial data. The onInvoiceCreated function will handle the rest.
     await setDoc(newDocRef, {
         ...input,
         id: newDocRef.id,
-        status: 'Unpaid', // Initial status
+        // The status is now set to 'Unpaid' or a similar initial state.
+        // The Cloud Function will process it from here.
+        status: 'Unpaid', 
         createdByUid: actorUid,
         createdAt: serverTimestamp(),
     });

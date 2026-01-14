@@ -27,6 +27,7 @@ import type {
 } from "./types";
 import { getNextDocNumber } from "./number-series";
 import { createAuditLog } from "./audit";
+export { postSalesInvoice } from "./post-sales-invoice";
 
 
 if (admin.apps.length === 0) {
@@ -723,3 +724,14 @@ export const helloWorld = onCall({ region: "asia-south1" }, (request) => {
     console.log("Hello from Firebase!");
     return { message: "Hello from Firebase!" };
   });
+
+    
+
+    
+
+    
+
+
+    
+
+    
