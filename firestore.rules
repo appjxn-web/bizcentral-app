@@ -1,180 +1,165 @@
 
 rules_version = '2';
-
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // --- Helper Functions ---
-    function signedIn() {
-      return request.auth != null;
+    // -----------------------------
+    // 1) HELPERS
+    // -----------------------------
+    function signedIn() { return request.auth != null; }
+    function userDoc() {
+      return signedIn()
+        ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data
+        : null;
+    }
+    function role() { return signedIn() ? userDoc().role : null; }
+
+    function isAdmin() {
+      return signedIn() && role() in [
+        'Admin', 'CEO', 'Sales Manager', 'Accounts Manager', 'Accountant'
+      ];
     }
 
-    function getUserData() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    function isOwner(uid) { return signedIn() && request.auth.uid == uid; }
+
+    // For docs having { userId } field
+    function isDocOwnerByUserId() {
+      return signedIn() && resource.data.userId == request.auth.uid;
     }
 
-    function isCompanyMember(companyId) {
-      return signedIn() && getUserData().companyMemberships.exists(c, c.companyId == companyId);
+    // For docs having { assignedToUid } field
+    function isAssignee() {
+      return signedIn() && resource.data.assignedToUid == request.auth.uid;
     }
 
-    function getCompanyRole(companyId) {
-      return getUserData().companyMemberships.filter(c, c.companyId == companyId)[0].role;
+    // -----------------------------
+    // 2) PUBLIC LANDING PAGE
+    // -----------------------------
+    // These MUST be readable without login.
+    match /company/{id} { allow read: if true; allow write: if isAdmin(); }
+
+    match /locations/{id} { allow read: if true; allow write: if isAdmin(); }
+    match /jobOpenings/{id} { allow read: if true; allow write: if isAdmin(); }
+
+    match /shop/{id} { allow read: if true; allow write: if isAdmin(); }
+    match /shopProducts/{id} { allow read: if true; allow write: if isAdmin(); }
+
+    match /products/{id} { allow read: if true; allow write: if isAdmin(); }
+    match /posts/{id} { allow read: if true; allow write: if isAdmin(); }
+    match /offers/{id} { allow read: if true; allow write: if isAdmin(); }
+
+    // -----------------------------
+    // 3) USERS & PROFILES
+    // -----------------------------
+    match /users/{userId} {
+      allow get: if signedIn();               // app needs user profile
+      allow list: if isAdmin();               // admin can list users
+      allow create: if isOwner(userId);       // user can create their own profile
+      allow update: if isOwner(userId) || isAdmin();
+      allow delete: if isAdmin();
+
+      match /notifications/{id} {
+        allow read: if isOwner(userId) || isAdmin();
+        allow create: if isOwner(userId);     // only owner creates their notifications
+        allow update, delete: if isAdmin();
+      }
+
+      match /wallet/main {
+        allow read, write: if isOwner(userId) || isAdmin();
+      }
+
+      match /referrals/{id} {
+        allow read, write: if isOwner(userId) || isAdmin();
+      }
+
+      match /registeredProducts/{id} {
+        allow read, list: if isOwner(userId) || isAdmin();
+        allow write: if isAdmin();
+      }
+
+      match /stock/{productId} {
+        allow read: if isOwner(userId) || isAdmin();
+        allow write: if isAdmin();
+      }
     }
 
-    function isAdmin(companyId) {
-      return isCompanyMember(companyId) && getCompanyRole(companyId) in ['Admin', 'CEO', 'Accounts Manager'];
-    }
-
-    function onlyChanges(allowed) {
-      return request.resource.data.diff(resource.data).changedKeys().hasOnly(allowed);
-    }
-
-    function isCreatingDraft() {
-      return request.resource.data.status == "DRAFT";
-    }
-
-    function isDraftDoc() {
-      return resource.data.status == "DRAFT";
-    }
-
-    // =========================
-    // PUBLIC-READABLE COLLECTIONS
-    // =========================
-    match /products/{productId} { allow read: if true; allow write: if isAdmin("default"); }
-    match /vacancies/{vacancyId} { allow read: if true; allow write: if isAdmin("default"); }
-    match /posts/{postId} { allow read: if true; allow write: if isAdmin("default"); }
-    match /locations/{locationId} { allow read: if true; allow write: if isAdmin("default"); }
-    match /pickupPoints/{pointId} { allow read: if true; allow write: if isAdmin("default"); }
-    match /company/{docId} { allow read: if true; allow write: if isAdmin("default"); }
-    match /offers/{offerId} { allow read: if true; allow write: if isAdmin("default"); }
-
-
-    // =========================
-    // USERS
-    // =========================
-    match /users/{uid} {
-      allow read: if signedIn() && (request.auth.uid == uid || isAdmin("default"));
-      allow write: if false; // prevent client editing roles/companies
-    }
-    
-    // =========================
-    // ORDERS (ROOT COLLECTION)
-    // =========================
+    // -----------------------------
+    // 4) CUSTOMER PORTAL (Orders, Invoices, Payments)
+    // -----------------------------
     match /orders/{orderId} {
-      allow read: if signedIn() && (isAdmin("default") || request.auth.uid == resource.data.userId);
+      allow get: if isAdmin() || isDocOwnerByUserId() || isAssignee();
       allow create: if signedIn();
-      allow update, delete: if signedIn() && (isAdmin("default") || request.auth.uid == resource.data.userId);
+
+      // IMPORTANT:
+      // Firestore rules cannot enforce "where userId == request.auth.uid" for list reliably.
+      // If you keep listing from /orders, safest is:
+      // - allow list only for admin
+      // - customer should query via subcollection /users/{uid}/orders (recommended)
+      allow list: if isAdmin();
+
+      allow update: if isAdmin() || isDocOwnerByUserId() || isAssignee();
+      allow delete: if isAdmin();
     }
 
-    // =========================
-    // COMPANY ROOT
-    // =========================
-    match /companies/{companyId} {
-      allow read: if isCompanyMember(companyId);
-      allow write: if isAdmin(companyId);
+    match /salesInvoices/{invoiceId} {
+      allow get: if isAdmin() || signedIn(); // if you want stricter: require customerId match
+      allow list: if isAdmin();              // same reason as orders
 
-      // ---- Settings (Finance defaults etc.) ----
-      match /settings/{docId} {
-        allow read: if isCompanyMember(companyId);
-        allow write: if isAdmin(companyId);
-      }
-
-      // ---- Masters ----
-      match /customers/{customerId} {
-        allow read: if isCompanyMember(companyId);
-        allow create, update: if isCompanyMember(companyId);
-        allow delete: if isAdmin(companyId);
-      }
-
-      match /products/{productId} {
-        allow read: if isCompanyMember(companyId);
-        allow write: if isAdmin(companyId);
-      }
-
-      match /warehouses/{warehouseId} {
-        allow read: if isCompanyMember(companyId);
-        allow write: if isAdmin(companyId);
-      }
-
-      match /coa_groups/{id} {
-        allow read: if isCompanyMember(companyId);
-        allow write: if isAdmin(companyId);
-      }
-
-      match /coa_ledgers/{id} {
-        allow read: if isCompanyMember(companyId);
-        allow write: if isAdmin(companyId);
-      }
-      
-      match /report_cache/{monthId} {
-        allow read: if isCompanyMember(companyId);
-        allow write: if false;
-      }
-      
-      match /fy_openings/{fyId} {
-        allow read: if isCompanyMember(companyId);
-        allow write: if false;
-      }
-      
-      match /audit_logs/{logId} {
-        allow read: if isAdmin(companyId);
-        allow write: if false;
-      }
-
-      // =========================
-      // SALES INVOICES (CLIENT DRAFT OK)
-      // =========================
-      match /sales_invoices/{invoiceId} {
-        allow read: if isCompanyMember(companyId);
-
-        allow create: if isCompanyMember(companyId)
-          && isCreatingDraft()
-          && request.resource.data.companyId == companyId
-          && request.resource.data.createdBy == request.auth.uid;
-
-        allow update: if isCompanyMember(companyId)
-          && isDraftDoc()
-          && resource.data.createdBy == request.auth.uid
-          && onlyChanges([
-              "invoiceDate", "invoiceNo", "customerId", "warehouseId",
-              "items", "discount", "shipping", "note",
-              "updatedAt", "updatedBy",
-              "status"
-          ])
-          && request.resource.data.status == "DRAFT";
-
-        allow delete: if isCompanyMember(companyId)
-          && isDraftDoc()
-          && (resource.data.createdBy == request.auth.uid || isAdmin(companyId));
-      }
-
-      // =========================
-      // SERVER-ONLY LEDGERS (POSTING OUTPUT)
-      // =========================
-      match /vouchers/{id} {
-        allow read: if isCompanyMember(companyId);
-        allow write: if false;
-      }
-
-      match /journal_entries/{id} {
-        allow read: if isCompanyMember(companyId);
-        allow write: if false;
-      }
-
-      match /stock_movements/{id} {
-        allow read: if isCompanyMember(companyId);
-        allow write: if false;
-      }
-
-      // Any other subcollections not explicitly matched
-      match /{document=**} {
-        allow read: if isCompanyMember(companyId);
-        allow write: if false;
-      }
+      allow create, update, delete: if isAdmin() || (signedIn() && role() == 'Partner');
     }
-    
-    // Fallback for global collections
-    match /{document=**} {
+
+    match /paymentSubmissions/{id} {
+      allow get: if isAdmin() || isDocOwnerByUserId() || isAssignee();
+      allow create: if signedIn();
+      allow list: if isAdmin();              // same reason
+      allow update, delete: if isAdmin();
+    }
+
+    // serviceRequests has customer.id
+    match /serviceRequests/{id} {
+      allow get: if isAdmin()
+        || (signedIn() && resource.data.customer.id == request.auth.uid)
+        || isAssignee();
+
+      allow list: if isAdmin();              // safest
+      allow create: if signedIn();
+      allow update, delete: if isAdmin();
+    }
+
+    // -----------------------------
+    // 5) SALES MODULE
+    // -----------------------------
+    match /leads/{id} {
+      allow get: if isAdmin() || (signedIn() && resource.data.ownerId == request.auth.uid);
+      allow list: if isAdmin(); // safest
+      allow create: if signedIn();
+      allow update, delete: if isAdmin() || (signedIn() && resource.data.ownerId == request.auth.uid);
+    }
+
+    match /quotations/{id} {
+      allow get: if isAdmin() || (signedIn() && resource.data.createdBy == request.auth.uid);
+      allow list: if isAdmin(); // safest
+      allow create: if signedIn();
+      allow update, delete: if isAdmin() || (signedIn() && resource.data.createdBy == request.auth.uid);
+    }
+
+    // -----------------------------
+    // 6) ACCOUNTING (Admin only)
+    // -----------------------------
+    match /coa_ledgers/{id} { allow read: if signedIn(); allow write: if isAdmin(); }
+    match /coa_groups/{id}  { allow read: if signedIn(); allow write: if isAdmin(); }
+    match /journalVouchers/{id} { allow read: if signedIn(); allow write: if isAdmin(); }
+    match /parties/{id} { allow read: if signedIn(); allow write: if isAdmin(); }
+
+    // Server-only
+    match /report_cache/{monthId} { allow read: if isAdmin(); allow write: if false; }
+    match /fy_openings/{fyId}     { allow read: if isAdmin(); allow write: if false; }
+    match /audit_logs/{id}        { allow read: if isAdmin(); allow write: if false; }
+
+    // -----------------------------
+    // 7) DEFAULT DENY (NO catch-all admin write)
+    // -----------------------------
+    match /{path=**} {
       allow read, write: if false;
     }
   }
