@@ -443,6 +443,12 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
     const userProfileRef = user ? doc(firestore, 'users', user.uid) : null;
     const { data: userProfile } = useDoc<UserProfile>(userProfileRef);
 
+    const customerPartyRef = React.useMemo(() => {
+        if(!order.userId || !firestore) return null;
+        return doc(firestore, 'parties', order.userId);
+    }, [order.userId, firestore]);
+    const { data: customerParty } = useDoc<Party>(customerPartyRef);
+    
     const paymentSubmissionsQuery = React.useMemo(() => {
       if (!order.id || !user?.uid || !firestore) return null;
       const submissionsRef = collection(firestore, 'paymentSubmissions');
@@ -460,13 +466,11 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
       );
     }, [order.id, user?.uid, currentRole, firestore]);
 
-    const { data: paymentSubmissions } = useCollection<PaymentSubmission>(paymentSubmissionsQuery);
     const { data: allJournalVouchers, loading: jvsLoading } = useCollection<JournalVoucher>(collection(firestore, 'journalVouchers'));
 
-    const { data: customerParty, loading: customerPartyLoading } = useDoc<Party>(order.userId ? doc(firestore, 'parties', order.userId) : null);
+    const { data: paymentSubmissions } = useCollection<PaymentSubmission>(paymentSubmissionsQuery);
     
     const { totalPaid, balanceDue, paymentHistory } = React.useMemo(() => {
-        // Source 1: Approved Journal Vouchers related to this order
         const jvHistory = (allJournalVouchers || [])
             .filter(jv => (jv as any).orderId === order.id)
             .map(jv => {
@@ -482,7 +486,6 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
             })
             .filter(Boolean) as any[];
 
-        // Source 2: Pending submissions not yet converted to JVs
         const pendingSubmissions = (paymentSubmissions || [])
             .filter(p => p.status === 'Pending')
             .map(p => ({
@@ -905,7 +908,5 @@ export default function OrdersPage() {
 }
 
     
-
-
 
     

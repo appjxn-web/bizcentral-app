@@ -1,4 +1,3 @@
-
 // ✅ Use this SAME file content for BOTH paths:
 // 1) functions/src/index.ts
 // 2) src/functions/src/index.ts
@@ -8,7 +7,7 @@
 // - Fixed: invoiceNumber is guaranteed inside onInvoiceCreated (so narration + UI won't break)
 // - Kept: your existing features (UPI onCall, order number, JV posting, stock transfer, commissions, notes, milestones, payment approval)
 
-import { onDocumentCreated, onDocumentUpdated, onDocumentWritten } from "firebase-functions/v2/firestore";
+import { onDocumentCreated, onDocumentUpdated, onDocumentWritten, Change, DocumentSnapshot, FirestoreEvent } from "firebase-functions/v2/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import * as admin from "firebase-admin";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
@@ -171,12 +170,10 @@ export const verifyUpiPaymentAndCreateOrder = onCall(
 
 
 export const handleOrderCreation = onDocumentCreated("orders/{orderId}", async (event) => {
-  const snap = event.data;
-  if (!snap) return;
-
-  // This function is now simplified as the order number is generated on creation.
-  // We can keep it for any post-creation logic if needed, or remove it.
-  // For now, let's keep it empty.
+  // This function is now completely empty. The logic has been centralized
+  // in the `verifyUpiPaymentAndCreateOrder` callable function to prevent conflicts.
+  // We keep the function definition here to avoid deployment errors if it's still
+  // declared in Firebase, but it does nothing.
 });
 
 /**
@@ -397,7 +394,7 @@ export const onDebitNoteCreated = onDocumentCreated("debitNotes/{noteId}", async
 
 export const onStockTransfer = onDocumentUpdated(
   "stockTransferRequests/{requestId}",
-  async (event) => {
+  async (event: FirestoreEvent<Change<DocumentSnapshot> | undefined, { requestId: string }>) => {
     if (!event.data?.after) return;
 
     const before = event.data.before.data() as StockTransferRequest;
@@ -472,7 +469,7 @@ export const handleVoucherCreation = onDocumentCreated("journalVouchers/{id}", (
 
 export const handleOrderUpdates = onDocumentUpdated(
   "orders/{orderId}",
-  async (event) => {
+  async (event: FirestoreEvent<Change<DocumentSnapshot> | undefined, { orderId: string }>) => {
     if (!event.data) return;
 
     const before = event.data.before.data() as Order;
@@ -560,7 +557,7 @@ export const handleOrderUpdates = onDocumentUpdated(
 
 export const onMilestoneUpdate = onDocumentWritten(
   "goals/{goalId}/milestones/{milestoneId}",
-  async (event) => {
+  async (event: FirestoreEvent<Change<DocumentSnapshot> | undefined>) => {
     const goalId = (event.params as any).goalId;
     const goalRef = db.collection("goals").doc(goalId);
 
@@ -727,5 +724,7 @@ export const helloWorld = onCall({ region: "asia-south1" }, (request) => {
     console.log("Hello from Firebase!");
     return { message: "Hello from Firebase!" };
   });
+
+    
 
     

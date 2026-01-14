@@ -1,4 +1,5 @@
 
+
 import type {Timestamp} from "firebase/firestore";
 
 export type DocPrefixConfig = {
@@ -246,5 +247,6 @@ export interface PaymentSubmission {
   status: 'Pending' | 'Approved' | 'Rejected';
   submittedAt: Timestamp;
 }
+    
 
     
