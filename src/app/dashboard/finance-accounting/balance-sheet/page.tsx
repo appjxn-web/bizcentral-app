@@ -22,8 +22,7 @@ import {
   TableFooter,
 } from '@/components/ui/table';
 import { Landmark, Loader2, PlusCircle, ChevronDown, ChevronRight, Download } from 'lucide-react';
-import type { CoaGroup, CoaLedger, JournalVoucher } from '@/features/finance/types/finance.types';
-import type { Product, WorkOrder, Order, SalesInvoice, Party } from '@/lib/types';
+import type { CoaGroup, CoaLedger, JournalVoucher, Product, WorkOrder, Order, SalesInvoice, Party } from '@/lib/types';
 import { AddLedgerAccountDialog } from './_components/add-ledger-account-dialog';
 import { useFirestore, useCollection, useUser } from '@/firebase';
 import { collection, query, orderBy, doc, Timestamp, where } from 'firebase/firestore';
@@ -54,32 +53,11 @@ function BalanceSheetContent() {
   const [endDate, setEndDate] = React.useState('');
   const [selectedFy, setSelectedFy] = React.useState('');
 
-  const { data: coaGroups, loading: groupsLoading } = useCollection<CoaGroup>(query(collection(firestore, 'coa_groups'), orderBy('path')));
-  const { data: coaLedgers, loading: ledgersLoading } = useCollection<CoaLedger>(collection(firestore, 'coa_ledgers'));
-  const { data: products, loading: productsLoading } = useCollection<Product>(collection(firestore, 'products'));
-  const { data: workOrders, loading: workOrdersLoading } = useCollection<WorkOrder>(collection(firestore, 'workOrders'));
-  const { data: allOrders, loading: ordersLoading } = useCollection<Order>(collection(firestore, 'orders'));
-  
-  const invoicesQuery = React.useMemo(() => {
-    if (!user || !currentRole) return null;
-    const invoicesRef = collection(firestore, 'salesInvoices');
-    if (['Admin', 'CEO', 'Accounts Manager'].includes(currentRole)) {
-      return query(invoicesRef);
-    }
-    return query(invoicesRef, where('customerId', '==', user.uid));
-  }, [user, currentRole, firestore]);
-  const { data: salesInvoices, loading: invoicesLoading } = useCollection<SalesInvoice>(invoicesQuery);
+  const companyId = 'default'; // Placeholder for multi-tenancy
 
-  const { data: parties, loading: partiesLoading } = useCollection<Party>(collection(firestore, 'parties'));
-  
-  const jvQuery = React.useMemo(() => {
-    if (!user || !currentRole) return null;
-    const allowedRoles = ['Admin', 'CEO', 'Accounts Manager', 'Sales Manager', 'Manager'];
-    if (!allowedRoles.includes(currentRole)) return null;
-    return query(collection(firestore, 'journalVouchers'));
-  }, [user, currentRole, firestore]);
-  
-  const { data: journalVouchers, loading: vouchersLoading } = useCollection<JournalVoucher>(jvQuery);
+  const { data: coaGroups, loading: groupsLoading } = useCollection<CoaGroup>(query(collection(firestore, `companies/${companyId}/coa_groups`), orderBy('path')));
+  const { data: coaLedgers, loading: ledgersLoading } = useCollection<CoaLedger>(collection(firestore, `companies/${companyId}/coa_ledgers`));
+  const { data: journalVouchers, loading: vouchersLoading } = useCollection<JournalVoucher>(collection(firestore, `companies/${companyId}/journalVouchers`));
   
   const financialYears = React.useMemo(() => {
     const currentYear = new Date().getFullYear();
@@ -107,7 +85,7 @@ function BalanceSheetContent() {
   };
 
 const { assets, liabilities, equity, pnl, loading, kpis } = React.useMemo(() => {
-    if (groupsLoading || ledgersLoading || vouchersLoading || productsLoading || ordersLoading || invoicesLoading || partiesLoading || !coaGroups || !coaLedgers || !journalVouchers || !products || !allOrders || !salesInvoices || !parties) {
+    if (groupsLoading || ledgersLoading || vouchersLoading || !coaGroups || !coaLedgers || !journalVouchers) {
         return { assets: [], liabilities: [], equity: [], pnl: 0, loading: true, kpis: { assets: 0, liabilities: 0, equity: 0, totalLiabilitiesAndEquity: 0 }};
     }
 
@@ -121,58 +99,43 @@ const { assets, liabilities, equity, pnl, loading, kpis } = React.useMemo(() => 
       const signedOpeningBal = acc.openingBalance?.drCr === 'CR' ? -openingBal : openingBal;
       liveBalances.set(acc.id, signedOpeningBal);
     });
-
-    // 2. Comprehensive Inventory Valuation (Fixed Filters)
-    const getLedgerIdByFlexName = (baseName: string) => {
-        const normalized = (n: string) => n.replace(/[–—-]/g, '-').toLowerCase().trim();
-        return coaLedgers.find(l => normalized(l.name) === normalized(baseName))?.id;
-    };
-
-    // Calculate valuation including ALL categories shown in your Stocks report
-    const finishedGoodsVal = products.filter(p => p.type === 'Finished Goods' || p.category === 'Plants & Machinery').reduce((sum, p) => sum + ((p.openingStock || 0) * (p.cost || 0)), 0);
-    const rawMaterialVal = products.filter(p => p.type === 'Raw Materials').reduce((sum, p) => sum + ((p.openingStock || 0) * (p.cost || 0)), 0);
-    const sparesAndComponentsVal = products.filter(p => ['Components', 'Assembly', 'Consumables'].includes(p.type || '')).reduce((sum, p) => sum + ((p.openingStock || 0) * (p.cost || 0)), 0);
     
-    const fgId = getLedgerIdByFlexName('Stock-in-Hand - Finished Goods');
-    const rmId = getLedgerIdByFlexName('Stock-in-Hand - Raw Material');
-    const spId = getLedgerIdByFlexName('Stock-in-Hand - Spares');
-    
-    if (fgId) liveBalances.set(fgId, (liveBalances.get(fgId) || 0) + finishedGoodsVal);
-    if (rmId) liveBalances.set(rmId, (liveBalances.get(rmId) || 0) + rawMaterialVal);
-    if (spId) liveBalances.set(spId, (liveBalances.get(spId) || 0) + sparesAndComponentsVal);
-
-    // 3. Process Invoices (Use 'subtotal' for Income)
-    let totalInvoiceIncome = 0;
-    salesInvoices.forEach(inv => {
-      if (new Date(inv.date) > eDate) return;
-      if (inv.coaLedgerId) {
-        liveBalances.set(inv.coaLedgerId, (liveBalances.get(inv.coaLedgerId) || 0) + inv.grandTotal);
-      }
-      totalInvoiceIncome += (inv.subtotal || 0); // Corrected field name
-
-      // Credit GST
-      const cgstId = getLedgerIdByFlexName('Output GST - CGST');
-      const sgstId = getLedgerIdByFlexName('Output GST - SGST');
-      if (cgstId) liveBalances.set(cgstId, (liveBalances.get(cgstId) || 0) - (inv.cgst || 0));
-      if (sgstId) liveBalances.set(sgstId, (liveBalances.get(sgstId) || 0) - (inv.sgst || 0));
-    });
-
-    // 4. Process JVs
+    // 2. Process JVs up to the end date
     journalVouchers.forEach(jv => {
-      if (new Date(jv.date) > eDate) return;
-      jv.entries.forEach(entry => {
-        if (liveBalances.has(entry.accountId)) {
-          liveBalances.set(entry.accountId, (liveBalances.get(entry.accountId) || 0) + (entry.debit || 0) - (entry.credit || 0));
-        }
-      });
+      const jvDate = jv.createdAt ? (jv.createdAt as Timestamp).toDate() : new Date(jv.date);
+      if (jvDate <= eDate) {
+        jv.entries.forEach(entry => {
+          if (liveBalances.has(entry.accountId)) {
+            liveBalances.set(entry.accountId, (liveBalances.get(entry.accountId) || 0) + (entry.debit || 0) - (entry.credit || 0));
+          }
+        });
+      }
     });
 
-    // 5. Accurate P&L
-    const incomeFromJVs = coaLedgers.filter(l => l.nature === 'INCOME').reduce((sum, l) => sum + Math.abs(Math.min(0, liveBalances.get(l.id) || 0)), 0);
-    const expenses = coaLedgers.filter(l => l.nature === 'EXPENSE').reduce((sum, l) => sum + (liveBalances.get(l.id) || 0), 0);
-    const currentPnl = (totalInvoiceIncome + incomeFromJVs) - expenses;
+    // 3. Calculate P&L for the period
+    const sDate = startDate ? new Date(startDate) : null;
+    if (sDate) sDate.setHours(0, 0, 0, 0);
 
-    // 6. Build Hierarchy and KPIs
+    let periodIncome = 0;
+    let periodExpenses = 0;
+
+    journalVouchers.forEach(jv => {
+      const jvDate = jv.createdAt ? (jv.createdAt as Timestamp).toDate() : new Date(jv.date);
+      if ((!sDate || jvDate >= sDate) && jvDate <= eDate) {
+        jv.entries.forEach(entry => {
+          const ledger = coaLedgers.find(l => l.id === entry.accountId);
+          if (ledger?.nature === 'INCOME') {
+            periodIncome += (entry.credit || 0) - (entry.debit || 0);
+          } else if (ledger?.nature === 'EXPENSE') {
+            periodExpenses += (entry.debit || 0) - (entry.credit || 0);
+          }
+        });
+      }
+    });
+
+    const currentPnl = periodIncome - periodExpenses;
+
+    // 4. Build Hierarchy and KPIs
     const getGroupData = (group: CoaGroup): any => {
         const subGroups = coaGroups.filter(g => g.parentId === group.id).map(g => getGroupData(g));
         const accounts = coaLedgers.filter(l => l.groupId === group.id).map(l => ({ ...l, balance: liveBalances.get(l.id) || 0 }));
@@ -197,7 +160,7 @@ const { assets, liabilities, equity, pnl, loading, kpis } = React.useMemo(() => 
             totalLiabilitiesAndEquity: Math.abs(totalLiabilities) + Math.abs(totalEquityBase) + currentPnl 
         }
     };
-  }, [coaGroups, coaLedgers, journalVouchers, products, allOrders, salesInvoices, parties, groupsLoading, ledgersLoading, vouchersLoading, productsLoading, ordersLoading, invoicesLoading, partiesLoading, endDate]);
+  }, [coaGroups, coaLedgers, journalVouchers, groupsLoading, ledgersLoading, vouchersLoading, startDate, endDate]);
 
   const toggleGroup = (groupId: string) => {
     setOpenGroups(prev => ({ ...prev, [groupId]: !(prev[groupId] ?? true) }));
@@ -269,11 +232,7 @@ const { assets, liabilities, equity, pnl, loading, kpis } = React.useMemo(() => 
   };
 
   const renderRow = (group: any, level = 0): React.ReactNode => {
-    let balance = group.balance;
-    // For liability accounts, if the balance is positive (Debit), it's an advance to a supplier.
-    // It should be treated as an asset, so we'll show it as such, but still under liabilities for now.
-    const isSupplierAdvance = group.nature === 'LIABILITY' && balance > 0;
-    
+    const balance = group.balance;
     const absBalance = Math.abs(balance);
     if (absBalance < 0.01 && group.accounts.length === 0 && group.subGroups.length === 0) return null;
     
@@ -300,7 +259,7 @@ const { assets, liabilities, equity, pnl, loading, kpis } = React.useMemo(() => 
             </div>
           </TableCell>
           <TableCell className="text-right font-mono">
-            {formatCurrency(absBalance)} {isSupplierAdvance ? 'Dr' : ''}
+            {formatCurrency(absBalance)}
           </TableCell>
         </TableRow>
         
