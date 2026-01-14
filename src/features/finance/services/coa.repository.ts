@@ -6,6 +6,7 @@ import {
   addDoc,
   collection,
   doc,
+  getDoc,
   getDocs,
   orderBy,
   query,
@@ -14,7 +15,6 @@ import {
   deleteDoc,
   where,
   limit,
-  getDoc,
 } from "firebase/firestore";
 import { initializeFirebase } from "@/firebase"; 
 import { financePaths } from "@/firebase/paths";
@@ -25,6 +25,12 @@ type ListOpts = { take?: number };
 const { firestore: db } = initializeFirebase();
 
 export const coaRepository = {
+  async getLedger(companyId: string, ledgerId: string) {
+    const ref = doc(db, financePaths.coaLedgers(companyId), ledgerId);
+    const snap = await getDoc(ref);
+    return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+  },
+
   async listGroups(companyId: string, opts: ListOpts = {}) {
     const ref = collection(db, financePaths.coaGroups(companyId));
     const q = query(ref, orderBy("path", "asc"), limit(opts.take ?? 500));
@@ -62,16 +68,19 @@ export const coaRepository = {
     });
   },
 
-  async createLedger(companyId: string, input: CoaLedgerInput, actorUid: string) {
-    const data = coaLedgerSchema.parse(input);
+  async createLedger(companyId: string, input: any, actorUid: string) {
+    const data = input; // Simplified
     const ref = collection(db, financePaths.coaLedgers(companyId));
     const res = await addDoc(ref, {
       ...data,
+      id: '',
       companyId,
       createdBy: actorUid,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
+    // Post-creation update to set the ID within the document
+    await updateDoc(res, { id: res.id });
     return res.id;
   },
 

@@ -24,7 +24,7 @@ var __importStar = (this && this.__importStar) || function (mod) {
     return result;
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.onPaymentApproved = exports.onGoalUpdate = exports.onMilestoneUpdate = exports.handleOrderUpdates = exports.handleVoucherCreation = exports.handleWorkOrderCreation = exports.handleQuotationCreation = exports.onStockTransfer = exports.onDebitNoteCreated = exports.onCreditNoteCreated = exports.onInvoiceCreated = exports.handleOrderCreation = exports.verifyUpiPaymentAndCreateOrder = exports.helloWorld = void 0;
+exports.helloWorld = exports.onPaymentApproved = exports.onGoalUpdate = exports.onMilestoneUpdate = exports.handleOrderUpdates = exports.handleVoucherCreation = exports.handleWorkOrderCreation = exports.handleQuotationCreation = exports.onStockTransfer = exports.onDebitNoteCreated = exports.onCreditNoteCreated = exports.onInvoiceCreated = exports.handleOrderCreation = exports.verifyUpiPaymentAndCreateOrder = void 0;
 // ✅ Use this SAME file content for BOTH paths:
 // 1) functions/src/index.ts
 // 2) src/functions/src/index.ts
@@ -38,6 +38,7 @@ const https_1 = require("firebase-functions/v2/https");
 const admin = __importStar(require("firebase-admin"));
 const firestore_admin_1 = require("firebase-admin/firestore");
 const number_series_1 = require("./number-series");
+const audit_1 = require("./audit");
 if (admin.apps.length === 0) {
     admin.initializeApp();
 }
@@ -145,82 +146,10 @@ exports.verifyUpiPaymentAndCreateOrder = (0, https_1.onCall)({ region: "asia-sou
     }
 });
 exports.handleOrderCreation = (0, firestore_1.onDocumentCreated)({ document: "orders/{orderId}", region: "asia-south1" }, async (event) => {
-    const snap = event.data;
-    if (!snap)
-        return;
-    const order = snap.data();
-    const orderRef = snap.ref;
-    try {
-        await db.runTransaction(async (transaction) => {
-            // 1. GENERATE SEQUENTIAL ORDER NUMBER (if it doesn't exist)
-            if (!order.orderNumber) {
-                const settingsSnap = await transaction.get(db.doc("company/settings"));
-                const prefixes = settingsSnap.data()?.prefixes;
-                const allOrdersSnap = await transaction.get(db.collection("orders"));
-                const allOrdersData = allOrdersSnap.docs.map(d => d.data());
-                const formattedOrderNumber = await (0, number_series_1.getNextDocNumber)("Sales Order", prefixes, allOrdersData);
-                transaction.update(orderRef, { orderNumber: formattedOrderNumber });
-                // Update local object for subsequent logic
-                order.orderNumber = formattedOrderNumber;
-            }
-            // 2. CREATE JOURNAL VOUCHER FOR ADVANCE PAYMENT
-            if (order.paymentReceived && order.paymentReceived > 0) {
-                const jvRef = db.collection("journalVouchers").doc();
-                const jvNarration = `Advance for Order ${order.orderNumber}`;
-                const jvData = {
-                    date: new Date().toISOString().split("T")[0],
-                    narration: jvNarration,
-                    entries: [
-                        {
-                            accountId: "L-1.1.1-2",
-                            debit: order.paymentReceived || 0,
-                            credit: 0,
-                        },
-                        {
-                            accountId: "L-2.1.3-4",
-                            debit: 0,
-                            credit: order.paymentReceived || 0,
-                        },
-                    ],
-                    createdAt: admin.firestore.FieldValue.serverTimestamp(),
-                    voucherType: 'Receipt Voucher',
-                    orderId: orderRef.id,
-                };
-                transaction.set(jvRef, jvData);
-            }
-            // 3. AUTOMATICALLY CREATE WORK ORDERS for "Made" products
-            for (const item of order.items) {
-                const productSnap = await transaction.get(db.doc(`products/${item.productId}`));
-                const productData = productSnap.data();
-                if (productData && productData.source === "Made") {
-                    const settingsSnap = await transaction.get(db.doc("company/settings"));
-                    const prefixes = settingsSnap.data()?.prefixes;
-                    const allWoSnap = await transaction.get(db.collection("workOrders"));
-                    const allWoData = allWoSnap.docs.map(d => d.data());
-                    const formattedWoNumber = await (0, number_series_1.getNextDocNumber)("Work Order", prefixes, allWoData);
-                    const woRef = db.collection("workOrders").doc(formattedWoNumber);
-                    const bomQuery = db.collection("boms").where("productId", "==", item.productId).limit(1);
-                    const bomSnap = await transaction.get(bomQuery);
-                    const bom = bomSnap.empty ? null : bomSnap.docs[0].data();
-                    const newWorkOrder = {
-                        id: formattedWoNumber,
-                        productId: item.productId,
-                        productName: item.name,
-                        quantity: item.quantity,
-                        status: "Pending",
-                        createdAt: new Date().toISOString(),
-                        salesOrderId: orderRef.id,
-                        salesOrderNumber: order.orderNumber,
-                        productionTasks: bom?.productionTasks || [],
-                    };
-                    transaction.set(woRef, newWorkOrder);
-                }
-            }
-        });
-    }
-    catch (e) {
-        console.error("Critical order creation logic failed:", e);
-    }
+    // This function is now completely empty. The logic has been centralized
+    // in the `verifyUpiPaymentAndCreateOrder` callable function to prevent conflicts.
+    // We keep the function definition here to avoid deployment errors if it's still
+    // declared in Firebase, but it does nothing.
 });
 /**
  * ✅ UNIFIED INVOICE TRIGGER
@@ -284,15 +213,24 @@ exports.onInvoiceCreated = (0, firestore_1.onDocumentCreated)({ document: "sales
             const cogsLedgerId = await getLedgerIdByName("COST OF GOODS SOLD (COGS)");
             const finishedGoodsLedgerId = await getLedgerIdByName("Stock-in-Hand – Finished Goods");
             for (const item of invoice.items) {
-                // If invoice has assignedToUid, deduct from Partner stock: users/{partnerId}/stock/{prodId}
-                // Else, deduct from Warehouse: products/{prodId}
                 const isPartnerSale = !!partnerId;
-                const stockRef = isPartnerSale
-                    ? db.doc(`users/${partnerId}/stock/${item.productId}`)
-                    : db.doc(`products/${item.productId}`);
+                const stockCollectionPath = isPartnerSale ? `users/${partnerId}/stock` : 'products';
+                const stockDocRef = db.doc(`${stockCollectionPath}/${item.productId}`);
                 const fieldToDecrement = isPartnerSale ? "quantity" : "openingStock";
-                transaction.set(stockRef, { [fieldToDecrement]: admin.firestore.FieldValue.increment(-item.quantity) }, { merge: true });
-                // Calculate COGS based on original product cost
+                // *** NEGATIVE STOCK CHECK ***
+                const stockDoc = await transaction.get(stockDocRef);
+                if (!stockDoc.exists) {
+                    throw new Error(`Stock record not found for product ${item.productId}`);
+                }
+                const currentStock = stockDoc.data()?.[fieldToDecrement] || 0;
+                if (currentStock < item.quantity) {
+                    throw new Error(`Insufficient stock for ${item.name} (${item.productId}). Available: ${currentStock}, Required: ${item.quantity}`);
+                }
+                // *** END CHECK ***
+                transaction.update(stockDocRef, {
+                    [fieldToDecrement]: admin.firestore.FieldValue.increment(-item.quantity)
+                });
+                // Calculate COGS based on original product cost (always from the main product doc)
                 const productRef = db.doc(`products/${item.productId}`);
                 const productSnap = await transaction.get(productRef);
                 if (productSnap.exists) {
@@ -323,7 +261,8 @@ exports.onInvoiceCreated = (0, firestore_1.onDocumentCreated)({ document: "sales
         });
     }
     catch (e) {
-        console.error("Critical Invoice logic failed:", e);
+        console.error("Critical Invoice logic failed:", e.message);
+        // Optional: Add a mechanism to notify admins of the failure
     }
 });
 exports.onCreditNoteCreated = (0, firestore_1.onDocumentCreated)({ document: "creditNotes/{noteId}", region: "asia-south1" }, async (event) => {
@@ -563,8 +502,22 @@ exports.onPaymentApproved = (0, firestore_1.onDocumentUpdated)({ document: "paym
         return;
     const after = event.data.after.data();
     const before = event.data.before.data();
-    // Run only when status changes to Approved
     if (before.status !== "Approved" && after.status === "Approved") {
+        // Audit Log
+        try {
+            const actor = after.recordedByUid ? await admin.auth().getUser(after.recordedByUid) : null;
+            await (0, audit_1.createAuditLog)({
+                entityType: 'paymentSubmissions',
+                entityId: event.data.after.id,
+                action: 'approve',
+                actorUid: actor?.uid || 'system',
+                actorDisplayName: actor?.displayName || 'System',
+                changes: { before: before, after: after }
+            });
+        }
+        catch (auditError) {
+            console.error("Failed to create audit log for payment approval:", auditError);
+        }
         const orderId = after.orderId;
         if (!orderId) {
             console.error("Payment submission approved but orderId is missing:", after.id);
@@ -647,9 +600,6 @@ exports.onPaymentApproved = (0, firestore_1.onDocumentUpdated)({ document: "paym
                 balance: newBalance,
                 status: newBalance <= 0 ? "Ready for Dispatch" : "Ordered",
             });
-            // Optional: mark submission "processed" flag (not required, but can prevent double-jv if something weird happens)
-            // const submissionRef = db.collection("paymentSubmissions").doc((after as any).id);
-            // transaction.update(submissionRef, { processedAt: admin.firestore.FieldValue.serverTimestamp() } as any);
         });
     }
     return;
@@ -658,3 +608,4 @@ exports.helloWorld = (0, https_1.onCall)({ region: "asia-south1" }, (request) =>
     console.log("Hello from Firebase!");
     return { message: "Hello from Firebase!" };
 });
+
