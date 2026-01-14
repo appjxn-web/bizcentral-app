@@ -28,47 +28,130 @@ service cloud.firestore {
       return isCompanyMember(companyId) && getCompanyRole(companyId) in ['Admin', 'CEO', 'Accounts Manager'];
     }
 
-    // --- Global Collections ---
-    match /users/{userId} {
-      allow read, write: if signedIn() && request.auth.uid == userId;
-      allow get: if signedIn(); // Allow any signed-in user to read profile for now
+    // Helper: allow only certain fields to change (field-level protection)
+    function onlyChanges(allowed) {
+      return request.resource.data.diff(resource.data).changedKeys().hasOnly(allowed);
     }
 
+    function isCreatingDraft() {
+      return request.resource.data.status == "DRAFT";
+    }
+
+    function isDraftDoc() {
+      return resource.data.status == "DRAFT";
+    }
+
+    // =========================
+    // USERS
+    // =========================
+    match /users/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isAdmin("default"));
+      allow write: if false; // prevent client editing roles/companies
+    }
+
+    // =========================
+    // COMPANY ROOT
+    // =========================
     match /companies/{companyId} {
       allow read: if isCompanyMember(companyId);
-      allow write: if isCompanyAdmin(companyId); // Only admins can modify company details
+      allow write: if isAdmin(companyId);
+
+      // ---- Settings (Finance defaults etc.) ----
+      match /settings/{docId} {
+        allow read: if hasCompanyAccess(companyId);
+        allow write: if isAdmin(companyId);
+      }
+
+      // ---- Masters ----
+      match /customers/{customerId} {
+        allow read: if hasCompanyAccess(companyId);
+        allow create, update: if hasCompanyAccess(companyId);
+        allow delete: if isAdmin(companyId);
+      }
+
+      match /products/{productId} {
+        allow read: if hasCompanyAccess(companyId);
+        allow write: if isAdmin(companyId);
+      }
+
+      match /warehouses/{warehouseId} {
+        allow read: if hasCompanyAccess(companyId);
+        allow write: if isAdmin(companyId);
+      }
+
+      match /coa_groups/{id} {
+        allow read: if hasCompanyAccess(companyId);
+        allow write: if isAdmin(companyId);
+      }
+
+      match /coa_ledgers/{id} {
+        allow read: if hasCompanyAccess(companyId);
+        allow write: if isAdmin(companyId);
+      }
+
+      // =========================
+      // SALES INVOICES (CLIENT DRAFT OK)
+      // =========================
+      match /sales_invoices/{invoiceId} {
+        allow read: if hasCompanyAccess(companyId);
+
+        // ✅ Create only DRAFT from client
+        allow create: if hasCompanyAccess(companyId)
+          && isCreatingDraft()
+          && request.resource.data.companyId == companyId
+          && request.resource.data.createdBy == request.auth.uid;
+
+        // ✅ Update: only allowed when invoice is still DRAFT
+        // Client can change business fields, but NOT posting fields.
+        allow update: if hasCompanyAccess(companyId)
+          && isDraftDoc()
+          && resource.data.createdBy == request.auth.uid
+          && onlyChanges([
+              // business editable fields
+              "invoiceDate", "invoiceNo", "customerId", "warehouseId",
+              "items", "discount", "shipping", "note",
+              // safe metadata
+              "updatedAt", "updatedBy",
+              // allow status to remain DRAFT (no POSTED/POSTING from client)
+              "status"
+          ])
+          && request.resource.data.status == "DRAFT";
+
+        // ✅ Delete: allow deleting only DRAFT (optional)
+        allow delete: if hasCompanyAccess(companyId)
+          && isDraftDoc()
+          && (resource.data.createdBy == request.auth.uid || isAdmin(companyId));
+      }
+
+      // =========================
+      // SERVER-ONLY LEDGERS (POSTING OUTPUT)
+      // =========================
+      // Cloud Functions (Admin SDK) bypasses rules, so we BLOCK client writes.
+      match /vouchers/{id} {
+        allow read: if hasCompanyAccess(companyId);
+        allow write: if false;
+      }
+
+      match /journal_entries/{id} {
+        allow read: if hasCompanyAccess(companyId);
+        allow write: if false;
+      }
+
+      match /stock_movements/{id} {
+        allow read: if hasCompanyAccess(companyId);
+        allow write: if false;
+      }
+
+      // Any other subcollections not explicitly matched
+      match /{document=**} {
+        allow read: if hasCompanyAccess(companyId);
+        allow write: if false;
+      }
     }
     
-    // --- Multi-Tenant (Company-Specific) Collections ---
-    match /companies/{companyId}/{document=**} {
-      // Default deny all access to company data unless explicitly allowed by nested rules.
+    // Fallback for global collections
+    match /{document=**} {
       allow read, write: if false;
-    }
-
-    match /companies/{companyId}/products/{productId} {
-      allow read: if isCompanyMember(companyId);
-      allow write: if isCompanyAdmin(companyId);
-    }
-    
-    match /companies/{companyId}/orders/{orderId} {
-      allow get: if isCompanyMember(companyId) && (isCompanyAdmin(companyId) || resource.data.userId == request.auth.uid);
-      allow list: if isCompanyMember(companyId);
-      allow create: if isCompanyMember(companyId);
-      allow update: if isCompanyMember(companyId) && (isCompanyAdmin(companyId) || resource.data.userId == request.auth.uid);
-    }
-
-    match /companies/{companyId}/coa_groups/{groupId} {
-      allow read: if isCompanyMember(companyId);
-      allow write: if isCompanyAdmin(companyId);
-    }
-    
-    match /companies/{companyId}/coa_ledgers/{ledgerId} {
-      allow read: if isCompanyMember(companyId);
-      allow write: if isCompanyAdmin(companyId);
-    }
-    
-    match /companies/{companyId}/journalVouchers/{voucherId} {
-      allow read, list, write: if isCompanyAdmin(companyId);
     }
   }
 }
