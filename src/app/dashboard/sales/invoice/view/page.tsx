@@ -1,389 +1,250 @@
 
-
 'use client';
 
-import * as React from 'react';
-import Image from 'next/image';
-import { useSearchParams } from 'next/navigation';
-import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
+import * as React from "react";
+import { useParams } from "next/navigation";
+import { doc, collection, getDocs, query, where, limit, orderBy } from "firebase/firestore";
+import { useFirestore } from "@/firebase";
+import { postInvoice } from "@/features/sales/services/post-invoice.client";
+import { InvoiceStatusChip } from "@/features/sales/components/invoice-status-chip";
+import { useDoc } from '@/firebase/firestore/use-doc';
+import { useCollectionQuery } from '@/hooks/use-collection-query';
 
-import { PageHeader } from '@/components/page-header';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
-import { Separator } from '@/components/ui/separator';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-  TableFooter,
-} from '@/components/ui/table';
-import { Download, Loader2, ArrowLeft } from 'lucide-react';
-import { format } from 'date-fns';
-import { QRCodeSVG } from 'qrcode.react';
-import type { SalesInvoice, CompanyInfo, Party, Address, Order, CoaLedger, UserProfile } from '@/lib/types';
-import { useFirestore, useDoc, useCollection } from '@/firebase';
-import { collection, doc, query, where, limit, getDocs } from 'firebase/firestore';
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { PageHeader } from "@/components/page-header";
+import { Loader2 } from "lucide-react";
+import { SalesInvoice } from "@/lib/types";
 
-const numberToWords = (num: number): string => {
-    if (num === null || num === undefined) return '';
-    const a = ['', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen'];
-    const b = ['', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety'];
-    const number = parseFloat(num.toFixed(2));
-    if (isNaN(number)) return '';
-    if (number === 0) return 'zero rupees only.';
 
-    const integerPart = Math.floor(number);
-    const decimalPart = Math.round((number - integerPart) * 100);
+function round2(n: number) {
+  return Math.round(n * 100) / 100;
+}
 
-    const numToWords = (n: number): string => {
-        let str = '';
-        if (n >= 10000000) {
-            str += numToWords(Math.floor(n / 10000000)) + ' crore ';
-            n %= 10000000;
-        }
-        if (n >= 100000) {
-            str += numToWords(Math.floor(n / 100000)) + ' lakh ';
-            n %= 100000;
-        }
-        if (n >= 1000) {
-            str += numToWords(Math.floor(n / 1000)) + ' thousand ';
-            n %= 1000;
-        }
-        if (n >= 100) {
-            str += a[Math.floor(n / 100)] + ' hundred ';
-            n %= 100;
-        }
-        if (n > 19) {
-            str += b[Math.floor(n / 20)] + (a[n % 10] ? ' ' + a[n % 10] : '');
-        } else if (n > 0) {
-            str += a[n];
-        }
-        return str.trim();
-    };
+export default function SalesInvoiceDetailPage() {
+  const params = useParams<{ id: string }>();
+  const invoiceId = params.id;
+  const firestore = useFirestore();
 
-    let words = numToWords(integerPart);
-    if (!words) words = "zero";
-    let finalString = words.charAt(0).toUpperCase() + words.slice(1) + ' Rupees';
-    if (decimalPart > 0) {
-        finalString += ' and ' + numToWords(decimalPart) + ' Paise';
+  // ✅ Replace with your real contexts
+  const companyId = "default";
+
+  const invoiceRef = React.useMemo(
+    () => doc(firestore, `salesInvoices/${invoiceId}`),
+    [firestore, invoiceId]
+  );
+
+  const { data: invoice, loading, error } = useDoc<any>(invoiceRef);
+
+  const [posting, setPosting] = React.useState(false);
+
+  const status = (invoice?.status ?? "DRAFT") as string;
+  
+  const journalQ = React.useMemo(() => {
+    if (!invoice?.voucherId) return null;
+    const ref = collection(firestore, `companies/${companyId}/journal_entries`);
+    return query(ref, where("voucherId", "==", invoice.voucherId), orderBy("lineNo", "asc"), limit(100));
+  }, [companyId, invoice?.voucherId, firestore]);
+
+  const movementsQ = React.useMemo(() => {
+    if (!invoiceId) return null;
+    const ref = collection(firestore, `companies/${companyId}/stock_movements`);
+    return query(ref, where("refType", "==", "SALES_INVOICE"), where("refId", "==", invoiceId), limit(500));
+  }, [companyId, invoiceId, firestore]);
+
+  const { data: journalLines, loading: jLoading, error: jErr } = useCollectionQuery(
+    journalQ,
+    `journal:${companyId}:${invoice?.voucherId ?? "none"}`,
+    { enabled: status === "POSTED" }
+  );
+
+  const { data: movements, loading: mLoading, error: mErr } = useCollectionQuery(
+    movementsQ,
+    `movements:${companyId}:${invoiceId}`,
+    { enabled: status === "POSTED" }
+  );
+  const previewLoading = jLoading || mLoading;
+
+  const subTotal = round2(
+    (invoice?.items ?? []).reduce((s: number, it: any) => s + (Number(it.qty) || 0) * (Number(it.rate) || 0), 0)
+  );
+  const gstTotal = round2(
+    (invoice?.items ?? []).reduce((s: number, it: any) => {
+      const amt = (Number(it.qty) || 0) * (Number(it.rate) || 0);
+      return s + amt * ((Number(it.gstRate) || 0) / 100);
+    }, 0)
+  );
+  const discount = Number(invoice?.discount) || 0;
+  const shipping = Number(invoice?.shipping) || 0;
+  const grandTotal = round2(subTotal - discount + shipping + gstTotal);
+
+  async function handlePost() {
+    if (!invoiceId) return;
+    setPosting(true);
+    try {
+      await postInvoice("default", invoiceId);
+      // status will update live through onSnapshot()
+    } catch (e: any) {
+      // status will likely become FAILED and postError filled by function
+      console.error(e);
+    } finally {
+      setPosting(false);
     }
-    
-    return finalString + ' Only.';
-};
+  }
 
-const formatIndianCurrency = (num: number) => {
-  return new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    minimumFractionDigits: 2,
-  }).format(num || 0);
-};
-
-export default function InvoiceViewPage() {
-    const searchParams = useSearchParams();
-    const invoiceId = searchParams.get('id'); // e.g., SI-2601-0001
-    const pdfRef = React.useRef<HTMLDivElement>(null);
-    const [isDownloading, setIsDownloading] = React.useState(false);
-    
-    const firestore = useFirestore();
-
-    const invoiceQuery = React.useMemo(() => {
-        if (!invoiceId || !firestore) return null;
-        return query(
-            collection(firestore, 'salesInvoices'),
-            where('invoiceNumber', '==', invoiceId),
-            limit(1)
-        );
-    }, [invoiceId, firestore]);
-
-    const { data: invoiceResult, loading: invoiceLoading } = useCollection<SalesInvoice>(invoiceQuery);
-    const invoiceData = invoiceResult?.[0]; // Get the first (and only) result
-
-    const { data: companyInfo, loading: companyInfoLoading } = useDoc<CompanyInfo>(doc(firestore, 'company', 'info'));
-    
-    const { data: customerData, loading: customerLoading } = useDoc<Party>(
-        invoiceData?.customerId ? doc(firestore, 'parties', invoiceData.customerId) : null
-    );
-
-    const { data: creatorData, loading: creatorLoading } = useDoc<UserProfile>(
-        (invoiceData as any)?.createdByUid ? doc(firestore, 'users', (invoiceData as any).createdByUid) : null
-    );
-
-    const bankLedgerQuery = React.useMemo(() => {
-        if (!companyInfo?.primaryUpiId || !firestore) return null;
-        return query(
-            collection(firestore, 'coa_ledgers'),
-            where('bank.upiId', '==', companyInfo.primaryUpiId),
-            limit(1)
-        );
-    }, [companyInfo, firestore]);
-
-    const { data: bankLedgerResult, loading: bankLedgerLoading } = useCollection<CoaLedger>(bankLedgerQuery);
-    const bankDetails = bankLedgerResult?.[0]?.bank;
-    
-    const companyAddress = companyInfo?.addresses?.[0] as Address | undefined;
-    const customerAddress = customerData?.address;
-
-    const isInterstate = React.useMemo(() => {
-        const companyGstin = companyInfo?.taxInfo?.gstin?.value;
-        if (!companyGstin || !customerData?.gstin) return false;
-        return !companyGstin.startsWith(customerData.gstin.substring(0, 2));
-    }, [companyInfo, customerData]);
-    
-    const calculations = React.useMemo(() => {
-        if (!invoiceData?.items) return { items: [], subtotal: 0, cgst: 0, sgst: 0, igst: 0, grandTotal: 0, totalDiscountAmount: 0, taxableAmount: 0 };
-    
-        const items = invoiceData.items;
-        const subtotal = items.reduce((acc: number, item: any) => acc + (item.rate * item.quantity), 0);
-        const totalDiscountAmount = invoiceData.discount || 0;
-        const taxableAmount = subtotal - totalDiscountAmount;
-
-        const totalGst = items.reduce((acc: number, item: any) => {
-            const itemSubtotal = item.rate * item.quantity;
-            const itemDiscount = subtotal > 0 ? itemSubtotal * (totalDiscountAmount / subtotal) : 0;
-            const discountedAmount = itemSubtotal - itemDiscount;
-            return acc + (discountedAmount * ((item.gstRate || 18) / 100));
-        }, 0);
-    
-        const grandTotal = taxableAmount + totalGst;
-        const cgst = isInterstate ? 0 : totalGst / 2;
-        const sgst = isInterstate ? 0 : totalGst / 2;
-        const igst = isInterstate ? totalGst : 0;
-        
-        return { items, subtotal, totalDiscountAmount, taxableAmount, cgst, sgst, igst, grandTotal };
-      }, [invoiceData, isInterstate]);
-
-
-    const handleDownloadPdf = async () => {
-        const element = pdfRef.current;
-        if (!element) return;
-        setIsDownloading(true);
-        
-        await new Promise(resolve => setTimeout(resolve, 100));
-
-        const canvas = await html2canvas(element, { 
-            scale: 3, 
-            useCORS: true,
-            logging: false,
-            backgroundColor: '#ffffff'
-        });
-        
-        const imgData = canvas.toDataURL('image/png', 1.0);
-        const pdf = new jsPDF('p', 'mm', 'a4');
-        const pdfWidth = pdf.internal.pageSize.getWidth();
-        const imgProps = pdf.getImageProperties(imgData);
-        const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
-        
-        pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-        pdf.save(`Invoice-${invoiceData.invoiceNumber || invoiceId}.pdf`);
-        setIsDownloading(false);
-    };
-
-    const isLoading = invoiceLoading || companyInfoLoading || customerLoading || bankLedgerLoading || creatorLoading;
-
-    if (isLoading) {
-        return (
-            <div className="flex h-screen items-center justify-center">
-                <Loader2 className="animate-spin h-8 w-8" />
+  return (
+    <div className="p-4 space-y-4">
+      <PageHeader title="Sales Invoice Detail" />
+      <Card className="rounded-2xl">
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle className="text-xl">Sales Invoice</CardTitle>
+            <div className="text-xs text-muted-foreground mt-1">
+              ID: {invoiceId} {invoice?.invoiceNo ? ` • No: ${invoice.invoiceNo}` : ""}
             </div>
-        )
-    }
-    
-    if (!invoiceData) {
-        return (
-             <div className="p-8 text-center space-y-4">
-                <h1 className="text-2xl font-bold text-destructive">Invoice Data Not Found</h1>
-                <p className="text-muted-foreground">Could not load the invoice details for ID: {invoiceId}.</p>
-                <Button variant="outline" onClick={() => window.history.back()}>
-                    <ArrowLeft className="mr-2 h-4 w-4" /> Go Back
-                </Button>
-            </div>
-        );
-    }
+          </div>
+          <InvoiceStatusChip status={status} />
+        </CardHeader>
 
-    const { grandTotal, subtotal, totalDiscountAmount, taxableAmount, cgst, sgst, igst, items } = calculations;
-    const creatorName = creatorData?.businessName || creatorData?.name || 'Authorized Signatory';
+        <CardContent className="space-y-4">
+          {loading && <div className="text-sm flex items-center gap-2"><Loader2 className="animate-spin h-4 w-4" />Loading...</div>}
+          {error && <div className="text-sm text-destructive">{String(error?.message ?? error)}</div>}
 
-    return (
-        <>
-            <PageHeader title={`Tax Invoice: ${invoiceId}`}>
-                <Button onClick={handleDownloadPdf} disabled={isDownloading}>
-                    {isDownloading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
-                    Download PDF
-                </Button>
-            </PageHeader>
-            <Card>
-                <CardContent>
-                    <div className="max-w-4xl mx-auto p-8 font-sans" ref={pdfRef}>
-                        <header className="flex justify-between items-start border-b pb-4">
-                            <div>
-                                {companyInfo?.logo && (
-                                    <Image 
-                                        src={companyInfo.logo} 
-                                        alt="Company Logo" 
-                                        width={175} 
-                                        height={40} 
-                                        className="object-contain"
-                                        crossOrigin="anonymous"
-                                    />
-                                )}
-                            </div>
-                            <div className="text-right">
-                                <h1 className="text-2xl font-bold text-primary">{companyInfo?.companyName}</h1>
-                                <p className="text-sm text-muted-foreground">
-                                    {[companyAddress?.line1, companyAddress?.line2].filter(Boolean).join(', ')}
-                                </p>
-                                <p className="text-sm text-muted-foreground">
-                                    {companyAddress?.city && `${companyAddress.city} - ${companyAddress.pin}, `}
-                                    {companyAddress?.district}, {companyAddress?.state}, {companyAddress?.country}
-                                </p>
-                                <p className="text-sm text-muted-foreground">{companyInfo?.contactEmail} | {companyInfo?.contactNumber}</p>
-                                <div className="text-xs md:text-sm mt-2 space-y-1">
-                                    <p><strong>GSTIN:</strong> {companyInfo?.taxInfo?.gstin?.value}</p>
-                                    <p><strong>CIN:</strong> {companyInfo?.taxInfo?.cin?.value}</p>
-                                </div>
-                            </div>
-                        </header>
-        
-                        <section className="my-6">
-                             <h2 className="text-right text-lg font-bold mb-4 underline">TAX INVOICE</h2>
-                            <div className="flex flex-col md:flex-row justify-between gap-4">
-                                <div>
-                                    <h3 className="font-semibold text-sm">Billed To:</h3>
-                                    <p className="font-bold">{customerData?.name}</p>
-                                    <p className="text-sm">
-                                        {[customerAddress?.line1, customerAddress?.line2].filter(Boolean).join(', ')}
-                                    </p>
-                                    <p className="text-sm">
-                                        {customerAddress?.city && `${customerAddress.city} - ${customerAddress.pin}, `}
-                                        {customerAddress?.district}, {customerAddress?.state}, {customerAddress?.country}
-                                    </p>
-                                    <p className="text-sm">
-                                        {customerData?.contactPerson && `Attn: ${customerData.contactPerson}, `}
-                                        {customerData?.email} | {customerData?.phone}
-                                    </p>
-                                    <p className="text-sm font-semibold">GSTIN: {customerData?.gstin}</p>
-                                </div>
-                                <div className="md:text-right text-sm">
-                                    <p><strong>Invoice No:</strong> {invoiceData.invoiceNumber}</p>
-                                    <p><strong>Date:</strong> {format(new Date(invoiceData.date), 'dd/MM/yyyy')}</p>
-                                    <p><strong>Order No:</strong> {invoiceData.orderNumber}</p>
-                                </div>
-                            </div>
-                        </section>
-        
-                        <section className="overflow-x-auto">
-                            <Table>
-                                <TableHeader>
-                                    <TableRow className="bg-muted/50">
-                                        <TableHead>Sr.</TableHead>
-                                        <TableHead>Items</TableHead>
-                                        <TableHead>HSN</TableHead>
-                                        <TableHead className="text-right">QTY</TableHead>
-                                        <TableHead>Unit</TableHead>
-                                        <TableHead className="text-right">Rate</TableHead>
-                                        <TableHead className="text-right">Amount</TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {items.map((item: any, index: number) => (
-                                        <TableRow key={`${item.productId}-${index}`}>
-                                            <TableCell>{index + 1}</TableCell>
-                                            <TableCell className="font-medium">{item.name}</TableCell>
-                                            <TableCell>{item.hsn}</TableCell>
-                                            <TableCell className="text-right">{item.quantity}</TableCell>
-                                            <TableCell>pcs</TableCell>
-                                            <TableCell className="text-right">{formatIndianCurrency(item.rate)}</TableCell>
-                                            <TableCell className="text-right font-medium">{formatIndianCurrency(item.rate * item.quantity)}</TableCell>
-                                        </TableRow>
-                                    ))}
-                                </TableBody>
-                                <TableFooter>
-                                    <TableRow>
-                                        <TableCell colSpan={6} className="text-right font-semibold py-1">Subtotal</TableCell>
-                                        <TableCell className="text-right font-semibold py-1">{formatIndianCurrency(subtotal)}</TableCell>
-                                    </TableRow>
-                                     {totalDiscountAmount > 0 && (
-                                        <TableRow>
-                                            <TableCell colSpan={6} className="text-right text-green-600 py-1">Discount ({invoiceData.appliedCoupons?.map(c => c.code).join(', ') || ''})</TableCell>
-                                            <TableCell className="text-right text-green-600 py-1">- {formatIndianCurrency(totalDiscountAmount)}</TableCell>
-                                        </TableRow>
-                                    )}
-                                    <TableRow>
-                                        <TableCell colSpan={6} className="text-right font-semibold py-1">Taxable Value</TableCell>
-                                        <TableCell className="text-right font-semibold py-1">{formatIndianCurrency(taxableAmount)}</TableCell>
-                                    </TableRow>
-                                    {isInterstate ? (
-                                        <TableRow>
-                                            <TableCell colSpan={6} className="text-right py-1">IGST</TableCell>
-                                            <TableCell className="text-right py-1">{formatIndianCurrency(igst || 0)}</TableCell>
-                                        </TableRow>
-                                    ) : (
-                                        <>
-                                            <TableRow>
-                                                <TableCell colSpan={6} className="text-right py-1">CGST</TableCell>
-                                                <TableCell className="text-right py-1">{formatIndianCurrency(cgst)}</TableCell>
-                                            </TableRow>
-                                            <TableRow>
-                                                <TableCell colSpan={6} className="text-right py-1">SGST</TableCell>
-                                                <TableCell className="text-right py-1">{formatIndianCurrency(sgst)}</TableCell>
-                                            </TableRow>
-                                        </>
-                                    )}
-                                     <TableRow className="text-base bg-muted/50">
-                                        <TableCell colSpan={6} className="text-right font-bold py-2">Grand Total</TableCell>
-                                        <TableCell className="text-right font-bold py-2">{formatIndianCurrency(grandTotal)}</TableCell>
-                                    </TableRow>
-                                     <TableRow>
-                                        <TableCell colSpan={6} className="text-right font-semibold">Amount Paid</TableCell>
-                                        <TableCell className="text-right font-semibold text-green-600">{formatIndianCurrency(invoiceData.amountPaid || 0)}</TableCell>
-                                    </TableRow>
-                                     <TableRow className="text-base">
-                                        <TableCell colSpan={6} className="text-right font-bold">Balance Due</TableCell>
-                                        <TableCell className="text-right font-bold text-red-600">{formatIndianCurrency(invoiceData.balanceDue || 0)}</TableCell>
-                                    </TableRow>
-                                </TableFooter>
-                            </Table>
-                        </section>
-                        
-                        <div className="text-right my-4 text-xs md:text-sm font-semibold italic">
-                            Amount in words: {numberToWords(grandTotal)}
-                        </div>
-                        
-                        <footer className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-16">
-                            <div className="text-xs space-y-4">
-                                <div className="flex gap-4 p-3 bg-slate-50 rounded-lg">
-                                    {bankDetails && (
-                                        <div className="text-xs flex-1">
-                                            <h4 className="font-bold mb-2">Bank Details:</h4>
-                                            <p><strong>Bank:</strong> {bankDetails.bankName}</p>
-                                            <p><strong>A/C:</strong> {bankDetails.accountNumber}</p>
-                                            <p><strong>IFSC:</strong> {bankDetails.ifscCode}</p>
-                                            {(bankDetails as any).branch && <p><strong>Branch:</strong> {(bankDetails as any).branch}</p>}
-                                        </div>
-                                    )}
-                                    {companyInfo?.primaryUpiId && invoiceData.balanceDue > 0 && (
-                                        <div className="flex flex-col items-center">
-                                            <p className="text-[10px] font-bold mb-1">Scan to Pay Balance</p>
-                                            <QRCodeSVG value={`upi://pay?pa=${companyInfo.primaryUpiId}&pn=${encodeURIComponent(companyInfo.companyName || '')}&am=${invoiceData.balanceDue?.toFixed(2)}&cu=INR`} size={64} />
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                            <div className="text-right flex flex-col justify-end items-end">
-                                <p className="font-semibold text-sm mb-16">For, {companyInfo?.companyName}</p>
-                                <div className="h-16 w-32"></div>
-                                <Separator className="w-full max-w-[200px] ml-auto"/>
-                                <p className="text-xs pt-1">Authorized Signatory ({creatorName})</p>
-                            </div>
-                        </footer>
+          {invoice && (
+            <>
+              {/* Header */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-sm">
+                <div className="border rounded-xl p-3">
+                  <div className="text-muted-foreground text-xs">Invoice Date</div>
+                  <div className="font-medium">{invoice.invoiceDate ?? "-"}</div>
+                </div>
+                <div className="border rounded-xl p-3">
+                  <div className="text-muted-foreground text-xs">Customer</div>
+                  <div className="font-medium">{invoice.customerId ?? "-"}</div>
+                </div>
+                <div className="border rounded-xl p-3">
+                  <div className="text-muted-foreground text-xs">Warehouse</div>
+                  <div className="font-medium">{invoice.warehouseId ?? "-"}</div>
+                </div>
+                <div className="border rounded-xl p-3">
+                  <div className="text-muted-foreground text-xs">Voucher</div>
+                  <div className="font-medium">{invoice.voucherId ?? "-"}</div>
+                </div>
+              </div>
+
+              {/* Post error */}
+              {invoice.postError && (
+                <div className="border rounded-xl p-3 text-sm text-destructive bg-destructive/10">
+                  <div className="font-medium">Posting Error</div>
+                  <div className="mt-1 whitespace-pre-wrap">{invoice.postError}</div>
+                </div>
+              )}
+
+              {/* Items */}
+              <div className="border rounded-2xl p-3">
+                <div className="font-medium mb-2">Items</div>
+                <div className="space-y-2 text-sm">
+                  {(invoice.items ?? []).map((it: any, idx: number) => (
+                    <div key={idx} className="grid grid-cols-1 md:grid-cols-12 gap-2 border rounded-xl p-2">
+                      <div className="md:col-span-6">
+                        <div className="text-xs text-muted-foreground">Product</div>
+                        <div className="font-medium">{it.productId}</div>
+                      </div>
+                      <div className="md:col-span-2">
+                        <div className="text-xs text-muted-foreground">Qty</div>
+                        <div className="font-medium">{it.qty}</div>
+                      </div>
+                      <div className="md:col-span-2">
+                        <div className="text-xs text-muted-foreground">Rate</div>
+                        <div className="font-medium">{it.rate}</div>
+                      </div>
+                      <div className="md:col-span-2">
+                        <div className="text-xs text-muted-foreground">GST%</div>
+                        <div className="font-medium">{it.gstRate ?? 0}</div>
+                      </div>
                     </div>
-                </CardContent>
-            </Card>
-        </>
-      );
+                  ))}
+                </div>
+              </div>
+
+              {/* Totals */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div className="border rounded-xl p-3">
+                  <div className="text-xs text-muted-foreground">SubTotal</div>
+                  <div className="font-semibold">{subTotal.toFixed(2)}</div>
+                </div>
+                <div className="border rounded-xl p-3">
+                  <div className="text-xs text-muted-foreground">GST</div>
+                  <div className="font-semibold">{gstTotal.toFixed(2)}</div>
+                </div>
+                <div className="border rounded-xl p-3">
+                  <div className="text-xs text-muted-foreground">Grand Total</div>
+                  <div className="font-semibold">{grandTotal.toFixed(2)}</div>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="flex gap-2 flex-wrap">
+                {(status === "DRAFT" || status === "FAILED") && (
+                  <Button onClick={handlePost} disabled={posting}>
+                    {posting ? "Posting..." : status === "FAILED" ? "Retry Post" : "Post Invoice"}
+                  </Button>
+                )}
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Posting Preview */}
+      {status === "POSTED" && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <Card className="rounded-2xl">
+            <CardHeader>
+              <CardTitle className="text-lg">Journal Entries</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm">
+              {jLoading && <div className="text-muted-foreground">Loading...</div>}
+              {jErr && <div className="text-destructive">Error: {jErr.message}</div>}
+              {journalLines.length === 0 && !jLoading && <div className="text-muted-foreground">No journal lines found.</div>}
+              {journalLines.map((l) => (
+                <div key={l.id} className="border rounded-xl p-2">
+                  <div className="text-xs text-muted-foreground">Line {l.lineNo}</div>
+                  <div className="font-medium">Ledger: {l.ledgerId}</div>
+                  <div className="flex justify-between mt-1">
+                    <span>DR: {Number(l.dr || 0).toFixed(2)}</span>
+                    <span>CR: {Number(l.cr || 0).toFixed(2)}</span>
+                  </div>
+                  {l.narration ? <div className="text-xs text-muted-foreground mt-1">{l.narration}</div> : null}
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+
+          <Card className="rounded-2xl">
+            <CardHeader>
+              <CardTitle className="text-lg">Stock Movements</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm">
+              {mLoading && <div className="text-muted-foreground">Loading...</div>}
+              {mErr && <div className="text-destructive">Error: {mErr.message}</div>}
+              {movements.length === 0 && !mLoading && <div className="text-muted-foreground">No stock movements found.</div>}
+              {movements.map((m) => (
+                <div key={m.id} className="border rounded-xl p-2">
+                  <div className="flex justify-between">
+                    <span className="font-medium">{m.type}</span>
+                    <span className="text-muted-foreground">Qty: {m.qty}</span>
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-1">
+                    Product: {m.productId} • Warehouse: {m.warehouseId}
+                  </div>
+                  {m.note ? <div className="text-xs text-muted-foreground mt-1">{m.note}</div> : null}
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+    </div>
+  );
 }
