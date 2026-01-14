@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -15,7 +16,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import type { CoaGroup, CoaLedger, CoaNature } from '@/lib/types';
+import type { CoaGroup, CoaLedger, CoaNature } from '@/features/finance/types/finance.types';
 import {
   Select,
   SelectContent,

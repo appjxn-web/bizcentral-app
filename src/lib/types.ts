@@ -1,8 +1,5 @@
 
 
-'use client';
-
-import type { Timestamp } from 'firebase/firestore';
 import type { UserProfile, UserRole } from '@/features/users/types/users.types';
 import type { CoaGroup, CoaLedger, JournalVoucher } from '@/features/finance/types/finance.types';
 
@@ -63,7 +60,7 @@ export interface Review {
   userAvatar: string;
   rating: number;
   comment: string;
-  createdAt: Timestamp;
+  createdAt: any;
 }
 
 export type OfferStatus = 'Active' | 'Expired' | 'Upcoming' | 'Draft';
@@ -103,9 +100,9 @@ export interface StockTransferRequest {
       quantity: number;
   }[];
   status: 'Pending Approval' | 'Approved' | 'Rejected' | 'Shipped';
-  createdAt: Timestamp;
-  approvedAt?: Timestamp;
-  shippedAt?: Timestamp;
+  createdAt: any;
+  approvedAt?: any;
+  shippedAt?: any;
   notes?: string;
 }
 
@@ -146,7 +143,7 @@ export interface PaymentSubmission {
   transactionDetails?: string;
   proofUrl?: string;
   status: 'Pending' | 'Approved' | 'Rejected';
-  submittedAt: Timestamp;
+  submittedAt: any;
   assignedToUid: string | null;
 }
 
@@ -657,8 +654,8 @@ export interface ReimbursementRequest {
 
 
 export interface PunchLog {
-  inTime: Timestamp;
-  outTime: Timestamp | null;
+  inTime: any;
+  outTime: any | null;
   type: 'Office' | 'Field';
   isApproved?: boolean;
   inLocation?: { lat: number; lon: number };
@@ -940,7 +937,7 @@ export interface SupportCallbackRequest {
   topic: string;
   message?: string;
   status: 'NEW' | 'CALLED' | 'CLOSED';
-  createdAt: Timestamp;
+  createdAt: any;
   createdByUid: string;
 }
       

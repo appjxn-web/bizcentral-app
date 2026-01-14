@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -23,7 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { CoaGroup, CoaNature } from '@/lib/types';
+import { CoaGroup, CoaNature } from '@/features/finance/types/finance.types';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
 interface AddGroupDialogProps {

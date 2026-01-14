@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -21,7 +22,8 @@ import {
   TableFooter,
 } from '@/components/ui/table';
 import { Landmark, Loader2, PlusCircle, ChevronDown, ChevronRight, Download } from 'lucide-react';
-import type { CoaGroup, CoaLedger, JournalVoucher, Product, WorkOrder, Order, SalesInvoice, Party } from '@/lib/types';
+import type { CoaGroup, CoaLedger, JournalVoucher } from '@/features/finance/types/finance.types';
+import type { Product, WorkOrder, Order, SalesInvoice, Party } from '@/lib/types';
 import { AddLedgerAccountDialog } from './_components/add-ledger-account-dialog';
 import { useFirestore, useCollection, useUser } from '@/firebase';
 import { collection, query, orderBy, doc, Timestamp, where } from 'firebase/firestore';
