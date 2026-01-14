@@ -602,14 +602,17 @@ export const onPaymentApproved = onDocumentUpdated({ document: "paymentSubmissio
   if (before.status !== "Approved" && after.status === "Approved") {
     // Audit Log
     try {
-        const actor = after.recordedByUid ? await admin.auth().getUser(after.recordedByUid) : null;
-        await createAuditLog({
+        const recordedByUid = after.recordedByUid;
+        const actor = recordedByUid ? await admin.auth().getUser(recordedByUid) : null;
+        await (0, audit_1.createAuditLog)({
             entityType: 'paymentSubmissions',
             entityId: event.data.after.id,
             action: 'approve',
             actorUid: actor?.uid || 'system',
-            actorDisplayName: actor?.displayName || 'System',
-            changes: { before: before, after: after }
+            meta: {
+                actorDisplayName: actor?.displayName || 'System',
+                changes: { before, after }
+            }
         });
     } catch (auditError) {
         console.error("Failed to create audit log for payment approval:", auditError);
@@ -729,3 +732,11 @@ export const helloWorld = onCall({ region: "asia-south1" }, (request) => {
 
     
 
+
+    
+
+    
+
+    
+
+    

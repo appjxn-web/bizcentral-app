@@ -1,4 +1,5 @@
 
+
 // ✅ Use this SAME file content for BOTH paths:
 // 1) functions/src/index.ts
 // 2) src/functions/src/index.ts
@@ -608,19 +609,16 @@ export const onPaymentApproved = onDocumentUpdated({ document: "paymentSubmissio
     try {
         const recordedByUid = (after as any).recordedByUid as string | undefined;
         const actor = recordedByUid ? await admin.auth().getUser(recordedByUid) : null;
-
-        await createAuditLog({
-          companyId: (after as any).companyId || "unknown",
-          entityType: "paymentSubmissions",
-          entityId: event.data.after.id,
-          action: "approve",
-          actorUid: actor?.uid || "system",
-          meta: {
-            actorDisplayName: actor?.displayName || "System",
-            changes: { before, after },
-          },
+        await (0, audit_1.createAuditLog)({
+            entityType: 'paymentSubmissions',
+            entityId: event.data.after.id,
+            action: 'approve',
+            actorUid: actor?.uid || 'system',
+            meta: {
+                actorDisplayName: actor?.displayName || 'System',
+                changes: { before, after }
+            }
         });
-        
     } catch (auditError) {
         console.error("Failed to create audit log for payment approval:", auditError);
     }
