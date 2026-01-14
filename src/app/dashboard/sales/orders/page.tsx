@@ -79,6 +79,7 @@ import { useToast } from '@/hooks/use-toast';
 import { ref, uploadBytes, getDownloadURL, getStorage } from 'firebase/storage';
 import { Loader2 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { ordersRepository } from '@/features/sales/services/orders.repository';
 
 
 function getStatusBadgeVariant(status: Order['status'] | 'Refund Pending' | 'Refund Complete' | SalesInvoice['status']) {
@@ -474,17 +475,18 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
         const jvHistory = (allJournalVouchers || [])
             .filter(jv => (jv as any).orderId === order.id)
             .map(jv => {
-                 const creditEntry = jv.entries.find(e => e.accountId === customerParty?.coaLedgerId && e.credit && e.credit > 0);
-                 if (!creditEntry) return null;
-                 return {
+                const creditEntry = jv.entries.find(e => e.accountId === customerParty?.coaLedgerId && e.credit && e.credit > 0);
+                if (!creditEntry) return null;
+                return {
                     amount: creditEntry.credit || 0,
                     date: jv.createdAt.toDate(),
                     details: jv.narration,
                     status: 'Approved',
                     type: 'jv'
-                 }
+                };
             })
             .filter(Boolean) as any[];
+
 
         const pendingSubmissions = (paymentSubmissions || [])
             .filter(p => p.status === 'Pending')
@@ -737,21 +739,9 @@ function OrdersPageContent() {
   const { currentRole } = useRole();
   
   const ordersQuery = React.useMemo(() => {
-      if (!user?.uid || !currentRole) return null;
-      const ordersRef = collection(firestore, 'orders');
+    return ordersRepository.getOrdersQueryForUser(user?.uid, currentRole);
+  }, [user?.uid, currentRole]);
 
-      if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
-          return query(ordersRef, orderBy('createdAt', 'desc'));
-      }
-
-      if (currentRole === 'Partner') {
-          return query(ordersRef, where('assignedToUid', '==', user.uid), orderBy('createdAt', 'desc'));
-      }
-      
-      // Default to customer view
-      return query(ordersRef, where('userId', '==', user.uid), orderBy('createdAt', 'desc'));
-  }, [user?.uid, currentRole, firestore]);
-  
   const invoicesQuery = React.useMemo(() => {
       if (!user?.uid || !currentRole) return null;
       const invoicesRef = collection(firestore, 'salesInvoices');
@@ -908,5 +898,25 @@ export default function OrdersPage() {
 }
 
     
+```
+- src/app/login/layout.tsx:
+```tsx
+export default function Layout({children}: {children: React.ReactNode}) {
+  return (
+    <div className="flex min-h-screen w-full flex-col">
+      <main className="flex-1">{children}</main>
+    </div>
+  );
+}
 
-    
+```
+- src/app/signup/layout.tsx:
+```tsx
+export default function Layout({children}: {children: React.ReactNode}) {
+  return (
+    <div className="flex min-h-screen w-full flex-col">
+      <main className="flex-1">{children}</main>
+    </div>
+  );
+}
+```
