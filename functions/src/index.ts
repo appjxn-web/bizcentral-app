@@ -1,3 +1,4 @@
+
 // ✅ Use this SAME file content for BOTH paths:
 // 1) functions/src/index.ts
 // 2) src/functions/src/index.ts
@@ -169,7 +170,7 @@ export const verifyUpiPaymentAndCreateOrder = onCall(
 });
 
 
-export const handleOrderCreation = onDocumentCreated("orders/{orderId}", async (event) => {
+export const handleOrderCreation = onDocumentCreated({ document: "orders/{orderId}", region: "asia-south1" }, async (event) => {
   // This function is now completely empty. The logic has been centralized
   // in the `verifyUpiPaymentAndCreateOrder` callable function to prevent conflicts.
   // We keep the function definition here to avoid deployment errors if it's still
@@ -184,7 +185,7 @@ export const handleOrderCreation = onDocumentCreated("orders/{orderId}", async (
  * - COGS JV
  * - Updates source order status
  */
-export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}", async (event) => {
+export const onInvoiceCreated = onDocumentCreated({ document: "salesInvoices/{invoiceId}", region: "asia-south1" }, async (event) => {
   const snap = event.data;
   if (!snap) return;
 
@@ -301,7 +302,7 @@ export const onInvoiceCreated = onDocumentCreated("salesInvoices/{invoiceId}", a
   }
 });
 
-export const onCreditNoteCreated = onDocumentCreated("creditNotes/{noteId}", async (event) => {
+export const onCreditNoteCreated = onDocumentCreated({ document: "creditNotes/{noteId}", region: "asia-south1" }, async (event) => {
   const snap = event.data;
   if (!snap) return;
 
@@ -355,7 +356,7 @@ export const onCreditNoteCreated = onDocumentCreated("creditNotes/{noteId}", asy
   await batch.commit();
 });
 
-export const onDebitNoteCreated = onDocumentCreated("debitNotes/{noteId}", async (event) => {
+export const onDebitNoteCreated = onDocumentCreated({ document: "debitNotes/{noteId}", region: "asia-south1" }, async (event) => {
   const snap = event.data;
   if (!snap) return;
 
@@ -393,7 +394,7 @@ export const onDebitNoteCreated = onDocumentCreated("debitNotes/{noteId}", async
 });
 
 export const onStockTransfer = onDocumentUpdated(
-  "stockTransferRequests/{requestId}",
+  { document: "stockTransferRequests/{requestId}", region: "asia-south1" },
   async (event: FirestoreEvent<Change<DocumentSnapshot> | undefined, { requestId: string }>) => {
     if (!event.data?.after) return;
 
@@ -437,7 +438,7 @@ export const onStockTransfer = onDocumentUpdated(
   }
 );
 
-export const handleQuotationCreation = onDocumentCreated("quotations/{docId}", async (event) => {
+export const handleQuotationCreation = onDocumentCreated({ document: "quotations/{docId}", region: "asia-south1" }, async (event) => {
   const snapshot = event.data;
   if (!snapshot) return;
 
@@ -464,11 +465,11 @@ export const handleQuotationCreation = onDocumentCreated("quotations/{docId}", a
   }
 });
 
-export const handleWorkOrderCreation = onDocumentCreated("workOrders/{id}", () => {});
-export const handleVoucherCreation = onDocumentCreated("journalVouchers/{id}", () => {});
+export const handleWorkOrderCreation = onDocumentCreated({ document: "workOrders/{id}", region: "asia-south1" }, () => {});
+export const handleVoucherCreation = onDocumentCreated({ document: "journalVouchers/{id}", region: "asia-south1" }, () => {});
 
 export const handleOrderUpdates = onDocumentUpdated(
-  "orders/{orderId}",
+  { document: "orders/{orderId}", region: "asia-south1" },
   async (event: FirestoreEvent<Change<DocumentSnapshot> | undefined, { orderId: string }>) => {
     if (!event.data) return;
 
@@ -556,7 +557,7 @@ export const handleOrderUpdates = onDocumentUpdated(
 );
 
 export const onMilestoneUpdate = onDocumentWritten(
-  "goals/{goalId}/milestones/{milestoneId}",
+  { document: "goals/{goalId}/milestones/{milestoneId}", region: "asia-south1" },
   async (event: FirestoreEvent<Change<DocumentSnapshot> | undefined>) => {
     const goalId = (event.params as any).goalId;
     const goalRef = db.collection("goals").doc(goalId);
@@ -603,9 +604,9 @@ export const onMilestoneUpdate = onDocumentWritten(
   }
 );
 
-export const onGoalUpdate = onDocumentCreated("goalUpdates/{updateId}", async () => {});
+export const onGoalUpdate = onDocumentCreated({ document: "goalUpdates/{updateId}", region: "asia-south1" }, async () => {});
 
-export const onPaymentApproved = onDocumentUpdated("paymentSubmissions/{id}", async (event) => {
+export const onPaymentApproved = onDocumentUpdated({ document: "paymentSubmissions/{id}", region: "asia-south1" }, async (event) => {
   if (!event.data) return;
 
   const after = event.data.after.data() as PaymentSubmission;
@@ -724,6 +725,8 @@ export const helloWorld = onCall({ region: "asia-south1" }, (request) => {
     console.log("Hello from Firebase!");
     return { message: "Hello from Firebase!" };
   });
+
+    
 
     
 
