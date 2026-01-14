@@ -1,639 +1,317 @@
 
-
 'use client';
 
 import * as React from 'react';
+import { useForm, useFieldArray } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
+import { salesInvoiceSchema, type SalesInvoiceInput } from '@/features/sales/schemas/sales.schema';
+import { salesInvoiceDraftRepo } from '@/features/sales/services/sales-invoice-draft.repo';
+import { postInvoice } from '@/features/sales/services/post-invoice.client';
+import { InvoiceStatusChip } from '@/features/sales/components/invoice-status-chip';
+
 import { PageHeader } from '@/components/page-header';
 import { Button } from '@/components/ui/button';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { PlusCircle, Save, Trash2, Check, ChevronsUpDown, CalendarClock, Loader2, DollarSign } from 'lucide-react';
+import { PlusCircle, Save, Trash2, Check, ChevronsUpDown, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import type { Party, Product, UserRole, SalesOrder, Quotation, CoaLedger, SalesInvoice, CompanyInfo, PartyType, CoaNature, Offer, UserProfile, JournalVoucher, PaymentSubmission } from '@/lib/types';
-import { format, startOfMonth } from 'date-fns';
+import type { Party, Product, UserRole } from '@/lib/types';
+import { format } from 'date-fns';
 import { Separator } from '@/components/ui/separator';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from '@/components/ui/command';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-  DialogFooter,
-  DialogClose,
-  DialogDescription,
-} from '@/components/ui/dialog';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { cn } from '@/lib/utils';
-import { useRole } from '@/app/dashboard/_components/role-provider';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useFirestore, useCollection, useUser, useDoc } from '@/firebase';
-import { collection, doc, addDoc, serverTimestamp, setDoc, query, where, orderBy, limit, getDocs, updateDoc, writeBatch } from 'firebase/firestore';
-import { salesService } from '@/features/sales/services/sales.service';
-import { estimateDispatchDate, type EstimateDispatchDateOutput } from '@/ai/flows/estimate-dispatch-date-flow';
-import { QRCodeSVG } from 'qrcode.react';
+import { useFirestore, useCollection, useUser } from '@/firebase';
+import { collection, query, where } from 'firebase/firestore';
 
-interface OrderItem {
-  id: string;
-  productId: string;
-  name: string;
-  hsn: string;
-  quantity: number;
-  unit: string;
-  discount: number;
-  rate: number;
-  price: number;
-  gstRate: number;
-  amount: number;
-  category?: string;
-}
-
-const companyGstin = '08AAFCJ5369P1ZR'; // Mock company GSTIN
+const companyGstin = '08AAFCJ5369P1ZR';
 
 const formatIndianCurrency = (num: number) => {
   return new Intl.NumberFormat('en-IN', {
     style: 'currency',
     currency: 'INR',
     minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
   }).format(num);
 };
 
-const getMaxDiscount = (role: UserRole, category: string): number => {
-    if (role === 'Admin' || role === 'CEO') {
-        return 100;
-    }
-    if (role === 'Sales Manager') {
-        return 20;
-    }
-    if (role === 'Partner') {
-        return 15;
-    }
-    if (role === 'Manager') { 
-        if (category === 'Electronics') return 12;
-        if (category === 'Furniture') return 15;
-        return 10;
-    }
-    if (role === 'Employee') { 
-        if (category === 'Electronics') return 10;
-        if (category === 'Furniture') return 13;
-        return 8;
-    }
-    return 5;
-};
+type FormValues = SalesInvoiceInput;
 
-interface PartnerStockItem {
-  id: string;
-  quantity: number;
-}
+const defaultValues: Omit<FormValues, 'invoiceNo'> & { invoiceNo: string | undefined } = {
+  invoiceDate: new Date().toISOString().slice(0, 10),
+  invoiceNo: undefined, // Let the system generate it
+  customerId: "",
+  warehouseId: "main_warehouse", // Default warehouse
+  items: [{ productId: "", qty: 1, rate: 0, gstRate: 18 }],
+  discount: 0,
+  shipping: 0,
+  note: "",
+};
 
 
 export default function CreateInvoicePage() {
-  const { toast } = useToast();
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const { currentRole } = useRole();
-  const firestore = useFirestore();
-  const { user: authUser } = useUser();
-  
-  const [selectedPartyId, setSelectedPartyId] = React.useState<string | null>(null);
-  const [invoiceDate, setInvoiceDate] = React.useState(format(new Date(), 'yyyy-MM-dd'));
-  const [items, setItems] = React.useState<OrderItem[]>([]);
-  const [terms, setTerms] = React.useState('Payment due within 30 days.');
-  const [bookingAmount, setBookingAmount] = React.useState(0);
-  const [openCustomerCombobox, setOpenCustomerCombobox] = React.useState(false);
-  const [isPaymentDialogOpen, setIsPaymentDialogOpen] = React.useState(false);
-  const [salesOrderNumber, setSalesOrderNumber] = React.useState('');
-  const [orderDocumentId, setOrderDocumentId] = React.useState<string | null>(null);
-  const [assignedToUid, setAssignedToUid] = React.useState<string | null>(null);
-  
-  const { data: allProducts, loading: productsLoading } = useCollection<Product>(query(collection(firestore, 'products'), where('saleable', '==', true)));
-  const { data: settingsData } = useDoc<any>(doc(firestore, 'company', 'settings'));
+    const { toast } = useToast();
+    const router = useRouter();
+    const firestore = useFirestore();
+    const { user: authUser } = useUser();
+    const searchParams = useSearchParams();
+    const fromOrderId = searchParams.get('orderId');
 
-  const [paymentDate, setPaymentDate] = React.useState(format(new Date(), 'yyyy-MM-dd'));
-  const [paymentMode, setPaymentMode] = React.useState('UPI');
-  const [paymentAmount, setPaymentAmount] = React.useState('');
-  const [paymentRef, setPaymentRef] = React.useState('');
-  const [paymentDetails, setPaymentDetails] = React.useState('');
-  const [bankAccountId, setBankAccountId] = React.useState('');
-  
-  const [dispatchEstimate, setDispatchEstimate] = React.useState<EstimateDispatchDateOutput | null>(null);
-  const [isEstimating, setIsEstimating] = React.useState(false);
-  const [openProductCombobox, setOpenProductCombobox] = React.useState<string | null>(null);
-  const [isFromSalesOrder, setIsFromSalesOrder] = React.useState(false);
-
-  const { data: parties, loading: partiesLoading } = useCollection<Party>(collection(firestore, 'parties'));
-  const [selectedParty, setSelectedParty] = React.useState<Party | null>(null);
-  
-  const [appliedCoupons, setAppliedCoupons] = React.useState<Offer[]>([]);
-  
-  const partnerStockQuery = (currentRole === 'Partner' && authUser) ? query(collection(firestore, 'users', authUser.uid, 'stock')) : null;
-  const { data: partnerStock, loading: partnerStockLoading } = useCollection<PartnerStockItem>(partnerStockQuery);
-
-  const saleableProducts = React.useMemo(() => {
-    if (!allProducts) return [];
+    const { data: parties, loading: partiesLoading } = useCollection<Party>(query(collection(firestore, 'parties'), where('type', '==', 'Customer')));
+    const { data: products, loading: productsLoading } = useCollection<Product>(query(collection(firestore, 'products'), where('saleable', '==', true)));
     
-    if (currentRole === 'Partner' && partnerStock) {
-      const partnerStockMap = new Map(partnerStock.map(item => [item.id, item.quantity]));
-      return allProducts
-        .filter(p => partnerStockMap.has(p.id))
-        .map(p => ({
-          ...p,
-          openingStock: partnerStockMap.get(p.id) || 0,
-        }));
-    }
-    
-    return allProducts;
-  }, [allProducts, partnerStock, currentRole]);
-  
-  React.useEffect(() => {
-    if (parties && selectedPartyId) {
-      setSelectedParty(parties.find(p => p.id === selectedPartyId) || null);
-    }
-  }, [selectedPartyId, parties]);
-  
-   React.useEffect(() => {
-    const loadData = async () => {
-        const rawData = localStorage.getItem('invoiceDataToCreate');
-        if (rawData && allProducts && allProducts.length > 0 && authUser) {
-          setIsFromSalesOrder(true);
-          const data = JSON.parse(rawData);
-          
-          setSelectedPartyId(data.customerId || data.userId);
-          setOrderDocumentId(data.id);
-          setAssignedToUid(data.assignedToUid || (currentRole === 'Partner' ? authUser.uid : null));
+    // UI State
+    const [invoiceId, setInvoiceId] = React.useState<string | null>(null);
+    const [status, setStatus] = React.useState<"DRAFT" | "POSTING" | "POSTED" | "FAILED">("DRAFT");
+    const [postError, setPostError] = React.useState<string | null>(null);
+    const [busy, setBusy] = React.useState(false);
+    const [openCustomerCombobox, setOpenCustomerCombobox] = React.useState(false);
 
-          const mappedItems = data.items.map((item: any, i: number) => {
-              const product = allProducts.find(p => p.id === item.productId);
-              const rate = item.price || item.rate || 0;
-              const quantity = item.quantity || item.qty || 1;
-              
-              return {
-                  id: `item-${Date.now()}-${i}`,
-                  productId: item.productId,
-                  name: item.name || product?.name,
-                  hsn: product?.hsn || item.hsn || '',
-                  quantity: quantity,
-                  unit: product?.unit || item.unit || 'pcs',
-                  rate: rate,
-                  price: rate,
-                  gstRate: 18,
-                  amount: rate * quantity,
-                  category: product?.category || item.category,
-                  discount: 0,
-              };
-          });
-
-          setItems(mappedItems);
-          setOverallDiscount(data.overallDiscount || 0);
-          setSalesOrderNumber(data.orderNumber || data.id);
-          setBookingAmount(data.paymentReceived || 0);
-          setPaymentDetails(data.paymentDetails || '');
-          setAppliedCoupons(data.appliedCoupons || []);
-          setInvoiceDate(format(new Date(), 'yyyy-MM-dd'));
-          
-          localStorage.removeItem('invoiceDataToCreate');
-          toast({ title: "Pre-filled from Sales Order" });
-        }
-    };
-
-    loadData();
-  }, [allProducts, authUser, currentRole, toast]);
-  
-    React.useEffect(() => {
-    const fetchEstimate = async () => {
-        if (items.length > 0) {
-            setIsEstimating(true);
-            try {
-                const estimateInput = {
-                    items: items.map(item => ({
-                        productId: item.productId,
-                        quantity: item.quantity,
-                        category: item.category,
-                    }))
-                };
-                const result = await estimateDispatchDate(estimateInput);
-                setDispatchEstimate(result);
-            } catch (error) {
-                console.error("Error fetching dispatch estimate:", error);
-                setDispatchEstimate(null); // Clear previous estimate on error
-            } finally {
-                setIsEstimating(false);
-            }
-        } else {
-            setDispatchEstimate(null);
-        }
-    };
-
-    if (items.length > 0) {
-      fetchEstimate();
-    }
-  }, [items]);
-
-
-  const isInterstate = React.useMemo(() => {
-    if (!selectedParty?.gstin) return false;
-    return !companyGstin.startsWith(selectedParty.gstin.substring(0, 2));
-  }, [selectedParty]);
-  
-  const [overallDiscount, setOverallDiscount] = React.useState(0);
-
-  const calculations = React.useMemo(() => {
-    const subtotal = items.reduce((acc, item) => acc + (item.quantity * item.rate), 0);
-    const totalDiscountAmount = subtotal * (overallDiscount / 100);
-    const taxableAmount = subtotal - totalDiscountAmount;
-    const totalGst = items.reduce((acc, item) => {
-        const itemSubtotal = item.rate * item.quantity;
-        const itemDiscount = itemSubtotal * (overallDiscount / 100);
-        const discountedAmount = itemSubtotal - itemDiscount;
-        return acc + (discountedAmount * (item.gstRate / 100));
-    }, 0);
-
-    const grandTotal = taxableAmount + totalGst;
-    const cgst = isInterstate ? 0 : totalGst / 2;
-    const sgst = isInterstate ? 0 : totalGst / 2;
-    const igst = isInterstate ? totalGst : 0;
-    
-    return { subtotal, totalDiscountAmount, taxableAmount, grandTotal, totalGst, cgst, sgst, igst };
-  }, [items, isInterstate, overallDiscount]);
-  
-  const maxAllowedDiscount = React.useMemo(() => {
-    if (isFromSalesOrder) {
-        return overallDiscount; // Lock discount to what came from the sales order
-    }
-    const userRole = currentRole;
-    if (!userRole) return 0;
-    
-    if (!items.length) return getMaxDiscount(userRole, '');
-    
-    const maxDiscounts = items.map(item => {
-        const product = saleableProducts.find(p => p.id === item.productId);
-        return getMaxDiscount(userRole, product?.category || '');
+    const form = useForm<FormValues>({
+        resolver: zodResolver(salesInvoiceSchema),
+        defaultValues: defaultValues as FormValues,
+        mode: "onChange",
     });
 
-    return Math.min(...maxDiscounts);
-  }, [items, currentRole, saleableProducts, isFromSalesOrder, overallDiscount]);
+    const { fields, append, remove } = useFieldArray({
+        control: form.control,
+        name: "items",
+    });
 
-  const isSaveDisabled = React.useMemo(() => {
-    return overallDiscount > maxAllowedDiscount;
-  }, [overallDiscount, maxAllowedDiscount]);
+    const watchedItems = form.watch("items");
+    const watchedDiscount = form.watch("discount");
+    const watchedShipping = form.watch("shipping");
+    const selectedPartyId = form.watch("customerId");
+    const selectedParty = React.useMemo(() => parties?.find(p => p.id === selectedPartyId), [selectedPartyId, parties]);
+    const isInterstate = React.useMemo(() => selectedParty?.gstin && !companyGstin.startsWith(selectedParty.gstin.substring(0, 2)), [selectedParty]);
+    
+    const calculations = React.useMemo(() => {
+        const subtotal = watchedItems.reduce((acc, item) => acc + (Number(item.qty) || 0) * (Number(item.rate) || 0), 0);
+        const totalDiscountAmount = subtotal * ((Number(watchedDiscount) || 0) / 100);
+        const taxableAmount = subtotal - totalDiscountAmount;
+        const totalGst = watchedItems.reduce((acc, item) => {
+            const itemSubtotal = (Number(item.qty) || 0) * (Number(item.rate) || 0);
+            const itemDiscount = itemSubtotal * ((Number(watchedDiscount) || 0) / 100);
+            const discountedAmount = itemSubtotal - itemDiscount;
+            return acc + (discountedAmount * ((Number(item.gstRate) || 0) / 100));
+        }, 0);
+        const grandTotal = taxableAmount + totalGst + (Number(watchedShipping) || 0);
+        const cgst = isInterstate ? 0 : totalGst / 2;
+        const sgst = isInterstate ? 0 : totalGst / 2;
+        const igst = isInterstate ? totalGst : 0;
+        return { subtotal, totalDiscountAmount, taxableAmount, grandTotal, totalGst, cgst, sgst, igst };
+    }, [watchedItems, watchedDiscount, watchedShipping, isInterstate]);
 
 
-  const canReceiveCash = React.useMemo(() => {
-    return currentRole !== 'Customer';
-  }, [currentRole]);
-
-  const handleAddItem = () => {
-    const newItem: OrderItem = {
-      id: `item-${Date.now()}`,
-      productId: '',
-      name: '',
-      hsn: '',
-      quantity: 1,
-      unit: 'pcs',
-      discount: 0,
-      rate: 0,
-      price: 0,
-      gstRate: 18,
-      amount: 0,
-    };
-    setItems([...items, newItem]);
-  };
-  
-  const handleItemChange = (itemId: string, field: keyof Omit<OrderItem, 'id' | 'discount'>, value: any) => {
-    setItems(prevItems => {
-        const newItems = prevItems.map(item => {
-            if (item.id === itemId) {
-                const updatedItem = { ...item, [field]: value };
-                let product: Product | undefined;
-                
-                if (field === 'productId') {
-                    const product = saleableProducts.find(p => p.id === value);
-                    if (product) {
-                        updatedItem.name = product.name;
-                        updatedItem.hsn = product.hsn || product.id.slice(0,4).toUpperCase();
-                        updatedItem.rate = product.price;
-                        updatedItem.price = product.price;
-                        updatedItem.gstRate = 18; 
-                        updatedItem.category = product.category;
-                    }
+    async function saveDraft() {
+        setBusy(true);
+        setPostError(null);
+        try {
+            const values = salesInvoiceSchema.parse(form.getValues());
+            if (!invoiceId) {
+                const id = await salesInvoiceDraftRepo.createDraft("default", values, authUser!.uid);
+                setInvoiceId(id);
+                // Also update the form with the generated invoice number if it's empty
+                 if (!values.invoiceNo) {
+                    form.setValue('invoiceNo', id);
                 }
-                
-                updatedItem.amount = updatedItem.quantity * updatedItem.rate;
-                return updatedItem;
+                toast({ title: "Draft Saved", description: "Your invoice has been saved as a draft." });
+            } else {
+                await salesInvoiceDraftRepo.updateDraft("default", invoiceId, values, authUser!.uid);
+                toast({ title: "Draft Updated", description: "Your changes have been saved." });
             }
-            return item;
-        });
-        return newItems;
-    });
-  };
-
-  const handleRemoveItem = (itemId: string) => {
-    setItems(items.filter(item => item.id !== itemId));
-  };
-  
-  const handleSaveAndPostInvoice = async () => {
-    if (isSaveDisabled) {
-      toast({ variant: 'destructive', title: 'Discount Exceeded', description: `Your maximum allowed discount is ${maxAllowedDiscount}%.` });
-      return;
-    }
-    if (!selectedPartyId || items.length === 0 || !authUser) {
-      toast({ variant: 'destructive', title: 'Missing Information', description: 'Please select a customer and add items.' });
-      return;
-    }
-  
-    const customer = parties?.find(p => p.id === selectedPartyId);
-    if (!customer) {
-        toast({ variant: 'destructive', title: 'Customer Not Found' });
-        return;
+            setStatus("DRAFT");
+        } catch (e: any) {
+            setPostError(e?.message ?? "Draft save failed");
+        } finally {
+            setBusy(false);
+        }
     }
 
-    try {
-      const invoiceDataForDraft = {
-          orderId: orderDocumentId || '',
-          orderNumber: salesOrderNumber,
-          customerId: selectedPartyId,
-          customerName: selectedParty?.name || '',
-          date: invoiceDate,
-          items: items.map(({id, category, price, ...rest}) => ({...rest, discount: overallDiscount})),
-          subtotal: calculations.subtotal,
-          discount: calculations.totalDiscountAmount,
-          taxableAmount: calculations.taxableAmount,
-          cgst: calculations.cgst,
-          sgst: calculations.sgst,
-          igst: calculations.igst,
-          grandTotal: calculations.grandTotal,
-          amountPaid: bookingAmount,
-          balanceDue: calculations.grandTotal - bookingAmount,
-          status: 'DRAFT' as 'DRAFT',
-          appliedCoupons: appliedCoupons,
-          assignedToUid: assignedToUid,
-          createdByUid: authUser.uid,
-          warehouseId: 'main_warehouse' // Add a default warehouse
-      };
-      
-      const invoiceId = await salesService.createSalesInvoice('default', invoiceDataForDraft, authUser.uid, [], settingsData);
+    async function postNow() {
+        if (!invoiceId) {
+            toast({ variant: "destructive", title: "Save a draft first", description: "You must save a draft before you can post the invoice." });
+            return;
+        }
+        setBusy(true);
+        setPostError(null);
+        try {
+            setStatus("POSTING");
+            const res = await postInvoice("default", invoiceId);
 
-      toast({ title: 'Invoice Saved as Draft', description: `Posting invoice ${invoiceId} to ledgers...` });
-
-      // Now call the cloud function to post it
-      const result = await salesService.postInvoice('default', invoiceId);
-      
-      if (result.ok) {
-          toast({ title: 'Invoice Posted Successfully', description: `Invoice ${invoiceId} has been posted.` });
-          router.push('/dashboard/sales/invoice');
-      } else {
-          throw new Error(result.message || "Posting failed.");
-      }
-
-    } catch (e: any) {
-        console.error(e);
-        toast({ variant: 'destructive', title: 'Save & Post failed', description: e.message });
+            if (res?.ok) {
+                setStatus("POSTED");
+                toast({ title: "Invoice Posted Successfully!", description: `Voucher ID: ${res.voucherId}` });
+                // Redirect after successful post
+                setTimeout(() => router.push('/dashboard/sales/invoice'), 1500);
+            } else {
+                throw new Error(res?.message || "Posting failed due to an unknown error from the server.");
+            }
+        } catch (e: any) {
+            setStatus("FAILED");
+            setPostError(e?.message ?? "Posting failed");
+        } finally {
+            setBusy(false);
+        }
     }
-  };
 
-  return (
-    <>
-      <PageHeader title="Create Invoice">
-        <Button onClick={handleSaveAndPostInvoice} disabled={isSaveDisabled}>
-          <Save className="mr-2 h-4 w-4" /> Save & Post Invoice
-        </Button>
-      </PageHeader>
-      
-      <Card>
-        <CardHeader>
-          <CardTitle>INVOICE</CardTitle>
-          <CardDescription>Fill in the details to generate a new invoice.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="grid md:grid-cols-2 gap-6">
-            <div className="space-y-4">
-              <Label>Customer</Label>
-               <Popover open={openCustomerCombobox} onOpenChange={setOpenCustomerCombobox}>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    role="combobox"
-                    aria-expanded={openCustomerCombobox}
-                    className="w-full justify-between"
-                    disabled={partiesLoading}
-                  >
-                    {selectedParty
-                      ? selectedParty.name
-                      : "Select a customer..."}
-                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
-                  <Command>
-                    <CommandInput placeholder="Search customer..." />
-                    <CommandList>
-                      <CommandEmpty>No customer found.</CommandEmpty>
-                      <CommandGroup>
-                        {(parties || []).filter(p => p.type === 'Customer').map((party) => (
-                          <CommandItem
-                            key={party.id}
-                            value={party.name}
-                            onSelect={() => {
-                              setSelectedPartyId(party.id);
-                              setOpenCustomerCombobox(false);
-                            }}
-                          >
-                            <Check
-                              className={cn(
-                                "mr-2 h-4 w-4",
-                                selectedPartyId === party.id ? "opacity-100" : "opacity-0"
-                              )}
+    return (
+        <div className="p-4 space-y-4">
+        <Card className="rounded-2xl">
+            <CardHeader className="flex flex-row items-center justify-between">
+            <div>
+                <CardTitle className="text-xl">New Sales Invoice</CardTitle>
+                 <div className="text-xs text-muted-foreground mt-1">
+                    {invoiceId ? `Draft ID: ${invoiceId}` : "Not saved yet"}
+                </div>
+            </div>
+            <InvoiceStatusChip status={status} />
+            </CardHeader>
+
+            <CardContent className="space-y-6">
+                <Form {...form}>
+                    <form onSubmit={form.handleSubmit(postNow)}>
+                        <div className="grid md:grid-cols-2 gap-6">
+                        <div className="space-y-4">
+                            <FormField
+                            control={form.control}
+                            name="customerId"
+                            render={({ field }) => (
+                                <FormItem>
+                                <FormLabel>Customer</FormLabel>
+                                <Popover open={openCustomerCombobox} onOpenChange={setOpenCustomerCombobox}>
+                                    <PopoverTrigger asChild>
+                                    <FormControl>
+                                        <Button
+                                        variant="outline"
+                                        role="combobox"
+                                        className={cn("w-full justify-between", !field.value && "text-muted-foreground")}
+                                        >
+                                        {field.value ? parties?.find(p => p.id === field.value)?.name : "Select a customer..."}
+                                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                        </Button>
+                                    </FormControl>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+                                    <Command>
+                                        <CommandInput placeholder="Search customer..." />
+                                        <CommandList>
+                                        <CommandEmpty>No customer found.</CommandEmpty>
+                                        <CommandGroup>
+                                            {(parties || []).filter(p => p.type === 'Customer').map((party) => (
+                                            <CommandItem
+                                                key={party.id}
+                                                value={party.name}
+                                                onSelect={() => { form.setValue("customerId", party.id); setOpenCustomerCombobox(false); }}
+                                            >
+                                                <Check className={cn("mr-2 h-4 w-4", field.value === party.id ? "opacity-100" : "opacity-0")} />
+                                                {party.name}
+                                            </CommandItem>
+                                            ))}
+                                        </CommandGroup>
+                                        </CommandList>
+                                    </Command>
+                                    </PopoverContent>
+                                </Popover>
+                                <FormMessage />
+                                </FormItem>
+                            )}
                             />
-                            {party.name}
-                          </CommandItem>
-                        ))}
-                      </CommandGroup>
-                    </CommandList>
-                  </Command>
-                </PopoverContent>
-              </Popover>
+                        </div>
+                        <div className="space-y-4">
+                            <FormField
+                            control={form.control}
+                            name="invoiceDate"
+                            render={({ field }) => (
+                                <FormItem>
+                                <FormLabel>Invoice Date</FormLabel>
+                                <Input type="date" {...field} />
+                                <FormMessage />
+                                </FormItem>
+                            )}
+                            />
+                        </div>
+                        </div>
 
-              {selectedParty && (
-                <div className="text-sm p-3 rounded-md border bg-muted/50 space-y-1">
-                  <p><strong>Address:</strong> {(selectedParty.address as any)?.line1}</p>
-                  <p><strong>Email:</strong> {selectedParty.email}</p>
-                  <p><strong>GSTIN:</strong> {selectedParty.gstin || 'N/A'}</p>
-                </div>
-              )}
-            </div>
-            <div className="space-y-4">
-                 <div className="space-y-2">
-                    <Label htmlFor="so-number">Sales Order Number (Optional)</Label>
-                    <Input
-                        id="so-number"
-                        placeholder="e.g., SO-2407-0001"
-                        value={salesOrderNumber}
-                        onChange={(e) => setSalesOrderNumber(e.target.value)}
-                    />
-                </div>
-                <div className="space-y-2">
-                    <Label htmlFor="invoice-date">Invoice Date</Label>
-                    <Input
-                        id="invoice-date"
-                        type="date"
-                        value={invoiceDate}
-                        onChange={(e) => setInvoiceDate(e.target.value)}
-                    />
-                </div>
-            </div>
-          </div>
-          
-          <Separator />
+                        <Separator className="my-6" />
 
-          <div>
-            <h3 className="text-lg font-medium mb-2">Items</h3>
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[35%]">Item</TableHead>
-                    <TableHead className="w-[10%]">HSN</TableHead>
-                    <TableHead className="w-[8%]">Qty</TableHead>
-                    <TableHead className="w-[8%]">Unit</TableHead>
-                    <TableHead className="w-[12%]">Rate</TableHead>
-                    <TableHead className="w-[8%]">GST %</TableHead>
-                    <TableHead className="text-right w-[15%]">Amount</TableHead>
-                    <TableHead className="w-[8%]"><span className="sr-only">Actions</span></TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {items.map(item => (
-                    <TableRow key={item.id}>
-                      <TableCell>
-                        <Popover open={openProductCombobox === item.id} onOpenChange={(isOpen) => setOpenProductCombobox(isOpen ? item.id : null)}>
-                          <PopoverTrigger asChild>
-                              <Button
-                                  variant="outline"
-                                  role="combobox"
-                                  className="w-full justify-between"
-                                  disabled={productsLoading || partnerStockLoading}
-                                >
-                                  {item.productId ? saleableProducts.find(p => p.id === item.productId)?.name : "Select Item..."}
-                                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                              </Button>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
-                              <Command>
-                                  <CommandInput placeholder="Search product..." />
-                                  <CommandList>
-                                      <CommandEmpty>No product found.</CommandEmpty>
-                                      <CommandGroup>
-                                          {saleableProducts.map(p => (
-                                              <CommandItem
-                                                  key={p.id}
-                                                  value={p.name}
-                                                  onSelect={() => { handleItemChange(item.id, 'productId', p.id); setOpenProductCombobox(null); }}
-                                              >
-                                                  <Check className={cn("mr-2 h-4 w-4", item.productId === p.id ? "opacity-100" : "opacity-0")} />
-                                                  <span className="flex-1">{p.name}</span>
-                                                  <span className="text-xs text-muted-foreground">(Stock: {p.openingStock})</span>
-                                              </CommandItem>
-                                          ))}
-                                      </CommandGroup>
-                                  </CommandList>
-                              </Command>
-                          </PopoverContent>
-                        </Popover>
-                      </TableCell>
-                      <TableCell><Input value={item.hsn} onChange={e => handleItemChange(item.id, 'hsn', e.target.value)} /></TableCell>
-                      <TableCell><Input type="number" value={item.quantity} onChange={e => handleItemChange(item.id, 'quantity', Number(e.target.value))} /></TableCell>
-                      <TableCell><Input value={item.unit} onChange={e => handleItemChange(item.id, 'unit', e.target.value)} /></TableCell>
-                      <TableCell><Input type="number" value={item.rate} onChange={e => handleItemChange(item.id, 'rate', Number(e.target.value))} /></TableCell>
-                      <TableCell><Input type="number" value={item.gstRate} onChange={e => handleItemChange(item.id, 'gstRate', Number(e.target.value))} /></TableCell>
-                      <TableCell className="text-right font-mono">{formatIndianCurrency(item.quantity * item.rate)}</TableCell>
-                      <TableCell>
-                        <Button variant="ghost" size="icon" onClick={() => handleRemoveItem(item.id)}>
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-            <Button variant="outline" size="sm" onClick={handleAddItem} className="mt-4 w-full">
-              <PlusCircle className="mr-2 h-4 w-4" /> Add Item
-            </Button>
-          </div>
-          
-          <Separator />
-          
-          <div className="grid md:grid-cols-2 gap-8">
-             <div className="space-y-4">
-                <div className="space-y-2">
-                    <Label htmlFor="terms">Terms & Conditions</Label>
-                    <Textarea id="terms" value={terms} onChange={e => setTerms(e.target.value)} rows={5} />
-                </div>
-            </div>
-            <div className="space-y-3 p-4 border rounded-md bg-muted/50">
-              <div className="flex justify-between"><span>Subtotal</span><span className="font-mono">{formatIndianCurrency(calculations.subtotal)}</span></div>
-               <div className="flex justify-between items-center">
-                  <Label htmlFor="overall-discount" className="text-sm">Discount (%)</Label>
-                  <div className="w-24">
-                      <Input id="overall-discount" type="number" value={overallDiscount} onChange={(e) => setOverallDiscount(Number(e.target.value))} className="text-right" placeholder="%" disabled={isFromSalesOrder} />
-                      <p className="text-xs text-muted-foreground mt-1">Max: {maxAllowedDiscount}%</p>
-                  </div>
-              </div>
-               <div className="flex justify-between text-green-600">
-                  <span>Discount Amount</span>
-                  <span className="font-mono">- {formatIndianCurrency(calculations.totalDiscountAmount)}</span>
-              </div>
-              <div className="flex justify-between font-semibold"><span>Taxable Amount</span><span className="font-mono">{formatIndianCurrency(calculations.taxableAmount)}</span></div>
-              
-              {isInterstate ? (
-                    <div className="flex justify-between"><span>IGST</span><span className="font-mono">{formatIndianCurrency(calculations.igst)}</span></div>
-                ) : (
-                    <>
-                        <div className="flex justify-between"><span>CGST</span><span className="font-mono">{formatIndianCurrency(calculations.cgst)}</span></div>
-                        <div className="flex justify-between"><span>SGST</span><span className="font-mono">{formatIndianCurrency(calculations.sgst)}</span></div>
-                    </>
-                )}
-              
-              <Separator />
-              <div className="flex justify-between font-bold text-lg"><span>Grand Total</span><span className="font-mono">{formatIndianCurrency(calculations.grandTotal)}</span></div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-    </>
-  );
+                        <div>
+                            <h3 className="text-lg font-medium mb-2">Items</h3>
+                            <div className="space-y-2">
+                                {fields.map((field, index) => (
+                                    <div key={field.id} className="grid grid-cols-12 gap-2 border rounded-md p-3 items-end">
+                                        <div className="col-span-12 md:col-span-5"><FormField name={`items.${index}.productId`} render={({field}) => (
+                                            <FormItem><FormLabel>Product</FormLabel><Select onValueChange={field.onChange} defaultValue={field.value}>
+                                                <FormControl><SelectTrigger><SelectValue placeholder="Select an item" /></SelectTrigger></FormControl>
+                                                <SelectContent>{products?.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
+                                            </FormItem>
+                                        )}/></div>
+                                        <div className="col-span-6 md:col-span-2"><FormField name={`items.${index}.qty`} render={({field}) => (
+                                            <FormItem><FormLabel>Qty</FormLabel><FormControl><Input type="number" {...field} onChange={e => field.onChange(Number(e.target.value))} /></FormControl></FormItem>
+                                        )}/></div>
+                                        <div className="col-span-6 md:col-span-2"><FormField name={`items.${index}.rate`} render={({field}) => (
+                                            <FormItem><FormLabel>Rate</FormLabel><FormControl><Input type="number" {...field} onChange={e => field.onChange(Number(e.target.value))} /></FormControl></FormItem>
+                                        )}/></div>
+                                        <div className="col-span-6 md:col-span-2"><FormField name={`items.${index}.gstRate`} render={({field}) => (
+                                            <FormItem><FormLabel>GST %</FormLabel><FormControl><Input type="number" {...field} onChange={e => field.onChange(Number(e.target.value))} /></FormControl></FormItem>
+                                        )}/></div>
+                                        <div className="col-span-12 md:col-span-1 flex justify-end">
+                                            <Button type="button" variant="destructive" size="icon" onClick={() => remove(index)} disabled={fields.length <= 1}><Trash2 className="h-4 w-4"/></Button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                            <Button type="button" variant="outline" size="sm" onClick={() => append({ productId: "", qty: 1, rate: 0, gstRate: 18 })} className="mt-4"><PlusCircle className="mr-2 h-4 w-4"/>Add Item</Button>
+                        </div>
+
+                        <Separator className="my-6" />
+
+                        <div className="grid md:grid-cols-2 gap-8">
+                            <div className="space-y-4">
+                                <FormField control={form.control} name="note" render={({field}) => (
+                                    <FormItem><FormLabel>Note / Terms</FormLabel><FormControl><Textarea {...field}/></FormControl></FormItem>
+                                )}/>
+                            </div>
+                             <div className="space-y-3 p-4 border rounded-md bg-muted/50">
+                                <div className="flex justify-between"><span>Subtotal</span><span className="font-mono">{formatIndianCurrency(calculations.subtotal)}</span></div>
+                                <div className="flex justify-between items-center"><FormLabel>Discount (%)</FormLabel><FormField control={form.control} name="discount" render={({field}) => (
+                                    <Input type="number" {...field} onChange={e => field.onChange(Number(e.target.value))} className="w-24 h-8 text-right"/>
+                                )}/></div>
+                                <div className="flex justify-between items-center"><FormLabel>Shipping</FormLabel><FormField control={form.control} name="shipping" render={({field}) => (
+                                    <Input type="number" {...field} onChange={e => field.onChange(Number(e.target.value))} className="w-24 h-8 text-right"/>
+                                )}/></div>
+                                <Separator/>
+                                <div className="flex justify-between font-semibold"><span>Taxable Amount</span><span className="font-mono">{formatIndianCurrency(calculations.taxableAmount)}</span></div>
+                                <div className="flex justify-between"><span>GST</span><span className="font-mono">{formatIndianCurrency(calculations.totalGst)}</span></div>
+                                <Separator/>
+                                <div className="flex justify-between font-bold text-lg"><span>Grand Total</span><span className="font-mono">{formatIndianCurrency(calculations.grandTotal)}</span></div>
+                            </div>
+                        </div>
+
+                         {postError && <div className="text-sm text-destructive font-medium p-4 bg-destructive/10 rounded-md">{postError}</div>}
+                        
+                         <div className="flex gap-2 pt-6">
+                            <Button type="button" variant="secondary" onClick={saveDraft} disabled={busy || !form.formState.isValid}>
+                                {invoiceId ? "Update Draft" : "Save Draft"}
+                            </Button>
+                            <Button type="button" onClick={postNow} disabled={busy || !invoiceId || status === 'POSTED'}>
+                                {status === "POSTING" ? <><Loader2 className="mr-2 h-4 w-4 animate-spin"/> Posting...</> : "Post Invoice"}
+                            </Button>
+                            {status === "FAILED" && invoiceId && (
+                                <Button type="button" variant="destructive" onClick={postNow} disabled={busy}>Retry Post</Button>
+                            )}
+                        </div>
+
+                    </form>
+                </Form>
+            </CardContent>
+        </Card>
+        </div>
+    );
 }
 
-  
-```
