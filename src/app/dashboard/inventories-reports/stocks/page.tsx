@@ -1,3 +1,5 @@
+
+
 'use client';
 
 import * as React from 'react';
@@ -31,7 +33,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useFirestore, useCollection, useUser, useDoc } from '@/firebase';
 import { collection, query, where, addDoc, serverTimestamp, setDoc, doc } from 'firebase/firestore';
-import type { Product, Order, WorkOrder, CompanyInfo, PurchaseRequest, RequestStatus, BillOfMaterial } from '@/lib/types';
+import type { Product, Order, WorkOrder, CompanyInfo, PurchaseRequest, RequestStatus, BillOfMaterial, StockMovement } from '@/lib/types';
 import { PlusCircle, AlertCircle, ListFilter, Archive, AlertTriangle, Boxes, ShoppingCart } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -86,6 +88,7 @@ function StocksPageContent() {
   const { data: boms, loading: bomsLoading } = useCollection<BillOfMaterial>(collection(firestore, 'boms'));
   const { data: settingsData } = useDoc<any>(doc(firestore, 'company', 'settings'));
   const { data: requests } = useCollection<PurchaseRequest>(collection(firestore, 'purchaseRequests'));
+  const { data: stockMovements } = useCollection<StockMovement>(collection(firestore, 'stockMovements'));
   
   const [typeFilters, setTypeFilters] = React.useState<string[]>([]);
   const [categoryFilters, setCategoryFilters] = React.useState<string[]>([]);
@@ -113,6 +116,17 @@ function StocksPageContent() {
   const handleCategoryFilterChange = createFilterHandler(setCategoryFilters);
   const handleSourceFilterChange = createFilterHandler(setSourceFilters);
 
+  const productStockMap = React.useMemo(() => {
+    const stockMap = new Map<string, number>();
+    if (!stockMovements) return stockMap;
+    
+    stockMovements.forEach(movement => {
+        const currentStock = stockMap.get(movement.productId) || 0;
+        stockMap.set(movement.productId, currentStock + movement.quantity);
+    });
+
+    return stockMap;
+  }, [stockMovements]);
 
   const filteredProducts = React.useMemo(() => {
     if (!products) return [];
@@ -183,17 +197,17 @@ function StocksPageContent() {
     if (!products || !orders || !workOrders) return { totalProducts: 0, itemsBelowMin: 0, totalStockValue: 0, totalToProcure: 0 };
 
     const itemsBelowMin = products.filter(p => {
-      const stockAvailable = p.openingStock;
+      const stockAvailable = productStockMap.get(p.id) || 0;
       return stockAvailable < (p.minStockLevel || 0);
     }).length;
 
     const totalStockValue = products.reduce((acc, p) => {
-      const stockAvailable = p.openingStock;
+      const stockAvailable = productStockMap.get(p.id) || 0;
       return acc + (stockAvailable * (p.cost || 0));
     }, 0);
 
     const totalToProcure = products.filter(p => p.source === 'Bought').reduce((acc, p) => {
-      const stockAvailable = p.openingStock;
+      const stockAvailable = productStockMap.get(p.id) || 0;
       const wip = getAllottedForWIP(p);
       const orderInHand = getOrderInHand(p.id);
       const minStock = p.minStockLevel || 0;
@@ -207,7 +221,7 @@ function StocksPageContent() {
       totalStockValue,
       totalToProcure
     };
-  }, [products, orders, workOrders, getAllottedForWIP, getOrderInHand]);
+  }, [products, orders, workOrders, getAllottedForWIP, getOrderInHand, productStockMap]);
 
 
   const handleCreatePurchaseRequest = async (product: Product, quantity: number) => {
@@ -337,7 +351,7 @@ function StocksPageContent() {
                   </TableCell>
                 </TableRow>
               ) : filteredProducts.map((product) => {
-                const stockAvailable = product.openingStock;
+                const stockAvailable = productStockMap.get(product.id) || 0;
                 const orderInHand = getOrderInHand(product.id);
                 const wip = getAllottedForWIP(product);
                 const minStock = product.minStockLevel || 0;
@@ -447,6 +461,7 @@ export default function StocksPageWrapper() {
 
     return <StocksPageContent />;
 }
+
 
 
 

@@ -987,3 +987,16 @@ export interface PickupPoint {
   lat?: number;
   lng?: number;
 }
+
+export type StockMovementType = 'Inward' | 'Outward' | 'Transfer' | 'Adjustment' | 'ProductionIssue' | 'ProductionReceipt';
+
+export interface StockMovement {
+  id: string;
+  type: StockMovementType;
+  productId: string;
+  quantity: number; // Can be negative for outward movements
+  referenceId: string; // e.g., GRN ID, Invoice ID, WO ID
+  referenceType: 'GRN' | 'Sales Invoice' | 'Work Order' | 'Stock Adjustment' | 'Stock Transfer';
+  createdAt: any;
+  createdBy: string;
+}
