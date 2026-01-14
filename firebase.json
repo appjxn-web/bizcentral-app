@@ -1,6 +1,16 @@
 
 {
   "hosting": {
+    "source": ".",
+    "rewrites": [
+      {
+        "source": "**",
+        "apphosting": {
+          "backendId": "studio",
+          "region": "us-west1"
+        }
+      }
+    ],
     "frameworksBackend": {
       "region": "us-west1"
     }
