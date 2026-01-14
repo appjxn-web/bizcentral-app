@@ -1,3 +1,4 @@
+
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -138,6 +139,13 @@ service cloud.firestore {
     }
     
     match /purchaseRequests/{id} {
+      allow get: if isAdmin() || isDocOwner();
+      allow list: if isAdmin();
+      allow create: if signedIn();
+      allow update, delete: if isAdmin() || isDocOwner();
+    }
+    
+    match /reimbursementRequests/{id} {
       allow get: if isAdmin() || isDocOwner();
       allow list: if isAdmin();
       allow create: if signedIn();
