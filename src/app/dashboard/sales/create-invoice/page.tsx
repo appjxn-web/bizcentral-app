@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -62,6 +61,8 @@ import { collection, doc, addDoc, serverTimestamp, setDoc, query, where, orderBy
 import { getNextDocNumber } from '@/lib/number-series';
 import { estimateDispatchDate, type EstimateDispatchDateOutput } from '@/ai/flows/estimate-dispatch-date-flow';
 import { QRCodeSVG } from 'qrcode.react';
+import { salesService } from '@/features/sales/services/sales.service';
+
 
 interface OrderItem {
   id: string;
@@ -384,61 +385,44 @@ export default function CreateInvoicePage() {
   };
   
   const handleSaveInvoice = async () => {
-    if (isSaveDisabled) return;
-    if (!selectedPartyId || items.length === 0) {
+    if (isSaveDisabled) {
+        toast({ variant: 'destructive', title: 'Discount Exceeded', description: `Your maximum allowed discount is ${maxAllowedDiscount}%.` });
+        return;
+    }
+    if (!selectedPartyId || items.length === 0 || !authUser) {
       toast({ variant: 'destructive', title: 'Missing Information', description: 'Please select a customer and add items.' });
       return;
     }
-    if (!firestore || !settingsData || !coaLedgers) return;
-  
-    const customerCoaId = selectedParty?.coaLedgerId;
-    if (!customerCoaId) {
-        toast({ variant: 'destructive', title: 'Ledger Missing', description: 'This customer does not have a linked ledger account. Please create one.' });
-        return;
-    }
 
+    const companyId = 'default'; // In a real app, get this from user's context
+    const warehouseId = 'main_warehouse'; // In a real app, this should be selectable
+
+    const invoiceInput = {
+      invoiceDate,
+      invoiceNo: `INV-${Date.now()}`, // Temporary, will be replaced by service
+      customerId: selectedPartyId,
+      warehouseId,
+      items: items.map(item => ({
+          productId: item.productId,
+          qty: item.quantity,
+          rate: item.rate,
+          gstRate: item.gstRate,
+      })),
+      discount: calculations.totalDiscountAmount,
+      shipping: 0, // Placeholder
+      note: terms,
+    };
+    
     try {
-      const finalAssignedToUid = currentRole === 'Partner' ? authUser?.uid : assignedToUid;
-      const finalBalanceDue = calculations.grandTotal - bookingAmount;
-      
-      const invoiceData: Omit<SalesInvoice, 'id' | 'invoiceNumber'> = {
-          orderId: orderDocumentId || '',
-          orderNumber: salesOrderNumber,
-          customerId: selectedPartyId,
-          customerName: selectedParty?.name || '',
-          coaLedgerId: customerCoaId,
-          date: invoiceDate,
-          items: items.map(({id, category, ...rest}) => ({...rest, discount: overallDiscount})),
-          subtotal: calculations.subtotal,
-          discount: calculations.totalDiscountAmount,
-          cgst: calculations.cgst,
-          sgst: calculations.sgst,
-          igst: calculations.igst,
-          taxableAmount: calculations.taxableAmount,
-          grandTotal: calculations.grandTotal,
-          amountPaid: bookingAmount,
-          balanceDue: finalBalanceDue,
-          status: finalBalanceDue <= 0 ? 'Paid' : 'Unpaid',
-          appliedCoupons: appliedCoupons,
-          assignedToUid: finalAssignedToUid || null,
-      };
-      
-      if (isEditMode && invoiceIdToEdit) {
-        const invoiceRef = doc(firestore, 'salesInvoices', invoiceIdToEdit);
-        await updateDoc(invoiceRef, invoiceData);
-        toast({ title: 'Invoice Updated', description: `Invoice ${invoiceIdToEdit} has been updated.` });
-      } else {
-        const invoiceRef = doc(collection(firestore, 'salesInvoices'));
-        await setDoc(invoiceRef, { ...invoiceData, id: invoiceRef.id });
-        toast({ title: 'Invoice Saved', description: 'Invoice has been saved. The backend will assign an invoice number.' });
-      }
-
+      await salesService.createSalesInvoice(companyId, invoiceInput, authUser.uid);
+      toast({ title: 'Invoice Saved', description: 'Invoice, stock, and accounting entries have been created.' });
       router.push('/dashboard/sales/invoice');
-    } catch (e) {
+    } catch (e: any) {
         console.error(e);
-        toast({ variant: 'destructive', title: 'Save failed' });
+        toast({ variant: 'destructive', title: 'Save failed', description: e.message });
     }
   };
+
 
   const getOrCreatePartyLedger = async (party: Party): Promise<CoaLedger> => {
     if (!coaLedgers) throw new Error("COA not loaded.");
@@ -815,8 +799,3 @@ export default function CreateInvoicePage() {
     </>
   );
 }
-
-  
-
-
-
