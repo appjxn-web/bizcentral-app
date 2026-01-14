@@ -21,9 +21,12 @@ service cloud.firestore {
 
     function isOwner(uid) { return signedIn() && request.auth.uid == uid; }
 
-    // For docs having { userId } field
-    function isDocOwnerByUserId() {
-      return signedIn() && resource.data.userId == request.auth.uid;
+    // For docs having { userId } or { createdByUid } field
+    function isDocOwner() {
+      return signedIn() && (
+        (resource.data.userId == request.auth.uid) ||
+        (resource.data.createdByUid == request.auth.uid)
+      );
     }
 
     // For docs having { assignedToUid } field
@@ -36,16 +39,15 @@ service cloud.firestore {
     // -----------------------------
     // These MUST be readable without login.
     match /company/{id} { allow read: if true; allow write: if isAdmin(); }
-
     match /locations/{id} { allow read: if true; allow write: if isAdmin(); }
     match /jobOpenings/{id} { allow read: if true; allow write: if isAdmin(); }
-
     match /shop/{id} { allow read: if true; allow write: if isAdmin(); }
     match /shopProducts/{id} { allow read: if true; allow write: if isAdmin(); }
-
     match /products/{id} { allow read: if true; allow write: if isAdmin(); }
     match /posts/{id} { allow read: if true; allow write: if isAdmin(); }
     match /offers/{id} { allow read: if true; allow write: if isAdmin(); }
+    match /pickupPoints/{id} { allow read: if true; allow write: if isAdmin(); }
+
 
     // -----------------------------
     // 3) USERS & PROFILES
@@ -86,17 +88,10 @@ service cloud.firestore {
     // 4) CUSTOMER PORTAL (Orders, Invoices, Payments)
     // -----------------------------
     match /orders/{orderId} {
-      allow get: if isAdmin() || isDocOwnerByUserId() || isAssignee();
+      allow get: if isAdmin() || isDocOwner() || isAssignee();
       allow create: if signedIn();
-
-      // IMPORTANT:
-      // Firestore rules cannot enforce "where userId == request.auth.uid" for list reliably.
-      // If you keep listing from /orders, safest is:
-      // - allow list only for admin
-      // - customer should query via subcollection /users/{uid}/orders (recommended)
       allow list: if isAdmin();
-
-      allow update: if isAdmin() || isDocOwnerByUserId() || isAssignee();
+      allow update: if isAdmin() || isDocOwner() || isAssignee();
       allow delete: if isAdmin();
     }
 
@@ -108,7 +103,7 @@ service cloud.firestore {
     }
 
     match /paymentSubmissions/{id} {
-      allow get: if isAdmin() || isDocOwnerByUserId() || isAssignee();
+      allow get: if isAdmin() || isDocOwner() || isAssignee();
       allow create: if signedIn();
       allow list: if isAdmin();              // same reason
       allow update, delete: if isAdmin();
@@ -126,7 +121,7 @@ service cloud.firestore {
     }
 
     // -----------------------------
-    // 5) SALES MODULE
+    // 5) SALES & PROCUREMENT MODULE
     // -----------------------------
     match /leads/{id} {
       allow get: if isAdmin() || (signedIn() && resource.data.ownerId == request.auth.uid);
@@ -140,6 +135,13 @@ service cloud.firestore {
       allow list: if isAdmin(); // safest
       allow create: if signedIn();
       allow update, delete: if isAdmin() || (signedIn() && resource.data.createdBy == request.auth.uid);
+    }
+    
+    match /purchaseRequests/{id} {
+      allow get: if isAdmin() || isDocOwner();
+      allow list: if isAdmin();
+      allow create: if signedIn();
+      allow update, delete: if isAdmin() || isDocOwner();
     }
 
     // -----------------------------
