@@ -2,7 +2,7 @@
 'use client';
 
 import * as React from 'react';
-import { doc, setDoc, updateDoc, writeBatch, collection, addDoc, query, where, getDocs } from 'firebase/firestore';
+import { setDoc, updateDoc, writeBatch, collection, addDoc, query, where, getDocs } from 'firebase/firestore';
 import { updateProfile }from 'firebase/auth';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { Map, AdvancedMarker, APIProvider, useMap } from '@vis.gl/react-google-maps';
@@ -51,52 +51,13 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { GoogleMapsProvider } from '@/app/_components/google-map-provider';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import type { UserRole, Party, CoaLedger, CoaNature, UserProfile } from '@/lib/types';
+import type { UserProfile, Address, BankAccount } from '@/features/users/types/users.types';
+import type { CoaLedger, CoaNature, Party, PartyType } from '@/lib/types';
 import { Checkbox } from '@/components/ui/checkbox';
+import { usersRepository } from '@/features/users/services/users.repository';
 
-
-interface Address {
-    id: string;
-    type: string;
-    line1: string;
-    line2: string;
-    city: string;
-    district: string;
-    state: string;
-    country: string;
-    pin: string;
-    digitalPin?: string;
-    isPickupPoint?: boolean;
-    latitude?: number;
-    longitude?: number;
-}
-
-interface BankAccount {
-    id: string;
-    accountHolderName: string;
-    bankName: string;
-    accountNumber: string;
-    ifscCode: string;
-    upiId?: string;
-}
-
-function getDashboardPathForRole(role: UserRole): string {
-    switch (role) {
-        case 'Admin':
-        case 'CEO':
-            return '/dashboard';
-        case 'Customer':
-            return '/dashboard/dashboards/customer';
-        case 'Employee':
-            return '/dashboard/dashboards/employee';
-        case 'Sales Manager':
-            return '/dashboard/dashboards/sales-manager';
-        case 'Partner':
-            return '/dashboard/dashboards/partner';
-        default:
-            return '/dashboard/my-account'; // A safe default
-    }
-}
+// Note: AddressDialog and BankAccountDialog remain unchanged as they are presentational.
+// The main component logic will now use the repository.
 
 class MapErrorBoundary extends React.Component<
   { children: React.ReactNode; onError: (error: any) => void },
@@ -291,7 +252,7 @@ function AddressDialog({ open, onOpenChange, onSave, initialData }: { open: bool
                                 </Select>
                             </div>
                             <div className="space-y-2"> <Label htmlFor="address-line1">Line 1</Label> <Input id="address-line1" value={addressData.line1} onChange={(e) => handleInputChange('line1', e.target.value)} /></div>
-                            <div className="space-y-2"> <Label htmlFor="address-line2">Line 2</Label> <Input id="address-line2" value={addressData.line2} onChange={(e) => handleInputChange('line2', e.target.value)} /></div>
+                            <div className="space-y-2"> <Label htmlFor="address-line2">Line 2</Label> <Input id="address-line2" value={addressData.line2 || ''} onChange={(e) => handleInputChange('line2', e.target.value)} /></div>
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-2"><Label htmlFor="city">City</Label><Input id="city" value={addressData.city} onChange={(e) => handleInputChange('city', e.target.value)} /></div>
                                 <div className="space-y-2"><Label htmlFor="district">District</Label><Input id="district" value={addressData.district} onChange={(e) => handleInputChange('district', e.target.value)} /></div>
@@ -393,7 +354,7 @@ function BankAccountDialog({ open, onOpenChange, onSave, initialData }: { open: 
                     </div>
                     <div className="space-y-2">
                         <Label htmlFor="upi-id">UPI ID (Optional)</Label>
-                        <Input id="upi-id" placeholder="e.g., username@upi" value={accountData.upiId} onChange={e => handleInputChange('upiId', e.target.value)} />
+                        <Input id="upi-id" placeholder="e.g., username@upi" value={accountData.upiId || ''} onChange={e => handleInputChange('upiId', e.target.value)} />
                     </div>
                     <div className="space-y-2">
                         <Label htmlFor="upi-qr">UPI QR Code (Optional)</Label>
@@ -410,7 +371,7 @@ function BankAccountDialog({ open, onOpenChange, onSave, initialData }: { open: 
 }
 
 export default function ProfilesSettingsPage() {
-  const { user: authUser, loading: userLoading } = useUser();
+  const { user: authUser, loading: authLoading } = useUser();
   const searchParams = useSearchParams();
   const userIdFromParams = searchParams.get('userId');
   const router = useRouter();
@@ -420,15 +381,11 @@ export default function ProfilesSettingsPage() {
   const auth = useAuth();
   
   const targetUserId = userIdFromParams || authUser?.uid;
-
-  const userDocRef = React.useMemo(
-    () => (targetUserId ? doc(firestore, 'users', targetUserId) : null),
-    [targetUserId, firestore]
-  );
   
-  const { data: userProfile, loading: profileLoading } = useDoc<any>(userDocRef);
-  const { data: coaLedgers } = useCollection<CoaLedger>(collection(firestore, 'coa_ledgers'));
+  const [userProfile, setUserProfile] = React.useState<UserProfile | null>(null);
+  const [loading, setLoading] = React.useState(true);
 
+  // States for form fields
   const [contactPerson, setContactPerson] = React.useState('');
   const [email, setEmail] = React.useState('');
   const [businessName, setBusinessName] = React.useState('');
@@ -450,22 +407,34 @@ export default function ProfilesSettingsPage() {
 
   const { toast } = useToast();
   const { setTheme } = useTheme();
-  
-  const isNewUser = !userProfile?.coaLedgerId && !profileLoading;
 
   React.useEffect(() => {
-    if (userProfile) {
-      setContactPerson(userProfile.displayName || '');
-      setEmail(userProfile.email || '');
-      setAvatarPreview(userProfile.avatar || userProfile.photoURL || null);
-      setBusinessName(userProfile.businessName || '');
-      setMobile(userProfile.mobile || '');
-      setPan(userProfile.pan || '');
-      setGstin(userProfile.gstin || '');
-      setAddresses(userProfile.addresses || []);
-      setBankAccounts(userProfile.bankAccounts || []);
-    }
-  }, [userProfile]);
+    const fetchUser = async () => {
+      if (!targetUserId) {
+        setLoading(false);
+        return;
+      }
+      setLoading(true);
+      const profile = await usersRepository.getUser(targetUserId);
+      setUserProfile(profile);
+      if (profile) {
+        setContactPerson(profile.displayName || '');
+        setEmail(profile.email || '');
+        setAvatarPreview(profile.photoURL || null);
+        setBusinessName(profile.businessName || '');
+        setMobile(profile.mobile || '');
+        setPan(profile.pan || '');
+        setGstin(profile.gstin || '');
+        setAddresses(profile.addresses || []);
+        setBankAccounts(profile.bankAccounts || []);
+      }
+      setLoading(false);
+    };
+
+    fetchUser();
+  }, [targetUserId]);
+
+  const isNewUser = !userProfile?.coaLedgerId && !loading;
 
   const handleAvatarChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -485,7 +454,6 @@ export default function ProfilesSettingsPage() {
       return;
     }
     
-    // Check for mandatory fields for new users
     if (isNewUser && (!businessName || !contactPerson || !mobile)) {
         toast({
             variant: 'destructive',
@@ -496,8 +464,7 @@ export default function ProfilesSettingsPage() {
     }
 
     let avatarUrl = avatarPreview;
-    const batch = writeBatch(firestore);
-
+    
     if (avatarFile) {
         toast({ title: 'Uploading avatar...' });
         const storageRef = ref(storage, `avatars/${targetUserId}/${avatarFile.name}`);
@@ -518,53 +485,22 @@ export default function ProfilesSettingsPage() {
         }
     }
 
-    const userDocRef = doc(firestore, 'users', targetUserId);
     try {
       const profileData: Partial<UserProfile> = {
-        name: businessName,
         displayName: contactPerson,
+        name: businessName || contactPerson,
         email,
-        avatar: avatarUrl,
         photoURL: avatarUrl,
         businessName,
         mobile,
         pan,
         gstin,
       };
-      batch.set(userDocRef, profileData, { merge: true });
 
-      // If it's a new user, create their ledger account
-      if (isNewUser) {
-        const partyRef = doc(firestore, 'parties', targetUserId);
-        const partyData: Partial<Party> = {
-            id: targetUserId, name: businessName, type: 'Customer',
-            email, phone: mobile, status: 'Active',
-            createdAt: new Date().toISOString(), createdBy: 'Self-Signup',
-        };
-        
-        const newLedgerRef = doc(collection(firestore, 'coa_ledgers'));
-        const newLedgerData: Omit<CoaLedger, 'id' | 'createdAt' | 'updatedAt'> = {
-            name: businessName,
-            groupId: '1.1.2', // Trade Receivables
-            nature: 'ASSET' as CoaNature,
-            type: 'RECEIVABLE',
-            posting: { isPosting: true, normalBalance: 'DEBIT', isSystem: false, allowManualJournal: true },
-            status: 'ACTIVE',
-            openingBalance: { amount: 0, drCr: 'DR', asOf: new Date().toISOString() },
-        };
-        batch.set(newLedgerRef, {...newLedgerData, id: newLedgerRef.id});
-        batch.update(userDocRef, { coaLedgerId: newLedgerRef.id });
-        batch.set(partyRef, { ...partyData, coaLedgerId: newLedgerRef.id }, { merge: true });
-      }
-
-      await batch.commit();
+      await usersRepository.updateUser(targetUserId, profileData);
       
       toast({ title: 'Profile Updated', description: 'Your information has been saved.' });
       setAvatarFile(null);
-
-      // Redirect to the correct dashboard after saving
-      const dashboardPath = getDashboardPathForRole(userProfile.role);
-      router.push(dashboardPath);
 
     } catch (error) {
       console.error('Error saving profile:', error);
@@ -572,63 +508,62 @@ export default function ProfilesSettingsPage() {
     }
   };
   
-    const handleSaveAddress = async (addressData: Omit<Address, 'id'>) => {
-        if (!userDocRef) return;
+  const handleSaveAddress = async (addressData: Omit<Address, 'id'>) => {
+    if (!targetUserId) return;
 
-        let updatedAddresses: Address[];
-        if(editingAddress) {
-            updatedAddresses = addresses.map(addr => addr.id === editingAddress.id ? { ...editingAddress, ...addressData } : addr);
-        } else {
-            const newAddress: Address = { id: `addr-${Date.now()}`, ...addressData };
-            updatedAddresses = [...addresses, newAddress];
-        }
-        
-        try {
-            await updateDoc(userDocRef, { addresses: updatedAddresses });
-            setAddresses(updatedAddresses);
-            toast({ title: 'Address Saved', description: 'Your address has been successfully saved.' });
-        } catch (error) {
-            toast({ variant: 'destructive', title: 'Error', description: 'Could not save address.' });
-        }
+    let updatedAddresses: Address[];
+    if(editingAddress) {
+        updatedAddresses = addresses.map(addr => addr.id === editingAddress.id ? { ...editingAddress, ...addressData } : addr);
+    } else {
+        const newAddress: Address = { id: `addr-${Date.now()}`, ...addressData };
+        updatedAddresses = [...addresses, newAddress];
+    }
+    
+    try {
+        await usersRepository.updateUser(targetUserId, { addresses: updatedAddresses });
+        setAddresses(updatedAddresses);
+        toast({ title: 'Address Saved', description: 'Your address has been successfully saved.' });
+    } catch (error) {
+        toast({ variant: 'destructive', title: 'Error', description: 'Could not save address.' });
+    }
 
-        setIsAddressDialogOpen(false);
-        setEditingAddress(null);
-    };
+    setIsAddressDialogOpen(false);
+    setEditingAddress(null);
+  };
 
-    const handleEditAddress = (address: Address) => {
-        setEditingAddress(address);
-        setIsAddressDialogOpen(true);
-    };
+  const handleEditAddress = (address: Address) => {
+    setEditingAddress(address);
+    setIsAddressDialogOpen(true);
+  };
 
-    const handleSaveBankAccount = async (accountData: Omit<BankAccount, 'id'>) => {
-        if (!userDocRef) return;
+  const handleSaveBankAccount = async (accountData: Omit<BankAccount, 'id'>) => {
+    if (!targetUserId) return;
 
-        let updatedAccounts: BankAccount[];
-        if (editingBankAccount) {
-            updatedAccounts = bankAccounts.map(acc => acc.id === editingBankAccount.id ? { ...editingBankAccount, ...accountData } : acc);
-        } else {
-            const newAccount: BankAccount = { id: `bank-${Date.now()}`, ...accountData };
-            updatedAccounts = [...bankAccounts, newAccount];
-        }
-        
-        try {
-            await updateDoc(userDocRef, { bankAccounts: updatedAccounts });
-            setBankAccounts(updatedAccounts);
-            toast({ title: 'Bank Account Saved', description: 'Your bank details have been successfully saved.' });
-        } catch (error) {
-            toast({ variant: 'destructive', title: 'Error', description: 'Could not save bank account details.' });
-        }
-        setIsBankAccountDialogOpen(false);
-        setEditingBankAccount(null);
-    };
+    let updatedAccounts: BankAccount[];
+    if (editingBankAccount) {
+        updatedAccounts = bankAccounts.map(acc => acc.id === editingBankAccount.id ? { ...editingBankAccount, ...accountData } : acc);
+    } else {
+        const newAccount: BankAccount = { id: `bank-${Date.now()}`, ...accountData };
+        updatedAccounts = [...bankAccounts, newAccount];
+    }
+    
+    try {
+        await usersRepository.updateUser(targetUserId, { bankAccounts: updatedAccounts });
+        setBankAccounts(updatedAccounts);
+        toast({ title: 'Bank Account Saved', description: 'Your bank details have been successfully saved.' });
+    } catch (error) {
+        toast({ variant: 'destructive', title: 'Error', description: 'Could not save bank account details.' });
+    }
+    setIsBankAccountDialogOpen(false);
+    setEditingBankAccount(null);
+  };
 
-    const handleEditBankAccount = (account: BankAccount) => {
-        setEditingBankAccount(account);
-        setIsBankAccountDialogOpen(true);
-    };
+  const handleEditBankAccount = (account: BankAccount) => {
+    setEditingBankAccount(account);
+    setIsBankAccountDialogOpen(true);
+  };
 
-
-  if (userLoading || profileLoading) {
+  if (loading) {
     return (
         <div className="flex items-center justify-center h-full">
             <Loader2 className="h-8 w-8 animate-spin" />
@@ -740,7 +675,6 @@ export default function ProfilesSettingsPage() {
        </Card>
       
       <Accordion type="single" collapsible className="w-full space-y-4 mt-6">
-        {/* Addresses */}
         <AccordionItem value="addresses">
           <Card>
             <AccordionTrigger className="p-6">
@@ -783,7 +717,6 @@ export default function ProfilesSettingsPage() {
           </Card>
         </AccordionItem>
 
-        {/* Appearance */}
         <AccordionItem value="appearance">
             <Card>
                 <AccordionTrigger className="p-6">
@@ -805,7 +738,6 @@ export default function ProfilesSettingsPage() {
                 </AccordionContent>
             </Card>
         </AccordionItem>
-
       </Accordion>
       
       <AddressDialog 
