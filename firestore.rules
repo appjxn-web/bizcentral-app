@@ -28,6 +28,10 @@ service cloud.firestore {
         (resource.data.createdByUid == request.auth.uid)
       );
     }
+    
+    function isEmployeeDocOwner() {
+      return signedIn() && resource.data.employeeId == request.auth.uid;
+    }
 
     // For docs having { assignedToUid } field
     function isAssignee() {
@@ -172,6 +176,13 @@ service cloud.firestore {
       allow list: if isAdmin();
       allow create: if signedIn();
       allow update, delete: if isAdmin() || isDocOwner();
+    }
+    
+    match /salaryAdvanceRequests/{id} {
+        allow get: if isAdmin() || isEmployeeDocOwner();
+        allow list: if isAdmin();
+        allow create: if signedIn();
+        allow update, delete: if isAdmin();
     }
 
     // -----------------------------
