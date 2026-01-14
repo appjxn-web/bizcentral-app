@@ -1,6 +1,7 @@
+
 'use server';
 
-import { doc, setDoc, serverTimestamp, collection } from "firebase/firestore";
+import { doc, setDoc, serverTimestamp, collection, getDocs, query, where, limit } from "firebase/firestore";
 import { initializeFirebase } from "@/firebase";
 import { salesPaths } from "@/firebase/paths";
 import { getFunctions, httpsCallable } from "firebase/functions";
@@ -31,19 +32,19 @@ export const salesService = {
     allInvoices: SalesInvoice[],
     settingsData: any
   ) {
-    const newInvoiceNumber = getNextDocNumber('Sales Invoice', settingsData?.prefixes, allInvoices);
-    const newDocRef = doc(db, salesPaths.salesInvoices(companyId), newInvoiceNumber);
     
-    await setDoc(newDocRef, {
+    const newInvoiceRef = doc(collection(db, `companies/${companyId}/sales_invoices`));
+    
+    await setDoc(newInvoiceRef, {
         ...input,
-        id: newDocRef.id,
-        invoiceNumber: newInvoiceNumber,
+        id: newInvoiceRef.id,
+        invoiceNumber: newInvoiceRef.id, // Temporary, will be set properly by Cloud Function
         status: 'DRAFT', 
         createdByUid: actorUid,
         createdAt: serverTimestamp(),
     });
 
-    return newDocRef.id;
+    return newInvoiceRef.id;
   },
 
   /**
