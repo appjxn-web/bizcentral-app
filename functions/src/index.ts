@@ -7,10 +7,10 @@
 // - Fixed: invoiceNumber is guaranteed inside onInvoiceCreated (so narration + UI won't break)
 // - Kept: your existing features (UPI onCall, order number, JV posting, stock transfer, commissions, notes, milestones, payment approval)
 
-import { onDocumentCreated, onDocumentUpdated, onDocumentWritten, Change, DocumentSnapshot } from "firebase-functions/v2/firestore";
-import { onCall, setGlobalOptions } from "firebase-functions/v2/https";
+import { onDocumentCreated, onDocumentUpdated, onDocumentWritten } from "firebase-functions/v2/firestore";
+import { HttpsError, onCall } from "firebase-functions/v2/https";
 import * as admin from "firebase-admin";
-import { getFirestore } from "firebase-admin/firestore";
+import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import type {
   Order,
   SalesInvoice,
@@ -26,8 +26,6 @@ import type {
   SalesOrder,
 } from "./types";
 import { getNextDocNumber } from "./number-series";
-
-setGlobalOptions({ region: "asia-south1" });
 
 
 if (admin.apps.length === 0) {
@@ -110,12 +108,12 @@ const findOrCreateSpecificCustomerLedger = async (
 };
 
 export const verifyUpiPaymentAndCreateOrder = onCall(
-    { region: "asia-south1" },
-    async (req) => {
+  { region: "asia-south1" },
+  async (req) => {
     const { order, upiTransactionId } = req.data;
 
     if (!order?.userId || !upiTransactionId) {
-      throw new Error("Missing order/userId/upiTransactionId");
+      throw new HttpsError("invalid-argument", "Missing order/userId/upiTransactionId");
     }
 
     const db = admin.firestore();
@@ -140,6 +138,7 @@ export const verifyUpiPaymentAndCreateOrder = onCall(
 
             tx.set(orderRef, {
                 ...order,
+                id: orderRef.id, // Storing the document ID within the document
                 orderNumber,
                 status: "Awaiting Payment Confirmation",
                 createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -163,7 +162,9 @@ export const verifyUpiPaymentAndCreateOrder = onCall(
 
     } catch (error: any) {
       console.error("Order creation transaction failed:", error);
-      throw new Error("An error occurred while creating the order.", error?.message);
+      throw new HttpsError("internal", "An error occurred while creating the order.", {
+        message: error?.message,
+      });
     }
 });
 
@@ -725,6 +726,3 @@ export const helloWorld = onCall({ region: "asia-south1" }, (request) => {
     console.log("Hello from Firebase!");
     return { message: "Hello from Firebase!" };
   });
-
-
-    

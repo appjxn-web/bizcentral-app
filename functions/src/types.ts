@@ -68,6 +68,11 @@ export interface Order {
   paymentDetails?: string; 
 }
 
+export interface SalesOrder extends Order {
+  orderNumber: string;
+  quotationId?: string;
+}
+
 
 export interface UserProfile {
   uid: string;
@@ -237,8 +242,4 @@ export interface PaymentSubmission {
   paymentMethod: string;
   transactionDetails: string;
   proofUrl?: string;
-  status: 'Pending' | 'Approved' | 'Rejected';
-  submittedAt: Timestamp;
-  recordedByUid?: string;
-  receivingAccountId?: string;
-}
+  status: 'Pending' | 'Approved
