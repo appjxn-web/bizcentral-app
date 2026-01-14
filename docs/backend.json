@@ -1,17 +1,69 @@
 
 {
   "entities": {
+    "Company": {
+      "title": "Company",
+      "description": "Represents a single company or business entity in the system.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "The legal name of the company." },
+        "ownerUid": { "type": "string", "description": "The UID of the user who owns this company." }
+      },
+      "required": ["name", "ownerUid"]
+    },
     "UserProfile": {
       "title": "User Profile",
-      "description": "Represents a user's profile information.",
+      "description": "Represents a user's global profile information.",
       "type": "object",
       "properties": {
         "uid": { "type": "string", "description": "The user's unique ID." },
         "email": { "type": "string", "format": "email", "description": "The user's email address." },
         "displayName": { "type": "string", "description": "The user's display name." },
-        "photoURL": { "type": "string", "format": "uri", "description": "URL of the user's profile picture." }
+        "photoURL": { "type": "string", "format": "uri", "description": "URL of the user's profile picture." },
+        "companyMemberships": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "companyId": { "type": "string" },
+              "role": { "type": "string" }
+            }
+          }
+        }
       },
       "required": ["uid", "email"]
+    },
+    "Product": {
+      "title": "Product",
+      "description": "A product or service offered by the company.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "sku": { "type": "string" },
+        "price": { "type": "number" }
+      },
+      "required": ["name", "sku", "price"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "A customer order.",
+      "type": "object",
+      "properties": {
+        "orderNumber": { "type": "string" },
+        "customerId": { "type": "string" },
+        "total": { "type": "number" }
+      },
+      "required": ["orderNumber", "customerId", "total"]
+    },
+    "CoaGroup": {
+      "title": "Chart of Accounts Group",
+      "description": "A grouping for ledger accounts.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "nature": { "type": "string", "enum": ["ASSET", "LIABILITY", "EQUITY", "INCOME", "EXPENSE"] }
+      },
+      "required": ["name", "nature"]
     }
   },
   "auth": {
@@ -20,7 +72,23 @@
   "firestore": {
     "/users/{userId}": {
       "schema": { "$ref": "#/entities/UserProfile" },
-      "description": "Stores private user profile information."
+      "description": "Stores global user profile information."
+    },
+    "/companies/{companyId}": {
+      "schema": { "$ref": "#/entities/Company" },
+      "description": "Top-level collection for all companies."
+    },
+    "/companies/{companyId}/products/{productId}": {
+      "schema": { "$ref": "#/entities/Product" },
+      "description": "Company-specific products."
+    },
+    "/companies/{companyId}/orders/{orderId}": {
+      "schema": { "$ref": "#/entities/Order" },
+      "description": "Company-specific orders."
+    },
+    "/companies/{companyId}/coa_groups/{groupId}": {
+      "schema": { "$ref": "#/entities/CoaGroup" },
+      "description": "Company-specific Chart of Account groups."
     }
   }
 }
