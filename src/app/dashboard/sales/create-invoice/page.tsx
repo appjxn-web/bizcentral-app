@@ -3,21 +3,32 @@
 'use client';
 
 import * as React from 'react';
-import { useForm, useFieldArray } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
-import { salesInvoiceSchema, type SalesInvoiceInput } from '@/features/sales/schemas/sales.schema';
-import { salesInvoiceDraftRepo } from '@/features/sales/services/sales-invoice-draft.repo';
-import { postInvoice } from '@/features/sales/services/post-invoice.client';
-import { InvoiceStatusChip } from '@/features/sales/components/invoice-status-chip';
-
 import { PageHeader } from '@/components/page-header';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { PlusCircle, Save, Trash2, Check, ChevronsUpDown, CalendarClock, Loader2, DollarSign } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
@@ -51,7 +62,6 @@ import { collection, doc, addDoc, serverTimestamp, setDoc, query, where, orderBy
 import { getNextDocNumber } from '@/lib/number-series';
 import { estimateDispatchDate, type EstimateDispatchDateOutput } from '@/ai/flows/estimate-dispatch-date-flow';
 import { QRCodeSVG } from 'qrcode.react';
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 
 interface OrderItem {
   id: string;
@@ -97,6 +107,12 @@ const getMaxDiscount = (role: UserRole, category: string): number => {
     }
     return 5;
 };
+
+interface PartnerStockItem {
+  id: string;
+  quantity: number;
+}
+
 
 export default function CreateInvoicePage() {
   const { toast } = useToast();
@@ -144,6 +160,9 @@ export default function CreateInvoicePage() {
     if (!coaLedgers) return [];
     return coaLedgers.filter(l => l.groupId === '1.1.1');
   }, [coaLedgers]);
+  
+  const partnerStockQuery = (currentRole === 'Partner' && authUser) ? query(collection(firestore, 'users', authUser.uid, 'stock')) : null;
+  const { data: partnerStock, loading: partnerStockLoading } = useCollection<PartnerStockItem>(partnerStockQuery);
 
 
    React.useEffect(() => {
@@ -457,19 +476,7 @@ export default function CreateInvoicePage() {
       const details = `Mode: ${bankLedger.name}, Ref: ${paymentRef}, Date: ${paymentDate}, Amount: ₹${amount.toFixed(2)}`;
       setPaymentDetails(prev => prev ? `${prev}\\n${details}` : details);
       
-      const receiptData = {
-        type: 'Receipt',
-        id: 'new-receipt-id', // Placeholder, real ID from JV would be better
-        date: paymentDate,
-        partyName: selectedParty.name,
-        amount: amount,
-        narration: jvData.narration,
-      };
-      
-      localStorage.setItem('receiptToPrint', JSON.stringify(receiptData));
-      window.open('/dashboard/finance-accounting/receipt/view', '_blank');
-
-      toast({ title: 'Payment Recorded', description: `A journal entry and receipt for ₹${amount.toFixed(2)} have been created.` });
+      toast({ title: 'Payment Recorded', description: `A journal entry for ₹${amount.toFixed(2)} has been created.` });
       
       setIsPaymentDialogOpen(false);
       setPaymentAmount('');
@@ -606,7 +613,7 @@ export default function CreateInvoicePage() {
                                   role="combobox"
                                   className="w-full justify-between"
                                   disabled={productsLoading || partnerStockLoading}
-                                >
+                              >
                                   {item.productId ? saleableProducts.find(p => p.id === item.productId)?.name : "Select Item..."}
                                   <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                               </Button>
@@ -766,133 +773,3 @@ export default function CreateInvoicePage() {
   );
 }
 
-```
-- `src/features/finance/schemas/finance.types.ts`:
-```ts
-
-import type { Timestamp } from 'firebase/firestore';
-
-export type CoaNature = "ASSET" | "LIABILITY" | "EQUITY" | "INCOME" | "EXPENSE";
-
-export type CoaGroup = {
-  id: string;
-  name: string;
-  code?: string;
-  nature: CoaNature;
-  parentId: string | null;
-  level: number;
-  sortOrder: number;
-  path: string;
-  isSystem: boolean;
-  isActive: boolean;
-  reporting: {
-    statement: "BS" | "PL";
-    section?: string;
-    cashFlowTag?: "OPERATING" | "INVESTING" | "FINANCING";
-  };
-  allowLedgerPosting: boolean;
-  createdAt: any;
-  updatedAt: any;
-};
-
-export type CoaLedger = {
-  id: string;
-  name: string;
-  ledgerCode?: string;
-  groupId: string;
-  nature: CoaNature;
-  type:
-    | "CASH"
-    | "BANK"
-    | "RECEIVABLE"
-    | "PAYABLE"
-    | "INVENTORY"
-    | "FIXED_ASSET"
-    | "DEPRECIATION"
-    | "GST_INPUT"
-    | "GST_OUTPUT"
-    | "TDS"
-    | "TCS"
-    | "EXPENSE"
-    | "INCOME"
-    | "CAPITAL"
-    | "LOAN"
-    | "ROUND_OFF"
-    | "SUSPENSE"
-    | "OTHER";
-
-  posting: {
-    isPosting: boolean;
-    normalBalance: "DEBIT" | "CREDIT";
-    isSystem: boolean;
-    allowManualJournal: boolean;
-  };
-
-  bank?: {
-    accountHolderName?: string;
-    bankName?: string;
-    accountNumber?: string;
-    accountNumberMasked?: string;
-    ifscCode?: string;
-    upiId?: string;
-    adCode?: string;
-    accountType?: "CURRENT" | "SAVINGS" | "OD_CC";
-  };
-
-  inventory?: {
-    valuationMethod?: "FIFO" | "WEIGHTED_AVG";
-    isStockLedger?: boolean;
-    cogsLedgerId?: string;
-  };
-
-  fixedAsset?: {
-    assetCategory?: string;
-    depreciationMethod?: "SLM" | "WDV";
-    depreciationRate?: number;
-    accumulatedDepLedgerId?: string;
-  };
-
-  openingBalance?: {
-    amount: number;
-    drCr: "DR" | "CR";
-    asOf: string; // ISO date
-  };
-
-  status: "ACTIVE" | "INACTIVE";
-  tags?: string[];
-  createdAt: any;
-  updatedAt: any;
-};
-
-
-export type JournalVoucher = {
-  id: string;
-  date: string;
-  narration: string;
-  voucherType?: string;
-  entries: {
-    accountId: string;
-    debit?: number;
-    credit?: number;
-  }[];
-  lines?: {
-    ledgerId: string;
-    dr: number;
-    cr: number;
-    narration?: string;
-  }[];
-  isReversal?: boolean;
-  reversedVoucherId?: string;
-  createdAt: any;
-  createdByUid?: string;
-};
-
-export interface FinanceSettings {
-  fiscalYearStartMonth: number;
-  lockUntilMonth?: string;
-  allowAdminOverrideLock?: boolean;
-  retainedEarningsLedgerId?: string;
-  pnlClearingLedgerId?: string;
-}
-
-```
