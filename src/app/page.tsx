@@ -3,22 +3,17 @@
 
 import * as React from 'react';
 import { HeroBanner } from './_components/hero-banner';
-import ShopPageClient from './_components/shop-page-client';
-import { CustomerMap } from './_components/customer-map';
-import { GoogleMapsProvider } from './_components/google-map-provider';
 
-export default function ShopPage() {
+export default function HomePage() {
   return (
     <>
       <HeroBanner />
-      <div className="py-12 space-y-12">
-        <div className="container mx-auto px-4 md:px-6">
-          <GoogleMapsProvider>
-            <CustomerMap />
-          </GoogleMapsProvider>
-        </div>
-        <div className="container mx-auto px-4 md:px-6 space-y-8">
-          <ShopPageClient />
+      <div className="container mx-auto px-4 md:px-6 py-12">
+        <div className="text-center">
+          <h1 className="text-4xl font-bold">Welcome to jxnPlus</h1>
+          <p className="mt-4 text-lg text-muted-foreground">
+            Our shop and map will be displayed here shortly.
+          </p>
         </div>
       </div>
     </>
