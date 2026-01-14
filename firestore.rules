@@ -30,17 +30,13 @@ service cloud.firestore {
 
     // --- Global Collections ---
     match /users/{userId} {
-      // Users can read their own profile. Admins can read any profile.
-      allow get: if signedIn() && (isOwner(userId) || getRole() == 'Admin');
-      // Users can update their own profile.
-      allow write: if isOwner(userId);
-      // Admins can update any profile (e.g., to add company memberships).
-      allow update: if getRole() == 'Admin';
+      allow read, write: if signedIn() && request.auth.uid == userId;
+      allow get: if signedIn(); // Allow any signed-in user to read profile for now
     }
 
     match /companies/{companyId} {
       allow read: if isCompanyMember(companyId);
-      allow write: if isCompanyAdmin(companyId);
+      allow write: if isCompanyAdmin(companyId); // Only admins can modify company details
     }
     
     // --- Multi-Tenant (Company-Specific) Collections ---
@@ -74,13 +70,5 @@ service cloud.firestore {
     match /companies/{companyId}/journalVouchers/{voucherId} {
       allow read, list, write: if isCompanyAdmin(companyId);
     }
-
-    // Legacy rules for reference (will be removed as refactoring continues)
-    // You can uncomment and adapt these as you move collections under /companies/{companyId}
-    /*
-    function getRole() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role; }
-    function isAdmin() { return signedIn() && getRole() in ['Admin', 'CEO', 'Sales Manager', 'Accounts Manager', 'Accountant']; }
-    function isOwner(userId) { return signedIn() && request.auth.uid == userId; }
-    */
   }
 }

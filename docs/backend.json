@@ -112,6 +112,10 @@
       "schema": { "$ref": "#/entities/CoaGroup" },
       "description": "Company-specific Chart of Account groups."
     },
+    "/companies/{companyId}/coa_ledgers/{ledgerId}": {
+      "schema": { "$ref": "#/entities/CoaLedger" },
+      "description": "Company-specific ledger accounts."
+    },
     "/companies/{companyId}/journalVouchers/{voucherId}": {
       "schema": { "$ref": "#/entities/JournalVoucher" },
       "description": "Company-specific immutable journal entries for accounting."
