@@ -38,6 +38,18 @@ service cloud.firestore {
     }
 
     // =========================
+    // PUBLIC-READABLE COLLECTIONS
+    // =========================
+    match /products/{productId} { allow read: if true; allow write: if isAdmin("default"); }
+    match /vacancies/{vacancyId} { allow read: if true; allow write: if isAdmin("default"); }
+    match /posts/{postId} { allow read: if true; allow write: if isAdmin("default"); }
+    match /locations/{locationId} { allow read: if true; allow write: if isAdmin("default"); }
+    match /pickupPoints/{pointId} { allow read: if true; allow write: if isAdmin("default"); }
+    match /company/{docId} { allow read: if true; allow write: if isAdmin("default"); }
+    match /offers/{offerId} { allow read: if true; allow write: if isAdmin("default"); }
+
+
+    // =========================
     // USERS
     // =========================
     match /users/{uid} {
@@ -54,44 +66,49 @@ service cloud.firestore {
 
       // ---- Settings (Finance defaults etc.) ----
       match /settings/{docId} {
-        allow read: if hasCompanyAccess(companyId);
+        allow read: if isCompanyMember(companyId);
         allow write: if isAdmin(companyId);
       }
 
       // ---- Masters ----
       match /customers/{customerId} {
-        allow read: if hasCompanyAccess(companyId);
-        allow create, update: if hasCompanyAccess(companyId);
+        allow read: if isCompanyMember(companyId);
+        allow create, update: if isCompanyMember(companyId);
         allow delete: if isAdmin(companyId);
       }
 
       match /products/{productId} {
-        allow read: if hasCompanyAccess(companyId);
+        allow read: if isCompanyMember(companyId);
         allow write: if isAdmin(companyId);
       }
 
       match /warehouses/{warehouseId} {
-        allow read: if hasCompanyAccess(companyId);
+        allow read: if isCompanyMember(companyId);
         allow write: if isAdmin(companyId);
       }
 
       match /coa_groups/{id} {
-        allow read: if hasCompanyAccess(companyId);
+        allow read: if isCompanyMember(companyId);
         allow write: if isAdmin(companyId);
       }
 
       match /coa_ledgers/{id} {
-        allow read: if hasCompanyAccess(companyId);
+        allow read: if isCompanyMember(companyId);
         allow write: if isAdmin(companyId);
       }
       
       match /report_cache/{monthId} {
-        allow read: if hasCompanyAccess(companyId);
+        allow read: if isCompanyMember(companyId);
         allow write: if false;
       }
       
       match /fy_openings/{fyId} {
-        allow read: if hasCompanyAccess(companyId);
+        allow read: if isCompanyMember(companyId);
+        allow write: if false;
+      }
+      
+      match /audit_logs/{logId} {
+        allow read: if isAdmin(companyId);
         allow write: if false;
       }
 
@@ -99,14 +116,14 @@ service cloud.firestore {
       // SALES INVOICES (CLIENT DRAFT OK)
       // =========================
       match /sales_invoices/{invoiceId} {
-        allow read: if hasCompanyAccess(companyId);
+        allow read: if isCompanyMember(companyId);
 
-        allow create: if hasCompanyAccess(companyId)
+        allow create: if isCompanyMember(companyId)
           && isCreatingDraft()
           && request.resource.data.companyId == companyId
           && request.resource.data.createdBy == request.auth.uid;
 
-        allow update: if hasCompanyAccess(companyId)
+        allow update: if isCompanyMember(companyId)
           && isDraftDoc()
           && resource.data.createdBy == request.auth.uid
           && onlyChanges([
@@ -117,7 +134,7 @@ service cloud.firestore {
           ])
           && request.resource.data.status == "DRAFT";
 
-        allow delete: if hasCompanyAccess(companyId)
+        allow delete: if isCompanyMember(companyId)
           && isDraftDoc()
           && (resource.data.createdBy == request.auth.uid || isAdmin(companyId));
       }
@@ -126,23 +143,23 @@ service cloud.firestore {
       // SERVER-ONLY LEDGERS (POSTING OUTPUT)
       // =========================
       match /vouchers/{id} {
-        allow read: if hasCompanyAccess(companyId);
+        allow read: if isCompanyMember(companyId);
         allow write: if false;
       }
 
       match /journal_entries/{id} {
-        allow read: if hasCompanyAccess(companyId);
+        allow read: if isCompanyMember(companyId);
         allow write: if false;
       }
 
       match /stock_movements/{id} {
-        allow read: if hasCompanyAccess(companyId);
+        allow read: if isCompanyMember(companyId);
         allow write: if false;
       }
 
       // Any other subcollections not explicitly matched
       match /{document=**} {
-        allow read: if hasCompanyAccess(companyId);
+        allow read: if isCompanyMember(companyId);
         allow write: if false;
       }
     }
