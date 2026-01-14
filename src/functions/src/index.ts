@@ -612,13 +612,13 @@ export const onPaymentApproved = onDocumentUpdated({ document: "paymentSubmissio
 
         await createAuditLog({
           companyId: "default", // Assuming a single-company setup for now
-          entityType: "paymentSubmissions",
+          entityType: 'paymentSubmissions',
           entityId: event.data.after.id,
-          action: "approve",
-          actorUid: actor?.uid || "system",
+          action: 'approve',
+          actorUid: actor?.uid || 'system',
           meta: {
-            actorDisplayName: actor?.displayName || "System",
-            changes: { before, after },
+            actorDisplayName: actor?.displayName || 'System',
+            changes: { before, after }
           },
         });
         
