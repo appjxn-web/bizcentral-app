@@ -22,15 +22,9 @@ export const financeSettingsRepo = {
     return snap.exists() ? (snap.data() as any as FinanceSettings) : null;
   },
 
-  async upsert(companyId: string, data: FinanceSettings, actorUid: string) {
+  async upsert(companyId: string, data: Partial<FinanceSettings>, actorUid: string) {
     await setDoc(
       settingsDoc(companyId),
       {
         ...data,
-        updatedAt: serverTimestamp(),
-        updatedBy: actorUid,
-      },
-      { merge: true }
-    );
-  },
-};
+        updatedAt:

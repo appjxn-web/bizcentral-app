@@ -1,4 +1,3 @@
-
 import * as admin from "firebase-admin";
 import type { AuditLog } from "./types";
 

@@ -29,6 +29,7 @@ import { getNextDocNumber } from "./number-series";
 import { createAuditLog } from "./audit";
 export { postSalesInvoice } from "./post-sales-invoice";
 export { reverseVoucher } from "./reverse-voucher";
+export { closeFiscalYear } from "./close-fiscal-year";
 
 
 if (admin.apps.length === 0) {
@@ -734,5 +735,4 @@ export const helloWorld = onCall({ region: "asia-south1" }, (request) => {
 
 
     
-
-    
+```
