@@ -12,22 +12,14 @@ service cloud.firestore {
     function isOwner(userId) {
       return signedIn() && request.auth.uid == userId;
     }
-
-    function getRole(uid) {
-      return get(/databases/$(database)/documents/users/$(uid)).data.role;
+    
+    function getUserData(uid) {
+        return get(/databases/$(database)/documents/users/$(uid)).data;
     }
 
     function isAdmin() {
-      // In a single-company setup, we can check a global admin role.
-      // For multi-company, this would need a companyId parameter.
-      return signedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['Admin', 'CEO', 'Accounts Manager'];
+      return signedIn() && getUserData(request.auth.uid).role in ['Admin', 'CEO', 'Accounts Manager'];
     }
-
-    function isCompanyMember(companyId) {
-        // Simplified for single-company setup
-        return signedIn();
-    }
-
 
     // =========================
     // PUBLIC-READABLE COLLECTIONS
@@ -68,32 +60,18 @@ service cloud.firestore {
       }
     }
     
-     // =========================
-    // COMPANY-SCOPED DATA
     // =========================
-    match /companies/{companyId} {
-      allow read: if isCompanyMember(companyId);
-      allow write: if isAdmin();
-
-      // --- Orders Subcollection ---
-      match /orders/{orderId} {
-        // Grant list access to admins, and allow specific document reads for relevant users.
-        allow list: if isCompanyMember(companyId) && isAdmin();
-        allow get: if isCompanyMember(companyId) && 
-                       (isAdmin() || resource.data.userId == request.auth.uid || resource.data.assignedToUid == request.auth.uid);
-        
-        allow create: if isCompanyMember(companyId) && 
-                         (request.resource.data.userId == request.auth.uid || isAdmin());
-        allow update: if isCompanyMember(companyId) &&
-                         (isAdmin() || resource.data.assignedToUid == request.auth.uid || resource.data.userId == request.auth.uid);
-        allow delete: if isAdmin();
-      }
-
-      // Any other future subcollections under a company
-      match /{allChildren=**} {
-        allow read: if isCompanyMember(companyId);
-        allow write: if isAdmin();
-      }
+    // ORDERS
+    // =========================
+    match /orders/{orderId} {
+      // Grant list access to admins, and allow specific document reads for relevant users.
+      allow list: if isAdmin();
+      allow get: if signedIn() && 
+                     (isAdmin() || resource.data.userId == request.auth.uid || resource.data.assignedToUid == request.auth.uid);
+      
+      allow create: if signedIn() && (request.resource.data.userId == request.auth.uid || isAdmin());
+      allow update: if signedIn() && (isAdmin() || resource.data.assignedToUid == request.auth.uid || resource.data.userId == request.auth.uid);
+      allow delete: if isAdmin();
     }
 
 

@@ -1,4 +1,5 @@
 
+
 // ✅ Use this SAME file content for BOTH paths:
 // 1) functions/src/index.ts
 // 2) src/functions/src/index.ts
@@ -124,7 +125,8 @@ export const verifyUpiPaymentAndCreateOrder = onCall(
     const settingsSnap = await db.doc("company/settings").get();
     const prefixes = settingsSnap.data()?.prefixes;
 
-    const orderRef = db.collection("orders").doc(); // ✅ NEW DOC ID
+    // SIMPLIFIED: Using top-level 'orders' collection
+    const orderRef = db.collection("orders").doc();
     const paymentRef = db.collection("paymentSubmissions").doc();
 
     try {
@@ -133,7 +135,7 @@ export const verifyUpiPaymentAndCreateOrder = onCall(
 
             tx.set(orderRef, {
                 ...order,
-                id: orderRef.id, // Storing the document ID within the document
+                id: orderRef.id, 
                 orderNumber,
                 status: "Awaiting Payment Confirmation",
                 createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -141,8 +143,8 @@ export const verifyUpiPaymentAndCreateOrder = onCall(
 
             tx.set(paymentRef, {
                 userId: order.userId,
-                orderId: orderRef.id,          // ✅ LINK BY DOC ID (important)
-                orderNumber,                   // optional for display
+                orderId: orderRef.id,
+                orderNumber,
                 amount: order.paymentReceived,
                 paymentMethod: "UPI / Online",
                 transactionDetails: upiTransactionId,
@@ -290,6 +292,7 @@ export const onInvoiceCreated = onDocumentCreated({ document: "salesInvoices/{in
 
       // 5) UPDATE SOURCE ORDER STATUS
       if ((invoice as any).orderId) {
+        // SIMPLIFIED: Path is now top-level
         transaction.update(db.collection("orders").doc((invoice as any).orderId), { status: "Invoice Sent" });
       }
     });
@@ -606,12 +609,11 @@ export const onPaymentApproved = onDocumentUpdated({ document: "paymentSubmissio
   if (before.status !== "Approved" && after.status === "Approved") {
     // Audit Log
     try {
-        // PaymentSubmission type may not include recordedByUid; read it safely.
         const recordedByUid = (after as any).recordedByUid as string | undefined;
         const actor = recordedByUid ? await admin.auth().getUser(recordedByUid) : null;
 
         await createAuditLog({
-          companyId: (after as any).companyId || "unknown",
+          companyId: (after as any).companyId || "default",
           entityType: "paymentSubmissions",
           entityId: event.data.after.id,
           action: "approve",

@@ -608,7 +608,7 @@ export const onPaymentApproved = onDocumentUpdated({ document: "paymentSubmissio
   if (before.status !== "Approved" && after.status === "Approved") {
     // Audit Log
     try {
-        const recordedByUid = after.recordedByUid;
+        const recordedByUid = (after as any).recordedByUid as string | undefined;
         const actor = recordedByUid ? await admin.auth().getUser(recordedByUid) : null;
 
         await createAuditLog({
@@ -633,8 +633,8 @@ export const onPaymentApproved = onDocumentUpdated({ document: "paymentSubmissio
       return;
     }
     
-    // IMPORTANT: Assuming orders are in companies/default/orders
-    const orderRef = db.doc(`companies/default/orders/${orderId}`);
+    // SIMPLIFIED: Using top-level 'orders' collection
+    const orderRef = db.collection("orders").doc(orderId);
 
     return db.runTransaction(async (transaction) => {
       const orderDoc = await transaction.get(orderRef);

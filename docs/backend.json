@@ -96,27 +96,23 @@
       "schema": { "$ref": "#/entities/UserProfile" },
       "description": "Stores global user profile information."
     },
-    "/companies/{companyId}": {
-      "schema": { "$ref": "#/entities/Company" },
-      "description": "Top-level collection for all companies."
-    },
-    "/companies/{companyId}/products/{productId}": {
+    "/products/{productId}": {
       "schema": { "$ref": "#/entities/Product" },
       "description": "Company-specific products."
     },
-    "/companies/{companyId}/orders/{orderId}": {
+    "/orders/{orderId}": {
       "schema": { "$ref": "#/entities/Order" },
       "description": "Company-specific orders."
     },
-    "/companies/{companyId}/coa_groups/{groupId}": {
+    "/coa_groups/{groupId}": {
       "schema": { "$ref": "#/entities/CoaGroup" },
       "description": "Company-specific Chart of Account groups."
     },
-    "/companies/{companyId}/coa_ledgers/{ledgerId}": {
+    "/coa_ledgers/{ledgerId}": {
       "schema": { "$ref": "#/entities/CoaLedger" },
       "description": "Company-specific ledger accounts."
     },
-    "/companies/{companyId}/journalVouchers/{voucherId}": {
+    "/journalVouchers/{voucherId}": {
       "schema": { "$ref": "#/entities/JournalVoucher" },
       "description": "Company-specific immutable journal entries for accounting."
     }
