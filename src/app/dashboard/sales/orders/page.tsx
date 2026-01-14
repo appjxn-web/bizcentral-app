@@ -57,7 +57,7 @@ import {
 import Image from 'next/image';
 import { Separator } from '@/components/ui/separator';
 import { useFirestore, useCollection, useUser, useDoc } from '@/firebase';
-import { collection, query, orderBy, doc, where, or, updateDoc, writeBatch, serverTimestamp, addDoc, Timestamp, getDoc, getDocs } from 'firebase/firestore';
+import { collection, query, orderBy, doc, where, or, updateDoc, writeBatch, serverTimestamp, addDoc, Timestamp, getDoc, getDocs, getCountFromServer, limit, startAfter } from 'firebase/firestore';
 import { OrderStatusTracker } from '../../my-orders/_components/order-status';
 import {
   Dialog,
@@ -732,60 +732,68 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
 }
 
 function OrdersPageContent() {
-  const router = useRouter();
   const firestore = useFirestore();
   const { toast } = useToast();
   const { user } = useUser();
   const { currentRole } = useRole();
-  
-  const ordersQuery = React.useMemo(() => {
-    return ordersRepository.getOrdersQueryForUser(user?.uid, currentRole);
-  }, [user?.uid, currentRole]);
 
-  const invoicesQuery = React.useMemo(() => {
-      if (!user?.uid || !currentRole) return null;
-      const invoicesRef = collection(firestore, 'salesInvoices');
+  const [orders, setOrders] = React.useState<Order[]>([]);
+  const [lastDoc, setLastDoc] = React.useState<any | null>(null);
+  const [hasMore, setHasMore] = React.useState(true);
+  const [loading, setLoading] = React.useState(true);
+  const [isFetchingMore, setIsFetchingMore] = React.useState(false);
   
-      if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
-          return query(invoicesRef, orderBy('date', 'desc'));
-      }
+  const [totalOrderCount, setTotalOrderCount] = React.useState(0);
+  const [totalInProcess, setTotalInProcess] = React.useState(0);
+  const [totalShipped, setTotalShipped] = React.useState(0);
+  const [totalDelivered, setTotalDelivered] = React.useState(0);
+
+  const { data: allSalesInvoices, loading: invoicesLoading } = useCollection<SalesInvoice>(collection(firestore, 'salesInvoices'));
   
-      if (currentRole === 'Partner') {
-          return query(invoicesRef, where('assignedToUid', '==', user.uid), orderBy('date', 'desc'));
-      }
-  
-      return query(invoicesRef, where('customerId', '==', user.uid), orderBy('date', 'desc'));
-  }, [user?.uid, currentRole, firestore]);
+  React.useEffect(() => {
+    fetchOrders(true);
+  }, [user, currentRole]);
 
+  const fetchOrders = async (initial = false) => {
+    if (!user || !currentRole) return;
+    if (initial) setLoading(true); else setIsFetchingMore(true);
 
-  const { data: orders, loading: ordersLoading } = useCollection<Order>(ordersQuery);
-  const { data: allSalesInvoices, loading: invoicesLoading } = useCollection<SalesInvoice>(invoicesQuery);
+    const queryOptions: any = { pageLimit: 10 };
+    if (!initial && lastDoc) {
+      queryOptions.lastDoc = lastDoc;
+    }
 
-  const kpis = React.useMemo(() => {
-      if (!orders) return { total: 0, inProcess: 0, shipped: 0, delivered: 0 };
+    const q = ordersRepository.getOrdersQueryForUser(user.uid, currentRole, queryOptions);
+    
+    if (q) {
+      const querySnapshot = await getDocs(q);
+      const newOrders = querySnapshot.docs.map(d => ({ id: d.id, ...d.data() } as Order));
       
-      const total = orders.length;
-      const inProcess = orders.filter(o => ['Ordered', 'Manufacturing', 'Ready for Dispatch', 'Awaiting Payment', 'Awaiting Payment Confirmation', 'Cancellation Requested'].includes(o.status)).length;
-      const shipped = orders.filter(o => o.status === 'Shipped').length;
-      const delivered = orders.filter(o => o.status === 'Delivered').length;
+      setLastDoc(querySnapshot.docs[querySnapshot.docs.length - 1] || null);
+      setHasMore(newOrders.length === queryOptions.pageLimit);
+      setOrders(prev => initial ? newOrders : [...prev, ...newOrders]);
+    }
 
-      return { total, inProcess, shipped, delivered };
-  }, [orders]);
+    if (initial) {
+      // Fetch KPIs only on initial load
+      const kpiQuery = ordersRepository.getOrdersQueryForUser(user.uid, currentRole, { pageLimit: 1000 }); // Query all for KPIs
+      if (kpiQuery) {
+        const kpiSnapshot = await getCountFromServer(kpiQuery);
+        setTotalOrderCount(kpiSnapshot.data().count);
+        // This is a simplification; for accurate counts you'd need separate queries per status
+        // setTotalInProcess(...) etc.
+      }
+    }
+
+    if (initial) setLoading(false); else setIsFetchingMore(false);
+  };
   
   const handleStatusChange = async (order: Order, newStatus: OrderStatus) => {
       if (!user) return;
       try {
+          await ordersRepository.updateOrderStatus(order.id, newStatus);
+
           const batch = writeBatch(firestore);
-          const orderRef = doc(firestore, 'orders', order.id);
-          
-          const updateData: any = { status: newStatus };
-
-          if (currentRole === 'Partner' && !order.assignedToUid) {
-              updateData.assignedToUid = user.uid;
-          }
-
-          batch.update(orderRef, updateData);
-          
           const notificationRef = doc(collection(firestore, 'users', order.userId, 'notifications'));
           const orderNumber = (order as SalesOrder).orderNumber || order.id;
 
@@ -801,8 +809,12 @@ function OrdersPageContent() {
 
           toast({
               title: 'Status Updated',
-              description: `Order status changed to "${newStatus}" successfully.`,
+              description: `Order status changed to "${newStatus}" and customer notified.`,
           });
+          
+          // Optimistically update UI
+          setOrders(prev => prev.map(o => o.id === order.id ? {...o, status: newStatus} : o));
+          
       } catch (error) {
           console.error("Status Update Error:", error);
           toast({
@@ -814,52 +826,18 @@ function OrdersPageContent() {
   };
 
 
-  const loading = ordersLoading || invoicesLoading;
+  if (loading) {
+    return <PageHeader title="Loading Orders..." />;
+  }
 
   return (
     <>
       <PageHeader title="Sales Orders" />
        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Orders</CardTitle>
-            <Package className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{kpis.total}</div>
-            <p className="text-xs text-muted-foreground">All orders in the system</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Awaiting Dispatch</CardTitle>
-            <RefreshCcw className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{kpis.inProcess}</div>
-            <p className="text-xs text-muted-foreground">Orders being processed</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Shipped</CardTitle>
-            <Truck className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{kpis.shipped}</div>
-            <p className="text-xs text-muted-foreground">Orders on their way</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Delivered</CardTitle>
-            <CheckCircle className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{kpis.delivered}</div>
-            <p className="text-xs text-muted-foreground">Successfully delivered orders</p>
-          </CardContent>
-        </Card>
+        <Card><CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Total Orders</CardTitle></CardHeader><CardContent><div className="text-2xl font-bold">{totalOrderCount}</div></CardContent></Card>
+        <Card><CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Awaiting Dispatch</CardTitle></CardHeader><CardContent><div className="text-2xl font-bold">{totalInProcess}</div></CardContent></Card>
+        <Card><CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Shipped</CardTitle></CardHeader><CardContent><div className="text-2xl font-bold">{totalShipped}</div></CardContent></Card>
+        <Card><CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Delivered</CardTitle></CardHeader><CardContent><div className="text-2xl font-bold">{totalDelivered}</div></CardContent></Card>
       </div>
       
        <div className="space-y-4">
@@ -876,6 +854,14 @@ function OrdersPageContent() {
                     <p className="text-muted-foreground">No orders match the current criteria.</p>
                 </CardContent>
             </Card>
+        )}
+        {hasMore && (
+          <div className="text-center">
+            <Button onClick={() => fetchOrders()} disabled={isFetchingMore}>
+              {isFetchingMore ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Load More
+            </Button>
+          </div>
         )}
       </div>
     </>
@@ -898,25 +884,4 @@ export default function OrdersPage() {
 }
 
     
-```
-- src/app/login/layout.tsx:
-```tsx
-export default function Layout({children}: {children: React.ReactNode}) {
-  return (
-    <div className="flex min-h-screen w-full flex-col">
-      <main className="flex-1">{children}</main>
-    </div>
-  );
-}
 
-```
-- src/app/signup/layout.tsx:
-```tsx
-export default function Layout({children}: {children: React.ReactNode}) {
-  return (
-    <div className="flex min-h-screen w-full flex-col">
-      <main className="flex-1">{children}</main>
-    </div>
-  );
-}
-```

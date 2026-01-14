@@ -1,6 +1,7 @@
+
 'use server';
 
-import { collection, query, where, orderBy, getDocs, updateDoc, doc, type Firestore, type Query } from 'firebase/firestore';
+import { collection, query, where, orderBy, getDocs, updateDoc, doc, type Firestore, type Query, limit, startAfter, typeDocumentSnapshot } from 'firebase/firestore';
 import { initializeFirebase } from '@/firebase';
 import type { Order, OrderStatus } from '@/lib/types';
 import type { UserRole } from '@/features/users/types/users.types';
@@ -22,19 +23,31 @@ class OrdersRepository {
      * @param role - The role of the current user.
      * @returns A Firestore Query object or null if no user is provided.
      */
-    getOrdersQueryForUser(userId: string | null | undefined, role: UserRole | null | undefined): Query | null {
+    getOrdersQueryForUser(
+      userId: string | null | undefined, 
+      role: UserRole | null | undefined,
+      options: { pageLimit?: number, lastDoc?: DocumentSnapshot } = {}
+    ): Query | null {
         if (!userId || !role) return null;
 
+        const { pageLimit = 10, lastDoc } = options;
+
+        let q: Query;
+
         if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(role)) {
-            return query(this.collectionRef, orderBy('createdAt', 'desc'));
+            q = query(this.collectionRef, orderBy('createdAt', 'desc'), limit(pageLimit));
+        } else if (role === 'Partner') {
+            q = query(this.collectionRef, where('assignedToUid', '==', userId), orderBy('createdAt', 'desc'), limit(pageLimit));
+        } else {
+            // Default for Customers and other roles
+            q = query(this.collectionRef, where('userId', '==', userId), orderBy('createdAt', 'desc'), limit(pageLimit));
         }
-
-        if (role === 'Partner') {
-            return query(this.collectionRef, where('assignedToUid', '==', userId), orderBy('createdAt', 'desc'));
+        
+        if (lastDoc) {
+            q = query(q, startAfter(lastDoc));
         }
-
-        // Default for Customers and other roles
-        return query(this.collectionRef, where('userId', '==', userId), orderBy('createdAt', 'desc'));
+        
+        return q;
     }
     
     /**
@@ -49,3 +62,4 @@ class OrdersRepository {
 }
 
 export const ordersRepository = new OrdersRepository();
+
