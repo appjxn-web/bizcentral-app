@@ -1013,3 +1013,18 @@ export interface StockMovement {
   createdAt: any;
   createdBy: string;
 }
+
+export interface AuditLog {
+  id?: string;
+  entityType: string;
+  entityId: string;
+  action: 'create' | 'update' | 'delete' | 'approve' | 'reject' | 'login' | 'logout';
+  actorUid: string;
+  actorDisplayName: string;
+  timestamp: any;
+  changes?: {
+    before: any;
+    after: any;
+  };
+  context?: any;
+}

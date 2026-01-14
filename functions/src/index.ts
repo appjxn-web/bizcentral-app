@@ -1,5 +1,4 @@
 
-
 // ✅ Use this SAME file content for BOTH paths:
 // 1) functions/src/index.ts
 // 2) src/functions/src/index.ts
@@ -25,9 +24,9 @@ import type {
   Product,
   StockTransferRequest,
   PaymentSubmission,
-  SalesOrder,
 } from "./types";
 import { getNextDocNumber } from "./number-series";
+import { createAuditLog } from "./audit";
 
 
 if (admin.apps.length === 0) {
@@ -595,8 +594,22 @@ export const onPaymentApproved = onDocumentUpdated({ document: "paymentSubmissio
   const after = event.data.after.data() as PaymentSubmission;
   const before = event.data.before.data() as PaymentSubmission;
 
-  // Run only when status changes to Approved
   if (before.status !== "Approved" && after.status === "Approved") {
+    // Audit Log
+    try {
+        const actor = after.recordedByUid ? await admin.auth().getUser(after.recordedByUid) : null;
+        await createAuditLog({
+            entityType: 'paymentSubmissions',
+            entityId: event.data.after.id,
+            action: 'approve',
+            actorUid: actor?.uid || 'system',
+            actorDisplayName: actor?.displayName || 'System',
+            changes: { before: before, after: after }
+        });
+    } catch (auditError) {
+        console.error("Failed to create audit log for payment approval:", auditError);
+    }
+      
     const orderId = (after as any).orderId as string | undefined;
     if (!orderId) {
       console.error("Payment submission approved but orderId is missing:", (after as any).id);
@@ -693,10 +706,6 @@ export const onPaymentApproved = onDocumentUpdated({ document: "paymentSubmissio
         balance: newBalance,
         status: newBalance <= 0 ? "Ready for Dispatch" : "Ordered",
       } as any);
-
-      // Optional: mark submission "processed" flag (not required, but can prevent double-jv if something weird happens)
-      // const submissionRef = db.collection("paymentSubmissions").doc((after as any).id);
-      // transaction.update(submissionRef, { processedAt: admin.firestore.FieldValue.serverTimestamp() } as any);
     });
   }
 
@@ -714,4 +723,3 @@ export const helloWorld = onCall({ region: "asia-south1" }, (request) => {
     
 
     
-

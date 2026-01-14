@@ -1,7 +1,6 @@
 
 
-
-import type {Timestamp} from "firebase/firestore";
+import type {Timestamp} from "firebase-admin/firestore";
 
 export type DocPrefixConfig = {
     id: string;
@@ -249,6 +248,22 @@ export interface PaymentSubmission {
   submittedAt: Timestamp;
 }
     
+export interface AuditLog {
+  id?: string;
+  entityType: string;
+  entityId: string;
+  action: 'create' | 'update' | 'delete' | 'approve' | 'reject' | 'login' | 'logout';
+  actorUid: string;
+  actorDisplayName: string;
+  timestamp: any;
+  changes?: {
+    before: any;
+    after: any;
+  };
+  context?: any;
+}
 
     
+
+
 
