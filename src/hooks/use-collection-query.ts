@@ -44,7 +44,7 @@ export function useCollectionQuery<T = any>(
 
     return () => unsub();
     // ✅ queryKey is the stable dependency, not Firestore internals
-  }, [enabled, queryKey, q]);
+  }, [enabled, queryKey]);
 
   return { data, loading, error };
 }
