@@ -1,6 +1,6 @@
 
 
-import type {Timestamp} from "firebase/firestore";
+import type {Timestamp} from "firebase-admin/firestore";
 
 export type DocPrefixConfig = {
     id: string;
@@ -68,6 +68,11 @@ export interface Order {
   assignedToUid?: string;
   payoutStatus?: 'Awaiting Delivery' | 'Payable' | 'Paid' | 'No Commission';
   paymentDetails?: string; 
+}
+
+export interface SalesOrder extends Order {
+  orderNumber: string;
+  quotationId?: string;
 }
 
 
@@ -241,9 +246,26 @@ export interface PaymentSubmission {
   proofUrl?: string;
   status: 'Pending' | 'Approved' | 'Rejected';
   submittedAt: Timestamp;
+  recordedByUid?: string;
 }
     
+export interface AuditLog {
+  id?: string;
+  entityType: string;
+  entityId: string;
+  action: 'create' | 'update' | 'delete' | 'approve' | 'reject' | 'login' | 'logout';
+  actorUid: string;
+  actorDisplayName: string;
+  timestamp: any;
+  changes?: {
+    before: any;
+    after: any;
+  };
+  context?: any;
+}
 
     
+
+
 
 
