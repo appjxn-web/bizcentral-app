@@ -3,6 +3,8 @@
 
 import {
   collection,
+  doc,
+  getDoc,
   getDocs,
   limit,
   orderBy,
@@ -118,19 +120,20 @@ export const reportsService = {
     const rows: TBRow[] = [];
     for (const l of ledgers) {
       const openNet = openingNetByLedger.get(l.id) || 0;
-      const periodDr = periodTotals.get(l.id)?.dr || 0;
-      const periodCr = periodTotals.get(l.id)?.cr || 0;
-      const closeNet = round2(openNet + (periodDr - periodCr));
+      const t = periodTotals.get(l.id) || { dr: 0, cr: 0 };
+      const dr = round2(t.dr);
+      const cr = round2(t.cr);
+      const closeNet = round2(openNet + (dr - cr));
 
-      if (openNet === 0 && periodDr === 0 && periodCr === 0 && closeNet === 0) continue;
+      if (openNet === 0 && dr === 0 && cr === 0 && closeNet === 0) continue;
 
       rows.push({
         ledgerId: l.id,
         ledgerName: l.name,
         groupId: l.groupId,
         openingNet: openNet,
-        periodDr: periodDr,
-        periodCr: periodCr,
+        periodDr: dr,
+        periodCr: cr,
         closingNet: closeNet,
       });
     }

@@ -23,74 +23,52 @@ function monthRange(fromISO: string, toISO: string) {
   return out;
 }
 
+const { firestore: db } = initializeFirebase();
+
 export const reportsCacheService = {
   async getLedgerTotals(companyId: string, fromDate: string, toDate: string) {
-    const { firestore: db } = initializeFirebase();
     const totals = new Map<string, { dr: number; cr: number }>();
     const jRef = collection(db, `companies/${companyId}/journal_entries`);
 
     const fromDateObj = new Date(fromDate);
     const toDateObj = new Date(toDate);
+    
+    // Adjust to ensure dates are treated as local timezone's start/end of day
+    fromDateObj.setHours(0,0,0,0);
+    toDateObj.setHours(23,59,59,999);
 
-    const firstMonth = fromDate.slice(0, 7);
-    const lastMonth = toDate.slice(0, 7);
-    const firstDayOfFirstMonth = new Date(fromDateObj.getFullYear(), fromDateObj.getMonth(), 1);
-    const lastDayOfLastMonth = new Date(toDateObj.getFullYear(), toDateObj.getMonth() + 1, 0);
+    const firstMonthStr = fromDate.slice(0, 7);
+    const lastMonthStr = toDate.slice(0, 7);
 
     const fullMonths = monthRange(fromDate, toDate);
-    
-    // Logic for partial first month
+    const monthsToCacheFetch = new Set(fullMonths);
+
+    // --- Partial First Month Logic ---
+    const firstDayOfFirstMonth = new Date(fromDateObj.getFullYear(), fromDateObj.getMonth(), 1);
     if (fromDateObj > firstDayOfFirstMonth) {
-      const q = query(jRef, 
-        where("voucherDate", ">=", fromDate), 
-        where("voucherDate", "<", new Date(fromDateObj.getFullYear(), fromDateObj.getMonth() + 1, 1).toISOString().slice(0, 10))
-      );
-      const snap = await getDocs(q);
-      snap.forEach(d => {
-        const x = d.data() as any;
-        const cur = totals.get(x.ledgerId) || { dr: 0, cr: 0 };
-        cur.dr += Number(x.dr || 0);
-        cur.cr += Number(x.cr || 0);
-        totals.set(x.ledgerId, cur);
-      });
-      fullMonths.shift(); // Remove first month as it's handled
+      const endOfFirstMonth = new Date(fromDateObj.getFullYear(), fromDateObj.getMonth() + 1, 0);
+      const edgeEndDate = toMonthStr === firstMonthStr ? toDate : endOfFirstMonth.toISOString().slice(0, 10);
+      
+      const edge = await scanJournalEntriesTotals(companyId, fromDate, edgeEndDate);
+      for (const [k, v] of edge.entries()) addToTotals(totals, k, v.dr, v.cr);
+      monthsToCacheFetch.delete(firstMonthStr);
     }
-
-    // Logic for partial last month
-    if (toDateObj < lastDayOfLastMonth && firstMonth !== lastMonth) {
-      const q = query(jRef, 
-        where("voucherDate", ">=", new Date(toDateObj.getFullYear(), toDateObj.getMonth(), 1).toISOString().slice(0, 10)),
-        where("voucherDate", "<=", toDate)
-      );
-      const snap = await getDocs(q);
-       snap.forEach(d => {
-        const x = d.data() as any;
-        const cur = totals.get(x.ledgerId) || { dr: 0, cr: 0 };
-        cur.dr += Number(x.dr || 0);
-        cur.cr += Number(x.cr || 0);
-        totals.set(x.ledgerId, cur);
-      });
-      fullMonths.pop(); // Remove last month
-    } else if (firstMonth === lastMonth && fromDateObj > firstDayOfFirstMonth) {
-        // Handled by the first partial month logic
-        fullMonths.pop();
+    
+    // --- Partial Last Month Logic (if different from first month) ---
+    const lastDayOfLastMonth = new Date(toDateObj.getFullYear(), toDateObj.getMonth() + 1, 0);
+     if (toDateObj < lastDayOfLastMonth && firstMonthStr !== lastMonthStr) {
+      const startOfLastMonth = new Date(toDateObj.getFullYear(), toDateObj.getMonth(), 1).toISOString().slice(0, 10);
+      const edge = await scanJournalEntriesTotals(companyId, startOfLastMonth, toDate);
+      for (const [k, v] of edge.entries()) addToTotals(totals, k, v.dr, v.cr);
+      monthsToCacheFetch.delete(lastMonthStr);
     }
-
 
     // Fetch full months from cache
-    for (const month of fullMonths) {
-      const ref = doc(db, `companies/${companyId}/report_cache/${month}`);
-      const snap = await getDoc(ref);
-      if (!snap.exists()) continue;
-
-      const cache = snap.data() as CacheDoc;
-      const ledgers = cache.ledgers ?? {};
-
-      for (const [ledgerId, v] of Object.entries(ledgers)) {
-        const cur = totals.get(ledgerId) || { dr: 0, cr: 0 };
-        cur.dr += Number(v.dr || 0);
-        cur.cr += Number(v.cr || 0);
-        totals.set(ledgerId, cur);
+    for (const month of Array.from(monthsToCacheFetch)) {
+      const cache = await loadMonthlyCacheTotals(companyId, month);
+      if (!cache?.ledgers) continue;
+      for (const [ledgerId, v] of Object.entries(cache.ledgers)) {
+        addToTotals(totals, ledgerId, Number(v.dr || 0), Number(v.cr || 0));
       }
     }
 
@@ -102,3 +80,40 @@ export const reportsCacheService = {
     return totals;
   },
 };
+
+
+// --- Private Helpers ---
+
+function addToTotals(
+  totals: Map<string, { dr: number; cr: number }>,
+  ledgerId: string,
+  dr: number,
+  cr: number
+) {
+  const cur = totals.get(ledgerId) || { dr: 0, cr: 0 };
+  cur.dr += Number(dr || 0);
+  cur.cr += Number(cr || 0);
+  totals.set(ledgerId, cur);
+}
+
+async function loadMonthlyCacheTotals(companyId: string, month: string): Promise<CacheDoc | null> {
+  const ref = doc(db, `companies/${companyId}/report_cache/${month}`);
+  const snap = await getDoc(ref);
+  return snap.exists() ? (snap.data() as CacheDoc) : null;
+}
+
+async function scanJournalEntriesTotals(companyId: string, from: string, to: string) {
+  const totals = new Map<string, { dr: number; cr: number }>();
+  const jRef = collection(db, `companies/${companyId}/journal_entries`);
+  const q = query(
+    jRef,
+    where("voucherDate", ">=", from),
+    where("voucherDate", "<=", to)
+  );
+  const snap = await getDocs(q);
+  snap.forEach(d => {
+    const x = d.data() as any;
+    addToTotals(totals, x.ledgerId, x.dr, x.cr);
+  });
+  return totals;
+}
