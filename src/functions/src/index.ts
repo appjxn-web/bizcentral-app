@@ -115,7 +115,7 @@ const findOrCreateSpecificCustomerLedger = async (
 export const verifyUpiPaymentAndCreateOrder = onCall(
   { region: "asia-south1" },
   async (req) => {
-    const { order, upiTransactionId } = req.data;
+    const { order, upiTransactionId, companyId = "default" } = req.data;
 
     if (!order?.userId || !upiTransactionId) {
       throw new HttpsError("invalid-argument", "Missing order/userId/upiTransactionId");
@@ -125,7 +125,7 @@ export const verifyUpiPaymentAndCreateOrder = onCall(
     const settingsSnap = await db.doc("company/settings").get();
     const prefixes = settingsSnap.data()?.prefixes;
 
-    const orderRef = db.collection("orders").doc(); // ✅ NEW DOC ID
+    const orderRef = db.collection(`companies/${companyId}/orders`).doc();
     const paymentRef = db.collection("paymentSubmissions").doc();
 
     try {
@@ -134,7 +134,7 @@ export const verifyUpiPaymentAndCreateOrder = onCall(
 
             tx.set(orderRef, {
                 ...order,
-                id: orderRef.id, // Storing the document ID within the document
+                id: orderRef.id,
                 orderNumber,
                 status: "Awaiting Payment Confirmation",
                 createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -142,8 +142,8 @@ export const verifyUpiPaymentAndCreateOrder = onCall(
 
             tx.set(paymentRef, {
                 userId: order.userId,
-                orderId: orderRef.id,          // ✅ LINK BY DOC ID (important)
-                orderNumber,                   // optional for display
+                orderId: orderRef.id,
+                orderNumber,
                 amount: order.paymentReceived,
                 paymentMethod: "UPI / Online",
                 transactionDetails: upiTransactionId,
@@ -291,7 +291,8 @@ export const onInvoiceCreated = onDocumentCreated({ document: "salesInvoices/{in
 
       // 5) UPDATE SOURCE ORDER STATUS
       if ((invoice as any).orderId) {
-        transaction.update(db.collection("orders").doc((invoice as any).orderId), { status: "Invoice Sent" });
+        // IMPORTANT: Assuming orders are in companies/default/orders
+        transaction.update(db.doc(`companies/default/orders/${(invoice as any).orderId}`), { status: "Invoice Sent" });
       }
     });
   } catch (e: any) {
@@ -611,14 +612,14 @@ export const onPaymentApproved = onDocumentUpdated({ document: "paymentSubmissio
         const actor = recordedByUid ? await admin.auth().getUser(recordedByUid) : null;
 
         await createAuditLog({
-          companyId: "default", // Assuming a single-company setup for now
-          entityType: 'paymentSubmissions',
+          companyId: "default", 
+          entityType: "paymentSubmissions",
           entityId: event.data.after.id,
-          action: 'approve',
-          actorUid: actor?.uid || 'system',
+          action: "approve",
+          actorUid: actor?.uid || "system",
           meta: {
-            actorDisplayName: actor?.displayName || 'System',
-            changes: { before, after }
+            actorDisplayName: actor?.displayName || "System",
+            changes: { before, after },
           },
         });
         
@@ -631,8 +632,9 @@ export const onPaymentApproved = onDocumentUpdated({ document: "paymentSubmissio
       console.error("Payment submission approved but orderId is missing:", (after as any).id);
       return;
     }
-
-    const orderRef = db.collection("orders").doc(orderId);
+    
+    // IMPORTANT: Assuming orders are in companies/default/orders
+    const orderRef = db.doc(`companies/default/orders/${orderId}`);
 
     return db.runTransaction(async (transaction) => {
       const orderDoc = await transaction.get(orderRef);
