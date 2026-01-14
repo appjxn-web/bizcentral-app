@@ -89,6 +89,11 @@ service cloud.firestore {
         allow read: if hasCompanyAccess(companyId);
         allow write: if false;
       }
+      
+      match /fy_openings/{fyId} {
+        allow read: if hasCompanyAccess(companyId);
+        allow write: if false;
+      }
 
       // =========================
       // SALES INVOICES (CLIENT DRAFT OK)
@@ -148,5 +153,3 @@ service cloud.firestore {
     }
   }
 }
-
-    

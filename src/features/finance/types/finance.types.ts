@@ -1,5 +1,4 @@
 
-
 import type { Timestamp } from 'firebase/firestore';
 
 export type CoaNature = "ASSET" | "LIABILITY" | "EQUITY" | "INCOME" | "EXPENSE";
@@ -124,7 +123,3 @@ export interface FinanceSettings {
   retainedEarningsLedgerId?: string;
   pnlClearingLedgerId?: string;
 }
-
-    
-
-    
