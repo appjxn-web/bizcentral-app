@@ -118,7 +118,9 @@ function StocksPageContent() {
 
   const productStockMap = React.useMemo(() => {
     const stockMap = new Map<string, number>();
-    if (!stockMovements) return stockMap;
+    if (!stockMovements || !products) return stockMap;
+
+    products.forEach(p => stockMap.set(p.id, p.openingStock || 0));
     
     stockMovements.forEach(movement => {
         const currentStock = stockMap.get(movement.productId) || 0;
@@ -126,7 +128,7 @@ function StocksPageContent() {
     });
 
     return stockMap;
-  }, [stockMovements]);
+  }, [stockMovements, products]);
 
   const filteredProducts = React.useMemo(() => {
     if (!products) return [];
@@ -461,6 +463,7 @@ export default function StocksPageWrapper() {
 
     return <StocksPageContent />;
 }
+
 
 
 

@@ -188,10 +188,11 @@ export default function CreateGrnPage() {
                     createdAt: serverTimestamp(),
                     createdBy: user.uid,
                 };
-                batch.set(stockMovementRef, movementData);
+                batch.set(stockMovementRef, { ...movementData, id: stockMovementRef.id });
             }
 
-            const inventoryLedger = coaLedgers.find(l => l.id === item.coaAccountId);
+            const product = allProducts.find(p => p.id === item.productId);
+            const inventoryLedger = coaLedgers.find(l => l.id === product?.coaAccountId);
             if (inventoryLedger) {
                 journalEntries.push({
                     accountId: inventoryLedger.id,
