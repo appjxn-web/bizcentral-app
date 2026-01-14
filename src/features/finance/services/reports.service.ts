@@ -92,7 +92,7 @@ export const reportsService = {
 
     const groupById = new Map(groups.map((g) => [g.id, g]));
 
-    // 2) Use the new cache service to get period totals
+    // 2) Get period totals using the cache service
     const periodTotals = await reportsCacheService.getLedgerTotals(companyId, fromDate, toDate);
 
     // 3) Calculate opening balances by summing all journal entries BEFORE fromDate
@@ -115,8 +115,7 @@ export const reportsService = {
       openingNetByLedger.set(ledgerId, currentOpening + (entry.dr || 0) - (entry.cr || 0));
     });
 
-
-    // 4) Build Trial Balance rows using cached period totals
+    // 4) Build Trial Balance rows
     const rows: TBRow[] = [];
     for (const l of ledgers) {
       const openNet = openingNetByLedger.get(l.id) || 0;
@@ -160,7 +159,7 @@ export const reportsService = {
     }
     groupTotals.sort((a, b) => a.groupName.localeCompare(b.groupName));
 
-    // 6) Summaries by nature (using ledger closingNet)
+    // 6) Summaries by nature
     let assetsNet = 0, liabilitiesNet = 0, equityNet = 0, incomeNet = 0, expenseNet = 0;
     for (const r of rows) {
       const g = groupById.get(r.groupId);
@@ -191,3 +190,5 @@ export const reportsService = {
     };
   },
 };
+
+    

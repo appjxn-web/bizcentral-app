@@ -27,6 +27,8 @@ import type {
 } from "./types";
 import { getNextDocNumber } from "./number-series";
 import { createAuditLog } from "./audit";
+export { postSalesInvoice } from "./post-sales-invoice";
+export { reverseVoucher } from "./reverse-voucher";
 
 
 if (admin.apps.length === 0) {
@@ -243,6 +245,17 @@ export const onInvoiceCreated = onDocumentCreated({ document: "salesInvoices/{in
         const stockCollectionPath = isPartnerSale ? `users/${partnerId}/stock` : 'products';
         const stockDocRef = db.doc(`${stockCollectionPath}/${item.productId}`);
         const fieldToDecrement = isPartnerSale ? "quantity" : "openingStock";
+
+        // *** NEGATIVE STOCK CHECK ***
+        const stockDoc = await transaction.get(stockDocRef);
+        if (!stockDoc.exists) {
+            throw new Error(`Stock record not found for product ${item.productId}`);
+        }
+        const currentStock = (stockDoc.data() as any)[fieldToDecrement] || 0;
+        if (currentStock < item.quantity) {
+            throw new Error(`Insufficient stock for ${item.name} (${item.productId}). Available: ${currentStock}, Required: ${item.quantity}`);
+        }
+        // *** END CHECK ***
         
         transaction.update(stockDocRef, {
             [fieldToDecrement]: admin.firestore.FieldValue.increment(-item.quantity)
@@ -719,5 +732,7 @@ export const helloWorld = onCall({ region: "asia-south1" }, (request) => {
 
     
 
+
+    
 
     

@@ -1,4 +1,5 @@
 
+
 import type { Timestamp } from 'firebase/firestore';
 
 export type CoaNature = "ASSET" | "LIABILITY" | "EQUITY" | "INCOME" | "EXPENSE";
@@ -104,6 +105,16 @@ export type JournalVoucher = {
     debit?: number;
     credit?: number;
   }[];
+  lines?: {
+    ledgerId: string;
+    dr: number;
+    cr: number;
+    narration?: string;
+  }[];
+  isReversal?: boolean;
+  reversedVoucherId?: string;
   createdAt: any;
   createdByUid?: string;
 };
+
+    

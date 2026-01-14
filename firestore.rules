@@ -21,7 +21,7 @@ service cloud.firestore {
       return getUserData().companyMemberships.filter(c, c.companyId == companyId)[0].role;
     }
 
-    function isCompanyAdmin(companyId) {
+    function isAdmin(companyId) {
       return isCompanyMember(companyId) && getCompanyRole(companyId) in ['Admin', 'CEO', 'Accounts Manager'];
     }
 
@@ -148,3 +148,5 @@ service cloud.firestore {
     }
   }
 }
+
+    
