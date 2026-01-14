@@ -138,6 +138,7 @@ export interface PaymentSubmission {
   recordedByUid?: string; // The user (partner/admin) who recorded the manual payment
   customerName: string;
   orderId: string;
+  orderNumber?: string;
   amount: number;
   paymentMethod: string;
   transactionDetails?: string;
@@ -145,6 +146,7 @@ export interface PaymentSubmission {
   status: 'Pending' | 'Approved' | 'Rejected';
   submittedAt: any;
   assignedToUid: string | null;
+  receivingAccountId?: string;
 }
 
 
@@ -951,6 +953,17 @@ export interface CompanyInfo {
   addresses?: Address[];
   payrollConfig?: PayrollConfig;
   attendanceConfig?: AttendanceConfig;
+  taxInfo?: {
+    [key: string]: {
+      id: string;
+      value: string;
+      fileUrl?: string;
+    };
+  };
+  commissionMatrix?: {
+    effectiveDate: string;
+    matrix: CommissionRule[];
+  };
 }
 
 export interface AttendanceConfig {
