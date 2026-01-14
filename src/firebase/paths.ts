@@ -13,3 +13,9 @@ export const inventoryPaths = {
   warehouses: (companyId: string) => `companies/${companyId}/warehouses`,
   stockMovements: (companyId: string) => `companies/${companyId}/stock_movements`,
 };
+
+export const salesPaths = {
+  customers: (companyId: string) => `companies/${companyId}/customers`,
+  salesOrders: (companyId: string) => `companies/${companyId}/sales_orders`,
+  salesInvoices: (companyId: string) => `companies/${companyId}/sales_invoices`,
+};
