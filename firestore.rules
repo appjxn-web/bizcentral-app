@@ -18,12 +18,13 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      return signedIn() && getRole(request.auth.uid) in ['Admin', 'CEO', 'Accounts Manager'];
+      // In a single-company setup, we can check a global admin role.
+      // For multi-company, this would need a companyId parameter.
+      return signedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['Admin', 'CEO', 'Accounts Manager'];
     }
 
     function isCompanyMember(companyId) {
-        // In a single-company setup, we can assume membership if signed in,
-        // or add more complex logic if needed later.
+        // Simplified for single-company setup
         return signedIn();
     }
 
@@ -31,14 +32,13 @@ service cloud.firestore {
     // =========================
     // PUBLIC-READABLE COLLECTIONS
     // =========================
-    match /products/{productId} { allow read: if true; allow write: if isAdmin("default"); }
-    match /vacancies/{vacancyId} { allow read: if true; allow write: if isAdmin("default"); }
-    match /posts/{postId} { allow read: if true; allow write: if isAdmin("default"); }
-    match /locations/{locationId} { allow read: if true; allow write: if isAdmin("default"); }
-    match /pickupPoints/{pointId} { allow read: if true; allow write: if isAdmin("default"); }
-    match /company/{docId} { allow read: if true; allow write: if isAdmin("default"); }
+    match /products/{productId} { allow read: if true; allow write: if isAdmin(); }
+    match /vacancies/{vacancyId} { allow read: if true; allow write: if isAdmin(); }
+    match /posts/{postId} { allow read: if true; allow write: if isAdmin(); }
+    match /locations/{locationId} { allow read: if true; allow write: if isAdmin(); }
+    match /pickupPoints/{pointId} { allow read: if true; allow write: if isAdmin(); }
+    match /company/{docId} { allow read: if true; allow write: if isAdmin(); }
     
-    // Corrected rule for the 'offers' collection
     match /offers/{offerId} {
       allow read: if signedIn();
       allow write: if isAdmin();
@@ -73,12 +73,15 @@ service cloud.firestore {
     // =========================
     match /companies/{companyId} {
       allow read: if isCompanyMember(companyId);
-      allow write: if isAdmin(companyId);
+      allow write: if isAdmin();
 
       // --- Orders Subcollection ---
       match /orders/{orderId} {
-        allow read: if isCompanyMember(companyId) && 
+        // Grant list access to admins, and allow specific document reads for relevant users.
+        allow list: if isCompanyMember(companyId) && isAdmin();
+        allow get: if isCompanyMember(companyId) && 
                        (isAdmin() || resource.data.userId == request.auth.uid || resource.data.assignedToUid == request.auth.uid);
+        
         allow create: if isCompanyMember(companyId) && 
                          (request.resource.data.userId == request.auth.uid || isAdmin());
         allow update: if isCompanyMember(companyId) &&
@@ -89,7 +92,7 @@ service cloud.firestore {
       // Any other future subcollections under a company
       match /{allChildren=**} {
         allow read: if isCompanyMember(companyId);
-        allow write: if isAdmin(companyId);
+        allow write: if isAdmin();
       }
     }
 
