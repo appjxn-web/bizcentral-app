@@ -56,6 +56,15 @@ service cloud.firestore {
       allow read: if signedIn() && (request.auth.uid == uid || isAdmin("default"));
       allow write: if false; // prevent client editing roles/companies
     }
+    
+    // =========================
+    // ORDERS (ROOT COLLECTION)
+    // =========================
+    match /orders/{orderId} {
+      allow read: if signedIn() && (isAdmin("default") || request.auth.uid == resource.data.userId);
+      allow create: if signedIn();
+      allow update, delete: if signedIn() && (isAdmin("default") || request.auth.uid == resource.data.userId);
+    }
 
     // =========================
     // COMPANY ROOT
