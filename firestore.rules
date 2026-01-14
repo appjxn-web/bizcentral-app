@@ -1,237 +1,117 @@
+
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // -----------------------------
-    // 1) HELPERS
-    // -----------------------------
     function signedIn() { return request.auth != null; }
-    function userDoc() {
+    function getRole() {
       return signedIn()
-        ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data
+        ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role
         : null;
     }
-    function role() { return signedIn() ? userDoc().role : null; }
-
     function isAdmin() {
-      return signedIn() && role() in [
-        'Admin', 'CEO', 'Sales Manager', 'Accounts Manager', 'Accountant'
-      ];
+      return signedIn() && getRole() in ['Admin', 'CEO', 'Sales Manager', 'Accounts Manager', 'Accountant'];
     }
+    function isOwner(userId) { return signedIn() && request.auth.uid == userId; }
 
-    function isOwner(uid) { return signedIn() && request.auth.uid == uid; }
-
-    // For docs having { userId } or { createdByUid } field
-    function isDocOwner() {
-      return signedIn() && (
-        (resource.data.userId == request.auth.uid) ||
-        (resource.data.createdByUid == request.auth.uid)
-      );
-    }
-    
-    function isEmployeeDocOwner() {
-      return signedIn() && resource.data.employeeId == request.auth.uid;
-    }
-
-    // For docs having { assignedToUid } field
-    function isAssignee() {
-      return signedIn() && resource.data.assignedToUid == request.auth.uid;
-    }
-
-    // -----------------------------
-    // 2) PUBLIC LANDING PAGE
-    // -----------------------------
-    // These MUST be readable without login.
-    match /company/{id} { allow read: if true; allow write: if isAdmin(); }
-    match /locations/{id} { allow read: if true; allow write: if isAdmin(); }
-    match /jobOpenings/{id} { allow read: if true; allow write: if isAdmin(); }
-    match /shop/{id} { allow read: if true; allow write: if isAdmin(); }
-    match /shopProducts/{id} { allow read: if true; allow write: if isAdmin(); }
+    // ---------- PUBLIC (Landing Page) ----------
+    match /locations/{id} { allow read: if true; }
+    match /jobOpenings/{id} { allow read: if true; }
+    match /shopProducts/{id} { allow read: if true; }
     match /products/{id} { allow read: if true; allow write: if isAdmin(); }
     match /posts/{id} { allow read: if true; allow write: if isAdmin(); }
     match /offers/{id} { allow read: if true; allow write: if isAdmin(); }
-    match /pickupPoints/{id} { allow read: if true; allow write: if isAdmin(); }
+    match /company/{id} { allow read: if true; allow write: if isAdmin(); }
+    match /pickupPoints/{id} { allow read: if true; }
 
-
-    // -----------------------------
-    // 3) USERS & PROFILES
-    // -----------------------------
+    // ---------- USERS ----------
     match /users/{userId} {
-      allow get: if signedIn();               // app needs user profile
-      allow list: if isAdmin();               // admin can list users
-      allow create: if isOwner(userId);       // user can create their own profile
-      allow update: if isOwner(userId) || isAdmin();
-      allow delete: if isAdmin();
+      allow get: if signedIn();
+      allow list: if isAdmin();
+      allow create: if signedIn() && request.auth.uid == userId;
+      allow update, delete: if isOwner(userId) || isAdmin();
 
       match /notifications/{id} {
         allow read: if isOwner(userId) || isAdmin();
-        allow create: if isOwner(userId);     // only owner creates their notifications
-        allow update, delete: if isAdmin();
-      }
-
-      match /wallet/main {
-        allow read, write: if isOwner(userId) || isAdmin();
-      }
-      
-      match /attendance/{docId} {
-        allow read, write: if isOwner(userId);
-      }
-
-      match /referrals/{id} {
-        allow read, write: if isOwner(userId) || isAdmin();
-      }
-
-      match /registeredProducts/{id} {
-        allow read, list: if isOwner(userId) || isAdmin();
-        allow write: if isAdmin();
-      }
-
-      match /stock/{productId} {
-        allow read: if isOwner(userId) || isAdmin();
-        allow write: if isAdmin();
-      }
-    }
-    
-    // -----------------------------
-    // TASKS
-    // -----------------------------
-    match /tasks/{taskId} {
-      allow get: if signedIn() && (resource.data.assigneeId == request.auth.uid || isAdmin());
-      allow list: if signedIn(); // query must be secured by where clause
-      allow create, update: if signedIn();
-      allow delete: if isAdmin();
-    }
-    
-    // -----------------------------
-    // WORK ORDERS
-    // -----------------------------
-    match /workOrders/{workOrderId} {
-        allow read, list: if signedIn();
-        allow write: if isAdmin();
-    }
-
-
-    // -----------------------------
-    // 4) CUSTOMER PORTAL (Orders, Invoices, Payments)
-    // -----------------------------
-    match /orders/{orderId} {
-      allow get: if isAdmin() || isDocOwner() || isAssignee();
-      allow create: if signedIn();
-      allow list: if isAdmin();
-      allow update: if isAdmin() || isDocOwner() || isAssignee();
-      allow delete: if isAdmin();
-    }
-
-    match /salesInvoices/{invoiceId} {
-      allow get: if isAdmin() || signedIn(); // if you want stricter: require customerId match
-      allow list: if isAdmin();              // same reason as orders
-
-      allow create, update, delete: if isAdmin() || (signedIn() && role() == 'Partner');
-    }
-
-    match /paymentSubmissions/{id} {
-      allow get: if isAdmin() || isDocOwner() || isAssignee();
-      allow create: if signedIn();
-      allow list: if isAdmin();              // same reason
-      allow update, delete: if isAdmin();
-    }
-
-    // serviceRequests has customer.id
-    match /serviceRequests/{id} {
-      allow get: if isAdmin()
-        || (signedIn() && resource.data.customer.id == request.auth.uid)
-        || isAssignee();
-
-      allow list: if isAdmin();              // safest
-      allow create: if signedIn();
-      allow update, delete: if isAdmin();
-    }
-
-    // -----------------------------
-    // 5) SALES & PROCUREMENT MODULE
-    // -----------------------------
-    match /leads/{id} {
-      allow get: if isAdmin() || (signedIn() && resource.data.ownerId == request.auth.uid);
-      allow list: if isAdmin(); // safest
-      allow create: if signedIn();
-      allow update, delete: if isAdmin() || (signedIn() && resource.data.ownerId == request.auth.uid);
-    }
-
-    match /quotations/{id} {
-      allow get: if isAdmin() || (signedIn() && resource.data.createdBy == request.auth.uid);
-      allow list: if isAdmin(); // safest
-      allow create: if signedIn();
-      allow update, delete: if isAdmin() || (signedIn() && resource.data.createdBy == request.auth.uid);
-    }
-    
-    match /purchaseRequests/{id} {
-      allow get: if isAdmin() || isDocOwner();
-      allow list: if isAdmin();
-      allow create: if signedIn();
-      allow update, delete: if isAdmin() || isDocOwner();
-    }
-    
-    match /reimbursementRequests/{id} {
-      allow get: if isAdmin() || isDocOwner();
-      allow list: if isAdmin();
-      allow create: if signedIn();
-      allow update, delete: if isAdmin() || isDocOwner();
-    }
-    
-    match /salaryAdvanceRequests/{id} {
-        allow get: if isAdmin() || isEmployeeDocOwner();
-        allow list: if isAdmin();
         allow create: if signedIn();
         allow update, delete: if isAdmin();
+      }
+      match /wallet/main { allow read, write: if isOwner(userId) || isAdmin(); }
+      match /referrals/{id} { allow read, write: if isOwner(userId) || isAdmin(); }
+      match /registeredProducts/{id} { allow read: if isOwner(userId) || isAdmin(); }
+      match /stock/{productId} { allow read: if isOwner(userId) || isAdmin(); }
     }
 
-    match /stockTransferRequests/{id} {
-      allow get: if isDocOwner() || isAdmin();
-      allow list: if isAdmin();
-      allow create: if signedIn();
-      allow update: if isAdmin();
+    // ---------- ORDERS ----------
+    match /orders/{orderId} {
+      allow read: if signedIn() && (
+        isAdmin() ||
+        resource.data.userId == request.auth.uid ||
+        resource.data.assignedToUid == request.auth.uid
+      );
+
+      allow create: if signedIn() && (
+        isAdmin() ||
+        request.resource.data.userId == request.auth.uid
+      );
+
+      allow update: if signedIn() && (
+        isAdmin() ||
+        resource.data.userId == request.auth.uid ||
+        resource.data.assignedToUid == request.auth.uid
+      );
+
       allow delete: if isAdmin();
     }
-    
-    match /gateLog/{logId} {
-        allow read, write: if signedIn() && (isAdmin() || role() == 'Gate Keeper');
+
+    // ---------- SALES INVOICES ----------
+    match /salesInvoices/{invoiceId} {
+      allow read: if signedIn() && (
+        isAdmin() ||
+        resource.data.customerId == request.auth.uid ||
+        resource.data.assignedToUid == request.auth.uid
+      );
+      allow create, update: if signedIn() && (isAdmin() || getRole() == 'Partner');
+      allow delete: if isAdmin();
     }
 
-    // -----------------------------
-    // 6) GOALS / COMMAND CENTER
-    // -----------------------------
-    match /goals/{goalId} {
-      allow read, write: if signedIn();
-
-      match /milestones/{milestoneId} {
-        allow read, write: if signedIn();
-      }
-    }
-    
-    // This rule allows the collectionGroup query on 'milestones' for the leaderboard
-    match /{path=**}/milestones/{milestoneId} {
-        allow get, list: if signedIn();
+    // ---------- LEADS ----------
+    match /leads/{id} {
+      allow read: if signedIn() && (isAdmin() || resource.data.ownerId == request.auth.uid);
+      allow create: if signedIn();
+      allow update, delete: if signedIn() && (isAdmin() || resource.data.ownerId == request.auth.uid);
     }
 
+    // ---------- QUOTATIONS ----------
+    match /quotations/{id} {
+      allow read: if signedIn() && (isAdmin() || resource.data.createdBy == request.auth.uid);
+      allow create: if signedIn();
+      allow update, delete: if signedIn() && (isAdmin() || resource.data.createdBy == request.auth.uid);
+    }
 
-    // -----------------------------
-    // 7) ACCOUNTING (Admin only)
-    // -----------------------------
+    // ---------- SERVICE ----------
+    match /serviceRequests/{id} {
+      allow read: if signedIn() && (
+        isAdmin() ||
+        resource.data.customer.id == request.auth.uid ||
+        resource.data.assignedToUid == request.auth.uid
+      );
+      allow create: if signedIn();
+      allow update, delete: if isAdmin();
+    }
+
+    // ---------- ACCOUNTING ----------
     match /coa_ledgers/{id} { allow read: if signedIn(); allow write: if isAdmin(); }
-    match /coa_groups/{id}  { allow read: if signedIn(); allow write: if isAdmin(); }
+    match /coa_groups/{id} { allow read: if signedIn(); allow write: if isAdmin(); }
     match /journalVouchers/{id} { allow read: if signedIn(); allow write: if isAdmin(); }
     match /parties/{id} { allow read: if signedIn(); allow write: if isAdmin(); }
 
-    // Server-only
     match /report_cache/{monthId} { allow read: if isAdmin(); allow write: if false; }
-    match /fy_openings/{fyId}     { allow read: if isAdmin(); allow write: if false; }
-    match /audit_logs/{id}        { allow read: if isAdmin(); allow write: if false; }
+    match /fy_openings/{fyId} { allow read: if isAdmin(); allow write: if false; }
 
-    // -----------------------------
-    // 8) DEFAULT DENY (NO catch-all admin write)
-    // -----------------------------
+    // ---------- FINAL SAFETY NET ----------
     match /{path=**} {
-      allow read, write: if false;
+      allow read, write: if isAdmin();
     }
   }
 }
