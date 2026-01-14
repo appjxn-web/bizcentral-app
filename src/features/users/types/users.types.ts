@@ -1,6 +1,4 @@
 
-import type { Timestamp } from 'firebase/firestore';
-
 export type UserRole = 'Admin' | 'Manager' | 'Employee' | 'Customer' | 'CEO' | 'Sales Manager' | 'Production Manager' | 'Purchase Manager' | 'Service Manager' | 'Accounts Manager' | 'HR Manager' | 'Gate Keeper' | 'Inventory Manager' | 'Partner' | 'Dealer' | 'Franchisee' | 'Sales Agent' | 'Accountant' | 'Staff';
 
 export interface CommissionRule {

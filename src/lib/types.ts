@@ -3,8 +3,11 @@
 'use client';
 
 import type { Timestamp } from 'firebase/firestore';
+import type { UserProfile, UserRole } from '@/features/users/types/users.types';
+import type { CoaGroup, CoaLedger, JournalVoucher } from '@/features/finance/types/finance.types';
 
-export type UserRole = 'Admin' | 'Manager' | 'Employee' | 'Customer' | 'CEO' | 'Sales Manager' | 'Production Manager' | 'Purchase Manager' | 'Service Manager' | 'Accounts Manager' | 'HR Manager' | 'Gate Keeper' | 'Inventory Manager' | 'Partner' | 'Dealer' | 'Franchisee' | 'Sales Agent' | 'Accountant' | 'Staff';
+export type { UserProfile, UserRole, CoaGroup, CoaLedger, JournalVoucher };
+
 
 export interface CommissionRule {
     category: string;
@@ -21,6 +24,24 @@ export interface BankAccount {
     upiId?: string;
 }
 
+export interface Address {
+    id: string;
+    type: string;
+    line1: string;
+    line2?: string;
+    city: string;
+    district: string;
+    state: string;
+    country: string;
+    pin: string;
+    digitalPin?: string;
+    isPickupPoint?: boolean;
+    latitude?: number;
+    longitude?: number;
+    pickupContactName?: string;
+    pickupContactPhone?: string;
+}
+
 export interface User {
   id: string;
   name: string;
@@ -28,22 +49,6 @@ export interface User {
   photoURL?: string; // Corrected from avatar
   role: UserRole;
   status: 'Active' | 'Deactivated';
-}
-
-export interface UserProfile extends User {
-    wishlist?: string[];
-    businessName?: string;
-    contactPerson?: string;
-    mobile?: string;
-    pan?: string;
-    gstin?: string;
-    addresses?: Address[];
-    bankAccounts?: BankAccount[];
-    referredBy?: string;
-    partnerMatrix?: CommissionRule[];
-    coaLedgerId?: string;
-    walletBalance?: number;
-    commissionPayable?: number;
 }
 
 export interface UserWallet {
@@ -412,24 +417,6 @@ export interface OffboardingEmployee {
 export type PartyType = 'Customer' | 'Supplier' | 'Vendor' | 'Partner';
 export type PartyStatus = 'Active' | 'Inactive' | 'Blacklisted';
 
-export interface Address {
-    id: string;
-    type: string;
-    line1: string;
-    line2?: string;
-    city: string;
-    district: string;
-    state: string;
-    country: string;
-    pin: string;
-    digitalPin?: string;
-    isPickupPoint?: boolean;
-    latitude?: number;
-    longitude?: number;
-    pickupContactName?: string;
-    pickupContactPhone?: string;
-}
-
 export interface Party {
   id: string;
   name: string;
@@ -668,113 +655,6 @@ export interface ReimbursementRequest {
     transactionDate?: string;
 }
 
-
-export type CoaNature = "ASSET" | "LIABILITY" | "EQUITY" | "INCOME" | "EXPENSE";
-
-export type CoaGroup = {
-  id: string;
-  name: string;
-  code?: string;
-  nature: CoaNature;
-  parentId: string | null;
-  level: number;
-  sortOrder: number;
-  path: string;
-  isSystem: boolean;
-  isActive: boolean;
-  reporting: {
-    statement: "BS" | "PL";
-    section?: string;
-    cashFlowTag?: "OPERATING" | "INVESTING" | "FINANCING";
-  };
-  allowLedgerPosting: boolean;
-  createdAt: any;
-  updatedAt: any;
-};
-
-export type CoaLedger = {
-  id: string;
-  name: string;
-  ledgerCode?: string;
-  groupId: string;
-  nature: CoaNature;
-  type:
-    | "CASH"
-    | "BANK"
-    | "RECEIVABLE"
-    | "PAYABLE"
-    | "INVENTORY"
-    | "FIXED_ASSET"
-    | "DEPRECIATION"
-    | "GST_INPUT"
-    | "GST_OUTPUT"
-    | "TDS"
-    | "TCS"
-    | "EXPENSE"
-    | "INCOME"
-    | "CAPITAL"
-    | "LOAN"
-    | "ROUND_OFF"
-    | "SUSPENSE"
-    | "OTHER";
-
-  posting: {
-    isPosting: boolean;
-    normalBalance: "DEBIT" | "CREDIT";
-    isSystem: boolean;
-    allowManualJournal: boolean;
-  };
-
-  bank?: {
-    accountHolderName?: string;
-    bankName?: string;
-    accountNumber?: string;
-    accountNumberMasked?: string;
-    ifscCode?: string;
-    upiId?: string;
-    adCode?: string;
-    accountType?: "CURRENT" | "SAVINGS" | "OD_CC";
-  };
-
-  inventory?: {
-    valuationMethod?: "FIFO" | "WEIGHTED_AVG";
-    isStockLedger?: boolean;
-    cogsLedgerId?: string;
-  };
-
-  fixedAsset?: {
-    assetCategory?: string;
-    depreciationMethod?: "SLM" | "WDV";
-    depreciationRate?: number;
-    accumulatedDepLedgerId?: string;
-  };
-
-  openingBalance?: {
-    amount: number;
-    drCr: "DR" | "CR";
-    asOf: string; // ISO date
-  };
-
-  status: "ACTIVE" | "INACTIVE";
-  tags?: string[];
-  createdAt: any;
-  updatedAt: any;
-};
-
-
-export type JournalVoucher = {
-  id: string;
-  date: string;
-  narration: string;
-  voucherType?: string;
-  entries: {
-    accountId: string;
-    debit?: number;
-    credit?: number;
-  }[];
-  createdAt: any;
-  createdByUid?: string;
-};
 
 export interface PunchLog {
   inTime: Timestamp;
@@ -1072,6 +952,33 @@ export interface CompanyInfo {
   companyName: string;
   primaryUpiId?: string;
   addresses?: Address[];
+  payrollConfig?: PayrollConfig;
+  attendanceConfig?: AttendanceConfig;
+}
+
+export interface AttendanceConfig {
+    autoPunchOutForLunch: boolean;
+    punchInGracePeriod: number;
+    lunchOutTime: string;
+    lunchInTime: string;
+}
+
+
+export interface PayrollConfig {
+    monthly: {
+        basicPercent: number;
+        hraPercent: number;
+        pfContributionPercent: number;
+        professionalTax: number;
+    },
+    hourly: {
+        defaultRate: number;
+    },
+    overtime: {
+        slot1Multiplier: number;
+        slot2Multiplier: number;
+        slot3Multiplier: number;
+    }
 }
 
 export interface PickupPoint {
@@ -1080,4 +987,6 @@ export interface PickupPoint {
   ownerUid?: string | null;
   active: boolean;
   addressLine?: string;
+  lat?: number;
+  lng?: number;
 }

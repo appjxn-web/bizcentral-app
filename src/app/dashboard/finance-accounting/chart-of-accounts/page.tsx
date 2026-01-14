@@ -23,7 +23,6 @@ import {
 } from '@/components/ui/table';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, PlusCircle, MoreHorizontal, Edit, Trash2, Columns3, Book, Landmark, TrendingUp, TrendingDown, Scale } from 'lucide-react';
-import type { CoaGroup, CoaLedger, CoaNature } from '@/lib/types';
 import { useFirestore, useCollection } from '@/firebase';
 import { collection, query, orderBy, doc, deleteDoc, addDoc, updateDoc, writeBatch } from 'firebase/firestore';
 import {
@@ -35,19 +34,38 @@ import {
 import { AddLedgerDialog } from './_components/add-ledger-dialog';
 import { AddGroupDialog } from './_components/add-group-dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+import { coaRepository } from '@/features/finance/services/coa.repository';
+import type { CoaGroup, CoaLedger, CoaNature } from '@/features/finance/types/finance.types';
+
 
 function ChartOfAccountsPageContent() {
   const { toast } = useToast();
   const router = useRouter();
   const firestore = useFirestore();
-  const { data: coaGroups, loading: groupsLoading } = useCollection<CoaGroup>(query(collection(firestore, 'coa_groups'), orderBy('path')));
-  const { data: coaLedgers, loading: ledgersLoading } = useCollection<CoaLedger>(collection(firestore, 'coa_ledgers'));
+
+  const [coaGroups, setCoaGroups] = React.useState<CoaGroup[]>([]);
+  const [coaLedgers, setCoaLedgers] = React.useState<CoaLedger[]>([]);
+  const [loading, setLoading] = React.useState(true);
   
   const [isAddLedgerOpen, setIsAddLedgerOpen] = React.useState(false);
   const [editingLedger, setEditingLedger] = React.useState<CoaLedger | null>(null);
   
   const [isAddGroupOpen, setIsAddGroupOpen] = React.useState(false);
   const [editingGroup, setEditingGroup] = React.useState<CoaGroup | null>(null);
+
+  React.useEffect(() => {
+    const fetchData = async () => {
+        setLoading(true);
+        const [groups, ledgers] = await Promise.all([
+            coaRepository.listGroups(),
+            coaRepository.listLedgers(),
+        ]);
+        setCoaGroups(groups);
+        setCoaLedgers(ledgers);
+        setLoading(false);
+    };
+    fetchData();
+  }, []);
 
   const kpis = React.useMemo(() => {
     if (!coaGroups || !coaLedgers) {
@@ -210,8 +228,6 @@ function ChartOfAccountsPageContent() {
 
     return elements;
   };
-
-  const loading = groupsLoading || ledgersLoading;
 
   return (
     <>
