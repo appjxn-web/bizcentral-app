@@ -185,6 +185,14 @@ service cloud.firestore {
         allow update, delete: if isAdmin();
     }
 
+    match /stockTransferRequests/{id} {
+      allow get: if isDocOwner() || isAdmin();
+      allow list: if isAdmin();
+      allow create: if signedIn();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
     // -----------------------------
     // 6) GOALS / COMMAND CENTER
     // -----------------------------
