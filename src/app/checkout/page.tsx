@@ -27,7 +27,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { QRCodeSVG } from 'qrcode.react';
 import { ArrowLeft, Info, Loader2, Building, User, CalendarClock } from 'lucide-react';
-import type { Product, Offer, UserRole, Party, CompanyInfo, Address, Order, OrderItem, CoaLedger, PickupPoint, UserProfile, SalesOrder } from '@/lib/types';
+import type { Product, Offer, UserRole, Party, Address, Order, OrderItem, CoaLedger, UserProfile, SalesOrder, CompanyInfo, PickupPoint } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useCollection, useUser, useDoc } from '@/firebase';
 import { getApp } from "firebase/app";
@@ -492,3 +492,5 @@ export default function CheckoutPage() {
     </div>
   );
 }
+
+    

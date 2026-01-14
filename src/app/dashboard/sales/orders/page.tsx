@@ -57,7 +57,7 @@ import {
 import Image from 'next/image';
 import { Separator } from '@/components/ui/separator';
 import { useFirestore, useCollection, useUser, useDoc } from '@/firebase';
-import { collection, query, orderBy, doc, where, or, updateDoc, writeBatch, serverTimestamp, addDoc, Timestamp, getDoc, getDocs, setDoc } from 'firebase/firestore';
+import { collection, query, orderBy, doc, where, or, updateDoc, writeBatch, serverTimestamp, addDoc, Timestamp, getDoc, getDocs } from 'firebase/firestore';
 import { OrderStatusTracker } from '../../my-orders/_components/order-status';
 import {
   Dialog,
@@ -170,7 +170,7 @@ function PayBalanceDialog({ order, companyInfo, balance }: { order: Order; compa
         recordedByUid: user.uid, 
         customerName: order.customerName,
         orderId: order.id,
-        orderNumber: (order as SalesOrder).orderNumber || order.id, // ✅ add this
+        orderNumber: (order as SalesOrder).orderNumber || order.id,
         assignedToUid: order.assignedToUid || null,
         amount: Number(amountToPay),
         paymentMethod: paymentType === 'upi' ? 'UPI / Online' : manualPaymentMethod,
@@ -300,7 +300,7 @@ function PayBalanceDialog({ order, companyInfo, balance }: { order: Order; compa
                         </div>
                     </div>
                     <DialogFooter>
-                        <DialogClose asChild><Button type="button" variant="outline">Close</Button></DialogClose>
+                        <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
                         <Button type="button" onClick={() => handleSubmit('manual')} disabled={isSubmitting || !amountToPay || !receivingAccountId}>
                             {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                             Record Payment
@@ -906,3 +906,6 @@ export default function OrdersPage() {
 
     
 
+
+
+    
