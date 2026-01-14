@@ -170,6 +170,7 @@ function PayBalanceDialog({ order, companyInfo, balance }: { order: Order; compa
         recordedByUid: user.uid, 
         customerName: order.customerName,
         orderId: order.id,
+        orderNumber: (order as SalesOrder).orderNumber || order.id,
         assignedToUid: order.assignedToUid || null,
         amount: Number(amountToPay),
         paymentMethod: paymentType === 'upi' ? 'UPI / Online' : manualPaymentMethod,
@@ -444,27 +445,65 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
 
     const paymentSubmissionsQuery = React.useMemo(() => {
       if (!order.id || !user?.uid || !firestore) return null;
-      return query(collection(firestore, 'paymentSubmissions'), where('orderId', '==', order.id));
-    }, [order.id, user?.uid, firestore]);
+      const submissionsRef = collection(firestore, 'paymentSubmissions');
+    
+      if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
+        return query(submissionsRef, where('orderId', '==', order.id), orderBy('submittedAt', 'desc'));
+      }
+    
+      const securityField = currentRole === 'Partner' ? 'assignedToUid' : 'userId';
+      return query(
+        submissionsRef,
+        where('orderId', '==', order.id),
+        where(securityField, '==', user.uid),
+        orderBy('submittedAt', 'desc')
+      );
+    }, [order.id, user?.uid, currentRole, firestore]);
 
     const { data: paymentSubmissions } = useCollection<PaymentSubmission>(paymentSubmissionsQuery);
+    const { data: allJournalVouchers, loading: jvsLoading } = useCollection<JournalVoucher>(collection(firestore, 'journalVouchers'));
+
+    const { data: customerParty, loading: customerPartyLoading } = useDoc<Party>(order.userId ? doc(firestore, 'parties', order.userId) : null);
     
     const { totalPaid, balanceDue, paymentHistory } = React.useMemo(() => {
-        const approvedPayments = (paymentSubmissions || []).filter(p => p.status === 'Approved');
-        const totalPaidAmount = approvedPayments.reduce((sum, p) => sum + p.amount, 0);
-        
-        const history = (paymentSubmissions || []).map(p => ({
-            amount: p.amount,
-            date: p.submittedAt.toDate(),
-            details: `Ref: ${p.transactionDetails || 'N/A'} (${p.paymentMethod}) - ${p.status}`,
-        })).sort((a,b) => a.date.getTime() - b.date.getTime());
+        const approvedPayments = (paymentSubmissions || [])
+            .filter(p => p.status === 'Approved')
+            .reduce((sum, p) => sum + p.amount, 0);
+
+        const jvHistory = (allJournalVouchers || [])
+            .filter(jv => (jv as any).orderId === order.id)
+            .map(jv => {
+                 const creditEntry = jv.entries.find(e => e.accountId === customerParty?.coaLedgerId && e.credit && e.credit > 0);
+                 if (!creditEntry) return null;
+                 return {
+                    amount: creditEntry.credit || 0,
+                    date: jv.createdAt.toDate(),
+                    details: jv.narration,
+                    status: 'Approved',
+                    type: 'jv'
+                 }
+            })
+            .filter(Boolean) as any[];
+
+        const pendingSubmissions = (paymentSubmissions || [])
+            .filter(p => p.status === 'Pending')
+            .map(p => ({
+                amount: p.amount,
+                date: p.submittedAt.toDate(),
+                details: `Ref: ${p.transactionDetails || 'N/A'} (${p.paymentMethod})`,
+                status: p.status,
+                type: 'submission'
+            }));
+
+        const combinedHistory = [...jvHistory, ...pendingSubmissions].sort((a,b) => a.date.getTime() - b.date.getTime());
+        const totalFromJvs = jvHistory.reduce((sum, p) => sum + p.amount, 0);
 
         return {
-            totalPaid: totalPaidAmount,
-            balanceDue: order.grandTotal - totalPaidAmount,
-            paymentHistory: history,
+            totalPaid: totalFromJvs,
+            balanceDue: order.grandTotal - totalFromJvs,
+            paymentHistory: combinedHistory,
         }
-    }, [order.grandTotal, paymentSubmissions]);
+    }, [order, paymentSubmissions, allJournalVouchers, customerParty]);
 
 
     const refundQuery = order.status === 'Canceled' && user
@@ -526,9 +565,9 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
       'Awaiting Payment': ['Ordered', 'Canceled'],
       'Awaiting Payment Confirmation': ['Ordered', 'Canceled'],
       'Ordered': ['Manufacturing', 'Ready for Dispatch', 'Shipped'],
-      'Ready for Dispatch': balanceDue <= 0 ? ['Shipped'] : ['Awaiting Payment'],
-      'Invoice Sent': ['Shipped'],
-      'Shipped': ['Delivered'],
+      'Ready for Dispatch': balanceDue <= 0 ? ['Invoice Sent', 'Shipped'] : [],
+      'Invoice Sent': balanceDue <= 0 ? ['Shipped', 'Delivered'] : [],
+      'Shipped': balanceDue <= 0 ? ['Delivered'] : [],
       'Manufacturing': ['Ready for Dispatch'],
       'Delivered': [],
       'Canceled': [],
@@ -537,26 +576,8 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
     
     const availableStatuses = nextStatusOptions[order.status] || [];
     
-    const handleGenerateInvoice = async () => {
-      if (!order.userId || !firestore || !userProfile) return;
-      
-      const partyRef = doc(firestore, 'parties', order.userId);
-      const partySnap = await getDoc(partyRef);
-      if (!partySnap.exists()) {
-        toast({ variant: 'destructive', title: 'Customer details not found.' });
-        return;
-      }
-      const partyData = partySnap.data() as Party;
-
-      localStorage.setItem('invoiceDataToCreate', JSON.stringify({ 
-        ...order, 
-        customerParty: partyData,
-        userProfile: {
-          name: userProfile.name,
-          businessName: userProfile.businessName,
-        },
-        assignedToUid: order.assignedToUid
-      }));
+    const handleGenerateInvoice = () => {
+      localStorage.setItem('invoiceDataToCreate', JSON.stringify({ ...order }));
       router.push('/dashboard/sales/create-invoice');
     };
     
@@ -884,3 +905,7 @@ export default function OrdersPage() {
 
     return <OrdersPageContent />;
 }
+
+    
+
+    
