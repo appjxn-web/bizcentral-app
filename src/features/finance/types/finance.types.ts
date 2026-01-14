@@ -117,4 +117,14 @@ export type JournalVoucher = {
   createdByUid?: string;
 };
 
+export interface FinanceSettings {
+  fiscalYearStartMonth: number;
+  lockUntilMonth?: string;
+  allowAdminOverrideLock?: boolean;
+  retainedEarningsLedgerId?: string;
+  pnlClearingLedgerId?: string;
+}
+
+    
+
     

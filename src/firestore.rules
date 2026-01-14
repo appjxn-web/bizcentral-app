@@ -1,4 +1,6 @@
+
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -64,6 +66,16 @@ service cloud.firestore {
     match /journalVouchers/{id} { allow read, list: if signedIn(); allow write: if isAdmin(); }
     match /parties/{id} { allow read: if signedIn(); allow write: if isAdmin(); }
 
+    match /report_cache/{monthId} {
+      allow read: if isAdmin();
+      allow write: if false; // Server-only
+    }
+    
+    match /fy_openings/{fyId} {
+        allow read: if isAdmin();
+        allow write: if false; // Server-only
+    }
+
     // --- 6. PUBLIC CONTENT & PAYMENTS ---
     match /products/{id} { allow read, list: if true; allow write: if isAdmin(); }
     match /posts/{id} { allow read, list: if true; allow write: if isAdmin(); }
@@ -82,3 +94,5 @@ service cloud.firestore {
     }
   }
 }
+
+    

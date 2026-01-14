@@ -19,6 +19,24 @@ function round2(n: number) {
   return Math.round(n * 100) / 100;
 }
 
+function monthKey(dateISO: string) {
+  // expects "YYYY-MM-DD"
+  return (dateISO || "").slice(0, 7);
+}
+
+function isLocked(postMonth: string, lockUntilMonth?: string) {
+  if (!lockUntilMonth) return false;
+  return postMonth <= lockUntilMonth; // string compare works for YYYY-MM
+}
+
+function incLedger(cache: any, ledgerId: string, dr: number, cr: number) {
+  if (!cache.ledgers) cache.ledgers = {};
+  if (!cache.ledgers[ledgerId]) cache.ledgers[ledgerId] = { dr: 0, cr: 0 };
+  cache.ledgers[ledgerId].dr += dr;
+  cache.ledgers[ledgerId].cr += cr;
+}
+
+
 export const postSalesInvoice = onCall({ region: "asia-south1" }, async (req) => {
   const uid = req.auth?.uid;
   if (!uid) throw new HttpsError("unauthenticated", "Login required");
@@ -51,15 +69,7 @@ export const postSalesInvoice = onCall({ region: "asia-south1" }, async (req) =>
       throw new HttpsError("failed-precondition", `Invoice status must be DRAFT/FAILED to post. Current: ${inv.status}`);
     }
 
-    // Mark POSTING
-    tx.update(invoiceRef, {
-      status: "POSTING",
-      postError: FieldValue.delete(),
-      postingStartedAt: FieldValue.serverTimestamp(),
-      postingStartedBy: uid,
-    });
-
-    // --- Load finance settings (default ledgers) ---
+    // --- Load finance settings (default ledgers & locks) ---
     const settingsSnap = await tx.get(settingsRef);
     const settings = settingsSnap.exists ? (settingsSnap.data() as any) : null;
     if (!settings?.defaultSalesLedgerId || !settings?.defaultGstOutputLedgerId || !settings?.defaultSundryDebtorsGroupId) {
@@ -68,6 +78,27 @@ export const postSalesInvoice = onCall({ region: "asia-south1" }, async (req) =>
         "Finance settings missing. Set: defaultSalesLedgerId, defaultGstOutputLedgerId, defaultSundryDebtorsGroupId."
       );
     }
+    
+    // ✅ Period Lock Check
+    const postMonth = monthKey(inv.invoiceDate);
+    const lockUntilMonth = settings.lockUntilMonth as string | undefined;
+
+    if (isLocked(postMonth, lockUntilMonth)) {
+      const allowOverride = !!settings.allowAdminOverrideLock;
+      const userIsAdmin = false; // This requires fetching user role, which is complex in rules vs functions.
+                                 // For now, we assume non-admin cannot override.
+      if (!(allowOverride && userIsAdmin)) {
+        throw new HttpsError("failed-precondition", `Period locked. Posting blocked for month ${postMonth}.`);
+      }
+    }
+
+    // Mark POSTING
+    tx.update(invoiceRef, {
+      status: "POSTING",
+      postError: FieldValue.delete(),
+      postingStartedAt: FieldValue.serverTimestamp(),
+      postingStartedBy: uid,
+    });
 
     // --- Resolve customer party ledger id (create if missing) ---
     const customerRef = db.doc(`parties/${inv.customerId}`);
@@ -78,7 +109,6 @@ export const postSalesInvoice = onCall({ region: "asia-south1" }, async (req) =>
     let arLedgerId = customer.coaLedgerId as string | undefined;
 
     if (!arLedgerId) {
-      // Create party ledger
       const ledgerRef = db.collection(`coa_ledgers`).doc();
       arLedgerId = ledgerRef.id;
 
@@ -95,7 +125,6 @@ export const postSalesInvoice = onCall({ region: "asia-south1" }, async (req) =>
         updatedAt: FieldValue.serverTimestamp(),
       });
 
-      // Save mapping
       tx.update(customerRef, {
         coaLedgerId: arLedgerId,
         updatedAt: FieldValue.serverTimestamp(),
@@ -120,11 +149,31 @@ export const postSalesInvoice = onCall({ region: "asia-south1" }, async (req) =>
 
     const taxablePlusCharges = round2(subTotal - discount + shipping);
     const grandTotal = round2(taxablePlusCharges + gstTotal);
-
-    // --- Create voucher + journal entries ---
+    
+    const salesLedgerId = settings.defaultSalesLedgerId;
+    const gstOutputLedgerId = settings.defaultGstOutputLedgerId;
+    const month = monthKey(inv.invoiceDate);
+    
+    // --- Create journal entries ---
+    const jcol = db.collection(`companies/${companyId}/journal_entries`);
     const voucherRef = db.collection(`companies/${companyId}/vouchers`).doc();
     const voucherId = voucherRef.id;
+    
+    const journalLines = [
+        { ledgerId: arLedgerId, dr: grandTotal, cr: 0, narration: "Sales Invoice" },
+        { ledgerId: salesLedgerId, dr: 0, cr: taxablePlusCharges, narration: "Sales" },
+        { ledgerId: gstOutputLedgerId, dr: 0, cr: gstTotal, narration: "GST Output" },
+    ];
 
+    journalLines.forEach((line, idx) => {
+      const jRef = jcol.doc();
+      tx.set(jRef, {
+        companyId, voucherId, voucherType: "SALES_INVOICE", voucherDate: inv.invoiceDate, month,
+        lineNo: idx + 1, ...line, createdAt: FieldValue.serverTimestamp(),
+      });
+    });
+
+    // --- Create voucher ---
     tx.set(voucherRef, {
       companyId,
       voucherType: "SALES_INVOICE",
@@ -135,55 +184,7 @@ export const postSalesInvoice = onCall({ region: "asia-south1" }, async (req) =>
       totalCr: grandTotal,
       createdAt: FieldValue.serverTimestamp(),
       createdBy: uid,
-    });
-
-    const jcol = db.collection(`companies/${companyId}/journal_entries`);
-
-    const salesLedgerId = settings.defaultSalesLedgerId;
-    const gstOutputLedgerId = settings.defaultGstOutputLedgerId;
-
-    // 3 journal lines
-    const j1 = jcol.doc();
-    const j2 = jcol.doc();
-    const j3 = jcol.doc();
-
-    tx.set(j1, {
-      companyId,
-      voucherId,
-      voucherType: "SALES_INVOICE",
-      voucherDate: inv.invoiceDate,
-      lineNo: 1,
-      ledgerId: arLedgerId,
-      dr: grandTotal,
-      cr: 0,
-      narration: "Sales Invoice",
-      createdAt: FieldValue.serverTimestamp(),
-    });
-
-    tx.set(j2, {
-      companyId,
-      voucherId,
-      voucherType: "SALES_INVOICE",
-      voucherDate: inv.invoiceDate,
-      lineNo: 2,
-      ledgerId: salesLedgerId,
-      dr: 0,
-      cr: taxablePlusCharges,
-      narration: "Sales",
-      createdAt: FieldValue.serverTimestamp(),
-    });
-
-    tx.set(j3, {
-      companyId,
-      voucherId,
-      voucherType: "SALES_INVOICE",
-      voucherDate: inv.invoiceDate,
-      lineNo: 3,
-      ledgerId: gstOutputLedgerId,
-      dr: 0,
-      cr: gstTotal,
-      narration: "GST Output",
-      createdAt: FieldValue.serverTimestamp(),
+      lines: journalLines, // Store lines for easy reversal/audit
     });
 
     // --- Stock movements (SALES_OUT) ---
@@ -191,29 +192,31 @@ export const postSalesInvoice = onCall({ region: "asia-south1" }, async (req) =>
     const warehouseId = inv.warehouseId;
     if (!warehouseId) throw new HttpsError("failed-precondition", "warehouseId missing in invoice");
 
-    // ⚠️ Transaction write limit: 500 writes. This is fine for typical invoices.
     items.forEach((it: any, idx: number) => {
       const mvRef = mvCol.doc();
       const qty = Number(it.qty) || 0;
       if (qty <= 0) throw new HttpsError("failed-precondition", "Invalid qty in invoice items");
-
       const signedQty = outTypes.has("SALES_OUT") ? -qty : qty;
-
       tx.set(mvRef, {
-        companyId,
-        type: "SALES_OUT",
-        productId: it.productId,
-        warehouseId,
-        qty,
-        signedQty,
-        refType: "SALES_INVOICE",
-        refId: invoiceId,
-        note: inv.invoiceNo ?? "",
-        createdAt: FieldValue.serverTimestamp(),
-        createdBy: uid,
-        lineNo: idx + 1,
+        companyId, type: "SALES_OUT", productId: it.productId, warehouseId,
+        qty, signedQty, refType: "SALES_INVOICE", refId: invoiceId, note: inv.invoiceNo ?? "",
+        createdAt: FieldValue.serverTimestamp(), createdBy: uid, lineNo: idx + 1,
       });
     });
+    
+    // --- Update Monthly Report Cache ---
+    if (!month || month.length !== 7) {
+      throw new HttpsError("failed-precondition", "Invalid invoiceDate for month cache");
+    }
+    const cacheRef = db.doc(`companies/${companyId}/report_cache/${month}`);
+    const cacheSnap = await tx.get(cacheRef);
+    const cache = cacheSnap.exists ? (cacheSnap.data() as any) : { month, ledgers: {} };
+    
+    incLedger(cache, arLedgerId, grandTotal, 0);
+    incLedger(cache, salesLedgerId, 0, taxablePlusCharges);
+    incLedger(cache, gstOutputLedgerId, 0, gstTotal);
+
+    tx.set(cacheRef, { ...cache, month, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
 
     // --- Finalize invoice status ---
     tx.update(invoiceRef, {
@@ -230,8 +233,6 @@ export const postSalesInvoice = onCall({ region: "asia-south1" }, async (req) =>
 
     return { ok: true, invoiceId, voucherId, alreadyPosted: false };
   }).catch(async (err: any) => {
-    // If transaction throws, invoice might be left as POSTING only if update succeeded before error.
-    // We try best-effort to mark FAILED (non-transactional fallback).
     try {
       await invoiceRef.set(
         {
@@ -242,9 +243,9 @@ export const postSalesInvoice = onCall({ region: "asia-south1" }, async (req) =>
         },
         { merge: true }
       );
-    } catch {
-      // ignore
-    }
+    } catch {}
     throw err;
   });
 });
+
+    
