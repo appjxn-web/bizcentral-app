@@ -192,6 +192,10 @@ service cloud.firestore {
       allow update: if isAdmin();
       allow delete: if isAdmin();
     }
+    
+    match /gateLog/{logId} {
+        allow read, write: if signedIn() && (isAdmin() || role() == 'Gate Keeper');
+    }
 
     // -----------------------------
     // 6) GOALS / COMMAND CENTER
