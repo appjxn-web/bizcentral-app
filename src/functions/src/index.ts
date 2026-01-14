@@ -286,3 +286,94 @@ export const onPaymentApproved = onDocumentUpdated("paymentSubmissions/{id}", as
 });
     
 
+export const onCreditNoteCreated = onDocumentCreated({ document: "creditNotes/{noteId}", region: "asia-south1" }, async (event) => {
+  const snap = event.data;
+  if (!snap) return;
+
+  const note = snap.data() as any;
+  const batch = db.batch();
+
+  // 1) Create Journal Voucher
+  const jvRef = db.collection("journalVouchers").doc();
+  const narration = `Credit Note ${note.creditNoteNumber} issued to ${note.partyName} for: ${note.reason}`;
+
+  const partySnap = await db.collection("parties").doc(note.partyId).get();
+  const partyData = partySnap.data() as Party | undefined;
+  const customerLedgerId = partyData?.coaLedgerId;
+
+  if (!customerLedgerId) {
+    console.error(`Could not find ledger for party ${note.partyId}`);
+    return;
+  }
+
+  const taxableAmount = note.amount / 1.18;
+  const gstAmount = note.amount - taxableAmount;
+
+  const entries = [
+    { accountId: "L-4.1-1", debit: taxableAmount, credit: 0 },
+    { accountId: "L-2.1.2-1", debit: gstAmount / 2, credit: 0 },
+    { accountId: "L-2.1.2-2", debit: gstAmount / 2, credit: 0 },
+    { accountId: customerLedgerId, debit: 0, credit: note.amount },
+  ];
+
+  batch.set(jvRef, {
+    date: note.date,
+    narration,
+    entries,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    voucherType: "Credit Note",
+    createdByUid: note.createdByUid,
+  });
+
+  // 2) Create Refund Request
+  const refundRequestRef = db.collection("refundRequests").doc();
+  const refundRequestData = {
+    orderId: note.originalInvoiceId || "N/A",
+    customerId: note.partyId,
+    customerName: note.partyName,
+    refundAmount: note.amount,
+    requestDate: note.date,
+    status: "Pending",
+  };
+  batch.set(refundRequestRef, refundRequestData);
+
+  await batch.commit();
+});
+
+export const onDebitNoteCreated = onDocumentCreated({ document: "debitNotes/{noteId}", region: "asia-south1" }, async (event) => {
+  const snap = event.data;
+  if (!snap) return;
+
+  const note = snap.data() as any;
+  const jvRef = db.collection("journalVouchers").doc();
+  const narration = `Debit Note ${note.debitNoteNumber} issued to ${note.partyName} for: ${note.reason}`;
+
+  const partySnap = await db.collection("parties").doc(note.partyId).get();
+  const partyData = partySnap.data() as Party | undefined;
+  const supplierLedgerId = partyData?.coaLedgerId;
+
+  if (!supplierLedgerId) {
+    console.error(`Could not find ledger for party ${note.partyId}`);
+    return;
+  }
+
+  const taxableAmount = note.amount / 1.18;
+  const gstAmount = note.amount - taxableAmount;
+
+  const entries = [
+    { accountId: supplierLedgerId, debit: note.amount, credit: 0 },
+    { accountId: "L-5-3", debit: 0, credit: taxableAmount },
+    { accountId: "L-1.1.4-1", debit: 0, credit: gstAmount / 2 },
+    { accountId: "L-1.1.4-2", debit: 0, credit: gstAmount / 2 },
+  ];
+
+  await jvRef.set({
+    date: note.date,
+    narration,
+    entries,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    voucherType: "Debit Note",
+    createdByUid: note.createdByUid,
+  });
+});
+    
