@@ -57,7 +57,7 @@ import {
 import Image from 'next/image';
 import { Separator } from '@/components/ui/separator';
 import { useFirestore, useCollection, useUser, useDoc } from '@/firebase';
-import { collection, query, orderBy, doc, where, or, updateDoc, writeBatch, serverTimestamp, addDoc, Timestamp, getDoc, getDocs, getCountFromServer, limit, startAfter } from 'firebase/firestore';
+import { collection, query, orderBy, doc, where, or, updateDoc, writeBatch, serverTimestamp, addDoc, Timestamp, getDoc, getDocs, getCountFromServer, limit, startAfter, type DocumentData, type DocumentSnapshot } from 'firebase/firestore';
 import { OrderStatusTracker } from '../../my-orders/_components/order-status';
 import {
   Dialog,
@@ -732,13 +732,8 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
 }
 
 function OrdersPageContent() {
-  const firestore = useFirestore();
-  const { toast } = useToast();
-  const { user } = useUser();
-  const { currentRole } = useRole();
-
   const [orders, setOrders] = React.useState<Order[]>([]);
-  const [lastDoc, setLastDoc] = React.useState<any | null>(null);
+  const [lastDoc, setLastDoc] = React.useState<DocumentSnapshot<DocumentData> | null>(null);
   const [hasMore, setHasMore] = React.useState(true);
   const [loading, setLoading] = React.useState(true);
   const [isFetchingMore, setIsFetchingMore] = React.useState(false);
@@ -748,47 +743,35 @@ function OrdersPageContent() {
   const [totalShipped, setTotalShipped] = React.useState(0);
   const [totalDelivered, setTotalDelivered] = React.useState(0);
 
-  const { data: allSalesInvoices, loading: invoicesLoading } = useCollection<SalesInvoice>(collection(firestore, 'salesInvoices'));
+  const { data: allSalesInvoices, loading: invoicesLoading } = useCollection<SalesInvoice>(collection(useFirestore(), 'salesInvoices'));
   
   React.useEffect(() => {
     fetchOrders(true);
-  }, [user, currentRole]);
+  }, []);
 
   const fetchOrders = async (initial = false) => {
-    if (!user || !currentRole) return;
     if (initial) setLoading(true); else setIsFetchingMore(true);
 
-    const queryOptions: any = { pageLimit: 10 };
-    if (!initial && lastDoc) {
-      queryOptions.lastDoc = lastDoc;
-    }
-
-    const q = ordersRepository.getOrdersQueryForUser(user.uid, currentRole, queryOptions);
+    const { newOrders, lastVisible } = await ordersRepository.getOrders({ pageLimit: 10, startAfter: initial ? undefined : lastDoc });
     
-    if (q) {
-      const querySnapshot = await getDocs(q);
-      const newOrders = querySnapshot.docs.map(d => ({ id: d.id, ...d.data() } as Order));
-      
-      setLastDoc(querySnapshot.docs[querySnapshot.docs.length - 1] || null);
-      setHasMore(newOrders.length === queryOptions.pageLimit);
-      setOrders(prev => initial ? newOrders : [...prev, ...newOrders]);
-    }
+    setLastDoc(lastVisible || null);
+    setHasMore(newOrders.length === 10);
+    setOrders(prev => initial ? newOrders : [...prev, ...newOrders]);
 
     if (initial) {
-      // Fetch KPIs only on initial load
-      const kpiQuery = ordersRepository.getOrdersQueryForUser(user.uid, currentRole, { pageLimit: 1000 }); // Query all for KPIs
-      if (kpiQuery) {
-        const kpiSnapshot = await getCountFromServer(kpiQuery);
-        setTotalOrderCount(kpiSnapshot.data().count);
-        // This is a simplification; for accurate counts you'd need separate queries per status
-        // setTotalInProcess(...) etc.
-      }
+      const counts = await ordersRepository.getOrderCounts();
+      setTotalOrderCount(counts.total);
+      setTotalInProcess(counts.inProcess);
+      setTotalShipped(counts.shipped);
+      setTotalDelivered(counts.delivered);
     }
 
     if (initial) setLoading(false); else setIsFetchingMore(false);
   };
   
   const handleStatusChange = async (order: Order, newStatus: OrderStatus) => {
+      const firestore = useFirestore();
+      const user = useUser().user;
       if (!user) return;
       try {
           await ordersRepository.updateOrderStatus(order.id, newStatus);
@@ -812,7 +795,6 @@ function OrdersPageContent() {
               description: `Order status changed to "${newStatus}" and customer notified.`,
           });
           
-          // Optimistically update UI
           setOrders(prev => prev.map(o => o.id === order.id ? {...o, status: newStatus} : o));
           
       } catch (error) {
@@ -884,4 +866,5 @@ export default function OrdersPage() {
 }
 
     
+
 
