@@ -36,6 +36,7 @@ export class UsersRepository {
     const docRef = doc(this.collectionRef, uid);
     const docSnap = await getDoc(docRef);
     if (docSnap.exists()) {
+      // Use 'id' property from the document snapshot as the primary ID
       return { id: docSnap.id, ...docSnap.data() } as UserProfile;
     }
     return null;
@@ -58,7 +59,8 @@ export class UsersRepository {
    */
   async createUser(uid: string, data: Omit<UserProfile, 'id'>): Promise<void> {
     const userRef = doc(this.collectionRef, uid);
-    await setDoc(userRef, data);
+    // Ensure the UID from auth is also stored in the document body
+    await setDoc(userRef, { ...data, uid: uid });
   }
 
   /**

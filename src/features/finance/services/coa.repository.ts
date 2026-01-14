@@ -14,6 +14,7 @@ import {
   deleteDoc,
   where,
   limit,
+  getDoc,
 } from "firebase/firestore";
 import { initializeFirebase } from "@/firebase"; 
 import { financePaths } from "@/firebase/paths";
@@ -23,10 +24,10 @@ type ListOpts = { take?: number };
 
 const { firestore: db } = initializeFirebase();
 
-export const coaRepo = {
+export const coaRepository = {
   async listGroups(companyId: string, opts: ListOpts = {}) {
     const ref = collection(db, financePaths.coaGroups(companyId));
-    const q = query(ref, orderBy("name", "asc"), limit(opts.take ?? 500));
+    const q = query(ref, orderBy("path", "asc"), limit(opts.take ?? 500));
     const snap = await getDocs(q);
     return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
   },
