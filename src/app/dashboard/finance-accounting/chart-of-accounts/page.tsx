@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -23,26 +22,23 @@ import {
 } from '@/components/ui/table';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, PlusCircle, MoreHorizontal, Edit, Trash2, Columns3, Book, Landmark, TrendingUp, TrendingDown, Scale } from 'lucide-react';
-import { useFirestore, useCollection } from '@/firebase';
-import { collection, query, orderBy, doc, deleteDoc, addDoc, updateDoc, writeBatch } from 'firebase/firestore';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuLabel
 } from '@/components/ui/dropdown-menu';
 import { AddLedgerDialog } from './_components/add-ledger-dialog';
 import { AddGroupDialog } from './_components/add-group-dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { coaRepository } from '@/features/finance/services/coa.repository';
-import type { CoaGroup, CoaLedger, CoaNature } from '@/features/finance/types/finance.types';
-
+import type { CoaGroup, CoaLedger } from '@/features/finance/types/finance.types';
 
 function ChartOfAccountsPageContent() {
   const { toast } = useToast();
   const router = useRouter();
-  const firestore = useFirestore();
-
+  
   const [coaGroups, setCoaGroups] = React.useState<CoaGroup[]>([]);
   const [coaLedgers, setCoaLedgers] = React.useState<CoaLedger[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -52,54 +48,69 @@ function ChartOfAccountsPageContent() {
   
   const [isAddGroupOpen, setIsAddGroupOpen] = React.useState(false);
   const [editingGroup, setEditingGroup] = React.useState<CoaGroup | null>(null);
-
-  React.useEffect(() => {
-    const fetchData = async () => {
-        setLoading(true);
-        const [groups, ledgers] = await Promise.all([
-            coaRepository.listGroups(),
-            coaRepository.listLedgers(),
-        ]);
-        setCoaGroups(groups);
-        setCoaLedgers(ledgers);
-        setLoading(false);
-    };
-    fetchData();
+  
+  const fetchData = React.useCallback(async () => {
+    setLoading(true);
+    const [groups, ledgers] = await Promise.all([
+        coaRepository.listGroups(),
+        coaRepository.listLedgers(),
+    ]);
+    setCoaGroups(groups);
+    setCoaLedgers(ledgers);
+    setLoading(false);
   }, []);
 
+  React.useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  const { groupsByParentId, ledgersByGroupId } = React.useMemo(() => {
+    const groupMap = new Map<string | null, CoaGroup[]>();
+    coaGroups.forEach(group => {
+        const parentId = group.parentId || 'root';
+        if (!groupMap.has(parentId)) {
+            groupMap.set(parentId, []);
+        }
+        groupMap.get(parentId)!.push(group);
+    });
+
+    const ledgerMap = new Map<string, CoaLedger[]>();
+    coaLedgers.forEach(ledger => {
+        if (!ledgerMap.has(ledger.groupId)) {
+            ledgerMap.set(ledger.groupId, []);
+        }
+        ledgerMap.get(ledger.groupId)!.push(ledger);
+    });
+    return { groupsByParentId: groupMap, ledgersByGroupId: ledgerMap };
+  }, [coaGroups, coaLedgers]);
+
   const kpis = React.useMemo(() => {
-    if (!coaGroups || !coaLedgers) {
-      return { totalGroups: 0, totalLedgers: 0, assetAccounts: 0, liabilityAccounts: 0, incomeAccounts: 0, expenseAccounts: 0 };
-    }
     const totalGroups = coaGroups.length;
     const totalLedgers = coaLedgers.length;
     const assetAccounts = coaLedgers.filter(l => l.nature === 'ASSET').length;
     const liabilityAccounts = coaLedgers.filter(l => l.nature === 'LIABILITY').length;
     const incomeAccounts = coaLedgers.filter(l => l.nature === 'INCOME').length;
     const expenseAccounts = coaLedgers.filter(l => l.nature === 'EXPENSE').length;
-
     return { totalGroups, totalLedgers, assetAccounts, liabilityAccounts, incomeAccounts, expenseAccounts };
   }, [coaGroups, coaLedgers]);
 
-
   const handleDelete = async (type: 'group' | 'ledger', id: string, name: string) => {
     if (type === 'group') {
-        const hasChildren = coaGroups?.some(g => g.parentId === id) || coaLedgers?.some(l => l.groupId === id);
-        if (hasChildren) {
-            toast({
-                variant: 'destructive',
-                title: 'Deletion Failed',
-                description: `Cannot delete group "${name}" because it contains other groups or ledgers.`,
-            });
-            return;
-        }
+      const hasChildren = await coaRepository.groupHasChildren(id);
+      if (hasChildren) {
+        toast({
+          variant: 'destructive',
+          title: 'Deletion Failed',
+          description: `Cannot delete group "${name}" because it contains other groups or ledgers.`,
+        });
+        return;
+      }
     }
-
-    const collectionName = type === 'group' ? 'coa_groups' : 'coa_ledgers';
-    await deleteDoc(doc(firestore, collectionName, id));
+    await coaRepository.delete(type, id);
     toast({ title: `${type.charAt(0).toUpperCase() + type.slice(1)} Deleted` });
+    fetchData(); // Refresh data
   };
-  
+
   const handleEditLedger = (ledger: CoaLedger) => {
     setEditingLedger(ledger);
     setIsAddLedgerOpen(true);
@@ -112,121 +123,104 @@ function ChartOfAccountsPageContent() {
   
   const handleSaveLedger = async (data: Partial<CoaLedger>) => {
     if (editingLedger) {
-        await updateDoc(doc(firestore, 'coa_ledgers', editingLedger.id), data);
-        toast({ title: 'Ledger Updated' });
+      await coaRepository.updateLedger(editingLedger.id, data);
+      toast({ title: 'Ledger Updated' });
     } else {
-        await addDoc(collection(firestore, 'coa_ledgers'), data);
-        toast({ title: 'Ledger Created' });
+      await coaRepository.createLedger(data);
+      toast({ title: 'Ledger Created' });
     }
+    fetchData();
     setIsAddLedgerOpen(false);
-    setEditingLedger(null);
   };
 
   const handleSaveGroup = async (data: Partial<CoaGroup>) => {
     if (editingGroup) {
-      await updateDoc(doc(firestore, 'coa_groups', editingGroup.id), data);
+      await coaRepository.updateGroup(editingGroup.id, data);
       toast({ title: 'Group Updated' });
     } else {
-      const newGroupData = {
-          ...data,
-          isSystem: false,
-          isActive: true,
-          reporting: { statement: ['INCOME', 'EXPENSE'].includes(data.nature as string) ? 'PL' : 'BS' },
-          allowLedgerPosting: false,
-      };
-      await addDoc(collection(firestore, 'coa_groups'), newGroupData);
+      await coaRepository.createGroup(data);
       toast({ title: 'Group Created' });
     }
+    fetchData();
     setIsAddGroupOpen(false);
-    setEditingGroup(null);
-  };
-  
-  const handleLedgerClick = (accountId: string) => {
-    router.push(`/dashboard/finance-accounting/balance-sheet/view?accountId=${accountId}`);
   };
 
-  const renderAccountTree = (parentId: string | null = null, level = 0) => {
-    const groups = coaGroups?.filter(g => g.parentId === parentId);
-    const ledgers = coaLedgers?.filter(l => l.groupId === parentId);
+  const renderAccountTree = (parentId: string | null = 'root', level = 0): React.ReactNode[] => {
+    const childGroups = groupsByParentId.get(parentId) || [];
     
-    let elements: JSX.Element[] = [];
-
-    if(ledgers) {
-        elements = elements.concat(
-            ledgers.map(ledger => (
-                <TableRow key={ledger.id} onClick={() => handleLedgerClick(ledger.id)} className="cursor-pointer">
-                    <TableCell style={{ paddingLeft: `${level * 2}rem` }}>{ledger.name}</TableCell>
-                    <TableCell>{ledger.nature}</TableCell>
-                    <TableCell>Ledger</TableCell>
-                    <TableCell className="text-right">
-                         <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon" onClick={(e) => e.stopPropagation()}><MoreHorizontal className="h-4 w-4" /></Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent>
-                                <DropdownMenuItem onClick={(e) => {e.stopPropagation(); handleEditLedger(ledger);}}>Edit</DropdownMenuItem>
-                                <AlertDialog>
-                                    <AlertDialogTrigger asChild>
-                                        <DropdownMenuItem onSelect={(e) => e.preventDefault()} onClick={(e) => e.stopPropagation()} className="text-red-500">Delete</DropdownMenuItem>
-                                    </AlertDialogTrigger>
-                                    <AlertDialogContent>
-                                        <AlertDialogHeader>
-                                            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                                            <AlertDialogDescription>This will permanently delete the ledger "{ledger.name}".</AlertDialogDescription>
-                                        </AlertDialogHeader>
-                                        <AlertDialogFooter>
-                                            <AlertDialogCancel onClick={(e) => e.stopPropagation()}>Cancel</AlertDialogCancel>
-                                            <AlertDialogAction onClick={(e) => { e.stopPropagation(); handleDelete('ledger', ledger.id, ledger.name)}} className={buttonVariants({ variant: 'destructive' })}>Delete</AlertDialogAction>
-                                        </AlertDialogFooter>
-                                    </AlertDialogContent>
-                                </AlertDialog>
-                            </DropdownMenuContent>
-                        </DropdownMenu>
-                    </TableCell>
-                </TableRow>
-            ))
-        )
-    }
-
-    if (groups) {
-      elements = elements.concat(
-        groups.flatMap(group => [
-          <TableRow key={group.id} className="bg-muted/50 font-semibold">
-            <TableCell style={{ paddingLeft: `${level * 1.5}rem` }}>{group.name}</TableCell>
-            <TableCell>{group.nature}</TableCell>
-            <TableCell>Group</TableCell>
-            <TableCell className="text-right">
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" onClick={(e) => e.stopPropagation()}><MoreHorizontal className="h-4 w-4" /></Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent>
-                    <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleEditGroup(group);}}>Edit</DropdownMenuItem>
-                     <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                            <DropdownMenuItem onSelect={(e) => e.preventDefault()} onClick={(e) => e.stopPropagation()} className="text-red-500">Delete</DropdownMenuItem>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                            <AlertDialogHeader>
-                                <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                                <AlertDialogDescription>This will permanently delete the group "{group.name}". You can only delete empty groups.</AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                                <AlertDialogCancel onClick={(e) => e.stopPropagation()}>Cancel</AlertDialogCancel>
-                                <AlertDialogAction onClick={(e) => { e.stopPropagation(); handleDelete('group', group.id, group.name);}} className={buttonVariants({ variant: 'destructive' })}>Delete</AlertDialogAction>
-                            </AlertDialogFooter>
-                        </AlertDialogContent>
-                    </AlertDialog>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </TableCell>
-          </TableRow>,
-          ...renderAccountTree(group.id, level + 1),
-        ])
+    return childGroups.flatMap(group => {
+      const childLedgers = ledgersByGroupId.get(group.id) || [];
+      const hasChildren = (groupsByParentId.get(group.id)?.length || 0) > 0 || childLedgers.length > 0;
+      
+      const groupRow = (
+        <TableRow key={group.id} className="bg-muted/50 font-semibold">
+          <TableCell style={{ paddingLeft: `${level * 1.5}rem` }}>{group.name}</TableCell>
+          <TableCell>{group.nature}</TableCell>
+          <TableCell>Group</TableCell>
+          <TableCell className="text-right">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                <DropdownMenuItem onClick={() => handleEditGroup(group)}>Edit</DropdownMenuItem>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="text-red-500">Delete</DropdownMenuItem>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                      <AlertDialogDescription>This will permanently delete the group "{group.name}". You can only delete empty groups.</AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction onClick={() => handleDelete('group', group.id, group.name)} className={buttonVariants({ variant: 'destructive' })}>Delete</AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </TableCell>
+        </TableRow>
       );
-    }
 
-    return elements;
+      const ledgerRows = childLedgers.map(ledger => (
+        <TableRow key={ledger.id} onClick={() => router.push(`/dashboard/finance-accounting/balance-sheet/view?accountId=${ledger.id}`)} className="cursor-pointer">
+          <TableCell style={{ paddingLeft: `${(level + 1) * 1.5}rem` }}>{ledger.name}</TableCell>
+          <TableCell>{ledger.nature}</TableCell>
+          <TableCell>Ledger</TableCell>
+          <TableCell className="text-right">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" onClick={(e) => e.stopPropagation()}><MoreHorizontal className="h-4 w-4" /></Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleEditLedger(ledger); }}>Edit</DropdownMenuItem>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <DropdownMenuItem onSelect={(e) => e.preventDefault()} onClick={(e) => e.stopPropagation()} className="text-red-500">Delete</DropdownMenuItem>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                      <AlertDialogDescription>This will permanently delete the ledger "{ledger.name}".</AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel onClick={(e) => e.stopPropagation()}>Cancel</AlertDialogCancel>
+                      <AlertDialogAction onClick={(e) => { e.stopPropagation(); handleDelete('ledger', ledger.id, ledger.name); }} className={buttonVariants({ variant: 'destructive' })}>Delete</AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </TableCell>
+        </TableRow>
+      ));
+
+      return [groupRow, ...ledgerRows, ...renderAccountTree(group.id, level + 1)];
+    });
   };
 
   return (
