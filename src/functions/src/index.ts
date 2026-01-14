@@ -607,18 +607,21 @@ export const onPaymentApproved = onDocumentUpdated({ document: "paymentSubmissio
   if (before.status !== "Approved" && after.status === "Approved") {
     // Audit Log
     try {
-        const recordedByUid = (after as any).recordedByUid as string | undefined;
+        const recordedByUid = after.recordedByUid;
         const actor = recordedByUid ? await admin.auth().getUser(recordedByUid) : null;
-        await (0, audit_1.createAuditLog)({
-            entityType: 'paymentSubmissions',
-            entityId: event.data.after.id,
-            action: 'approve',
-            actorUid: actor?.uid || 'system',
-            meta: {
-                actorDisplayName: actor?.displayName || 'System',
-                changes: { before, after }
-            }
+
+        await createAuditLog({
+          companyId: "default", // Assuming a single-company setup for now
+          entityType: "paymentSubmissions",
+          entityId: event.data.after.id,
+          action: "approve",
+          actorUid: actor?.uid || "system",
+          meta: {
+            actorDisplayName: actor?.displayName || "System",
+            changes: { before, after },
+          },
         });
+        
     } catch (auditError) {
         console.error("Failed to create audit log for payment approval:", auditError);
     }
