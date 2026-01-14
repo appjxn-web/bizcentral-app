@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -52,7 +53,7 @@ export default function PartnerDashboardPage() {
     return query(
         collection(firestore, 'orders'),
         where('assignedToUid', '==', user.uid),
-        orderBy('date', 'desc') // CRITICAL: Matches your CIDAgJiUpoMK index
+        orderBy('date', 'desc')
     );
   }, [user, firestore]);
 
