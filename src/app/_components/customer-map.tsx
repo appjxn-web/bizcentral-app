@@ -4,13 +4,11 @@
 import * as React from 'react';
 import { APIProvider, Map, AdvancedMarker, InfoWindow, useMap } from '@vis.gl/react-google-maps';
 import { useCollection, useFirestore } from '@/firebase';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { collection, query, where } from 'firebase/firestore';
 import type { Location, PickupPoint } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { LocateFixed, Loader2, AlertCircle, Building, Handshake } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { getFirestore } from 'firebase/firestore';
-import { initializeFirebase } from '@/firebase';
 
 class MapErrorBoundary extends React.Component<
   { children: React.ReactNode; onCatch: (error: any) => void },
@@ -156,57 +154,34 @@ function MapErrorDisplay({ error }: { error: any }) {
 
 export function CustomerMap() {
   const [selectedLocation, setSelectedLocation] = React.useState<(Location & { isPartner?: boolean }) | null>(null);
-  const [locations, setLocations] = React.useState<(Location & { isPartner?: boolean })[]>([]);
-  const [locationsLoading, setLocationsLoading] = React.useState(true);
   const [mapError, setMapError] = React.useState<any>(null);
+  
+  const firestore = useFirestore();
+
+  const locationsQuery = React.useMemo(() => query(collection(firestore, 'locations')), [firestore]);
+  const pickupPointsQuery = React.useMemo(() => query(collection(firestore, 'pickupPoints'), where('active', '==', true)), [firestore]);
+
+  const { data: customerLocations, loading: locationsLoading } = useCollection<Location>(locationsQuery);
+  const { data: partnerLocationsData, loading: pickupPointsLoading } = useCollection<PickupPoint>(pickupPointsQuery);
+
+  const locations = React.useMemo(() => {
+    const customerLocs = (customerLocations || []).map(l => ({ ...l, isPartner: false }));
+    const partnerLocs = (partnerLocationsData || []).map(p => ({
+        id: p.id,
+        name: p.name,
+        latitude: p.lat || 0,
+        longitude: p.lng || 0,
+        isPartner: true
+    }));
+    return [...customerLocs, ...partnerLocs];
+  }, [customerLocations, partnerLocationsData]);
 
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
-  React.useEffect(() => {
-    async function fetchLocations() {
-      if (!apiKey) {
-        setLocationsLoading(false);
-        return;
-      }
-      try {
-        const { firestore } = initializeFirebase();
-        const locationsQuery = collection(firestore, 'locations');
-        const pickupPointsQuery = query(collection(firestore, 'pickupPoints'), where('active', '==', true));
-        
-        const [locationsSnapshot, pickupPointsSnapshot] = await Promise.all([
-            getDocs(locationsQuery),
-            getDocs(pickupPointsQuery)
-        ]);
-
-        const fetchedCustomerLocations = locationsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Location[];
-        const fetchedPartnerLocations = pickupPointsSnapshot.docs.map(doc => {
-            const data = doc.data() as PickupPoint;
-            return {
-                id: doc.id,
-                name: data.name,
-                latitude: data.lat || 0,
-                longitude: data.lng || 0,
-                isPartner: true
-            };
-        }) as (Location & { isPartner: boolean })[];
-
-        const combinedLocations = [...fetchedCustomerLocations, ...fetchedPartnerLocations];
-        setLocations(combinedLocations);
-
-      } catch (error) {
-        console.error("Error fetching locations:", error);
-        setMapError(error);
-      } finally {
-        setLocationsLoading(false);
-      }
-    }
-    fetchLocations();
-  }, [apiKey]);
-  
   const center = React.useMemo(() => {
     if (!locations || locations.length === 0) return { lat: 20.5937, lng: 78.9629 }; // Default to India center
     
-    const validLocations = locations.filter(l => typeof l.latitude === 'number' && typeof l.longitude === 'number');
+    const validLocations = locations.filter(l => typeof l.latitude === 'number' && typeof l.longitude === 'number' && l.latitude !== 0 && l.longitude !== 0);
     if (validLocations.length === 0) return { lat: 20.5937, lng: 78.9629 };
     
     return {
@@ -238,6 +213,8 @@ export function CustomerMap() {
         </div>
       );
   }
+  
+  const isLoading = locationsLoading || pickupPointsLoading;
 
   return (
     <div className="space-y-4 text-center">
@@ -246,7 +223,7 @@ export function CustomerMap() {
         A look at our customer and partner locations across the map.
       </p>
       <div className="relative w-full h-[75vh] md:h-[500px] bg-muted md:rounded-lg overflow-hidden border">
-        {locationsLoading ? (
+        {isLoading ? (
            <div className="flex items-center justify-center h-full"><Loader2 className="h-8 w-8 animate-spin" /></div>
         ) : (
           <MapErrorBoundary onCatch={setMapError}>
