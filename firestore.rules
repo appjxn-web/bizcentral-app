@@ -97,6 +97,14 @@ service cloud.firestore {
       allow create, update: if signedIn();
       allow delete: if isAdmin();
     }
+    
+    // -----------------------------
+    // WORK ORDERS
+    // -----------------------------
+    match /workOrders/{workOrderId} {
+        allow read, list: if signedIn();
+        allow write: if isAdmin();
+    }
 
 
     // -----------------------------
