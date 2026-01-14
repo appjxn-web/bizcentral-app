@@ -2,7 +2,7 @@
 "use client";
 
 import * as React from "react";
-import { reportsService, type ReportsResult } from "@/features/finance/services/reports.service";
+import { computeReports, type ReportsResult } from "@/features/finance/services/reports.service";
 import { fmt2 } from "@/features/finance/utils/accounting";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -32,7 +32,7 @@ export default function ProfitLossPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await reportsService.compute(companyId, fromDate, toDate);
+      const res = await computeReports(companyId, fromDate, toDate);
       setData(res);
     } catch (e: any) {
       setError(e?.message ?? "Failed to load P&L");

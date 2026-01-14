@@ -1,11 +1,10 @@
-
 "use client";
 
 import * as React from "react";
 import { useParams } from "next/navigation";
 import { doc, collection, query, where, orderBy, limit } from "firebase/firestore";
-import { initializeFirebase } from "@/firebase";
 
+import { initializeFirebase } from "@/firebase";
 import { useDoc } from "@/firebase/firestore/use-doc";
 import { useCollectionQuery } from "@/hooks/use-collection-query";
 import { reverseVoucher } from "@/features/finance/services/reverse-voucher.client";
@@ -170,4 +169,5 @@ export default function VoucherDetailPage() {
         </CardContent>
       </Card>
     </div>
-  
+  );
+}

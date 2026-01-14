@@ -10,6 +10,8 @@ export type FinanceSettings = {
   defaultArControlLedgerId?: string; 
   defaultCashLedgerId?: string;
   defaultBankLedgerId?: string;
+  lockUntilMonth?: string;
+  allowAdminOverrideLock?: boolean;
 };
 
 const { firestore: db } = initializeFirebase();
@@ -27,4 +29,10 @@ export const financeSettingsRepo = {
       settingsDoc(companyId),
       {
         ...data,
-        updatedAt:
+        updatedAt: serverTimestamp(),
+        updatedBy: actorUid,
+      },
+      { merge: true }
+    );
+  },
+};

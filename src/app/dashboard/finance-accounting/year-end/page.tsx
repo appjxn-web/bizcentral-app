@@ -3,12 +3,11 @@
 
 import * as React from "react";
 import { doc } from "firebase/firestore";
-import { HttpsError } from "firebase/functions";
 
 import { initializeFirebase } from "@/firebase";
 import { useDoc } from "@/firebase/firestore/use-doc";
 
-import { reportsService } from "@/features/finance/services/reports.service";
+import { computeReports } from "@/features/finance/services/reports.service";
 import { closeFY } from "@/features/finance/services/close-fy.client";
 import { fmt2 } from "@/features/finance/utils/accounting";
 
@@ -76,7 +75,7 @@ export default function YearEndClosingPage() {
     setPreviewError(null);
     setPreview(null);
     try {
-      const res = await reportsService.compute(companyId, fyStartDate, fyEndDate);
+      const res = await computeReports(companyId, fyStartDate, fyEndDate);
       setPreview(res);
     } catch (e: any) {
       setPreviewError(e?.message ?? "Failed to compute FY preview");

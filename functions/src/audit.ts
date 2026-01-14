@@ -1,20 +1,35 @@
+import { FieldValue, getFirestore } from "firebase-admin/firestore";
 
-import * as admin from "firebase-admin";
-import type { AuditLog } from "./types";
+export type AuditAction =
+  | "POST_SALES_INVOICE"
+  | "REVERSE_VOUCHER"
+  | "CLOSE_FY"
+  | "UPDATE_LOCK"
+  | string;
 
-const db = admin.firestore();
+export async function createAuditLog(params: {
+  companyId: string;
+  actorUid: string;
+  action: AuditAction;
+  entityType: string;
+  entityId: string;
+  meta?: any;
+}) {
+  const { companyId, actorUid, action, entityType, entityId, meta } = params;
 
-/**
- * Creates an audit log entry.
- * @param logData - The data for the audit log entry.
- */
-export async function createAuditLog(logData: Omit<AuditLog, 'timestamp'>): Promise<void> {
-  const auditLogRef = db.collection('auditLogs').doc();
-  
-  const fullLogData: AuditLog = {
-    ...logData,
-    timestamp: admin.firestore.FieldValue.serverTimestamp(),
-  };
+  // ✅ Safe: getFirestore() is called only when function is executed,
+  // and ONLY after admin.initializeApp() has run in index.ts
+  const db = getFirestore();
 
-  await auditLogRef.set(fullLogData);
+  const ref = db.collection(`companies/${companyId}/audit_logs`).doc();
+  await ref.set({
+    at: FieldValue.serverTimestamp(),
+    actorUid,
+    action,
+    entityType,
+    entityId,
+    meta: meta ?? {},
+  });
+
+  return ref.id;
 }

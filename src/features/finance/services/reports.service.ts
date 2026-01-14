@@ -1,4 +1,5 @@
 
+
 'use server';
 
 import {
@@ -76,8 +77,7 @@ function abs(n: number) {
   return Math.abs(Number(n || 0));
 }
 
-export const reportsService = {
-  async compute(companyId: string, fromDate: string, toDate: string): Promise<ReportsResult> {
+export async function computeReports(companyId: string, fromDate: string, toDate: string): Promise<ReportsResult> {
     // 1) Load COA groups and ledgers
     const gRef = collection(db, `companies/${companyId}/coa_groups`);
     const lRef = collection(db, `companies/${companyId}/coa_ledgers`);
@@ -92,20 +92,15 @@ export const reportsService = {
 
     const groupById = new Map(groups.map((g) => [g.id, g]));
 
-    // 2) Get period totals using the cache service
-    const periodTotals = await getLedgerTotalsFromCache(companyId, fromDate, toDate);
-
-    // 3) Calculate opening balances by summing all journal entries BEFORE fromDate
+    // 2) Get opening balances by fetching journals before the start date
     const openingNetByLedger = new Map<string, number>();
     for (const l of ledgers) {
       const openNet = netFromOpening(l.openingBalance?.amount || 0, (l.openingBalance?.drCr || "DR"));
       openingNetByLedger.set(l.id, openNet);
     }
     
-    // This part is slow for large datasets. In a real scenario, opening balances would also be cached.
-    // For now, we query journals before the start date.
     const jRef = collection(db, `companies/${companyId}/journal_entries`);
-    const openingJournalQuery = query(jRef, where("voucherDate", "<", fromDate), limit(50000)); // Limit to prevent crash
+    const openingJournalQuery = query(jRef, where("voucherDate", "<", fromDate), limit(50000));
     const openingJournalSnap = await getDocs(openingJournalQuery);
     
     openingJournalSnap.forEach((d) => {
@@ -114,6 +109,9 @@ export const reportsService = {
       const currentOpening = openingNetByLedger.get(ledgerId) || 0;
       openingNetByLedger.set(ledgerId, currentOpening + (entry.dr || 0) - (entry.cr || 0));
     });
+
+    // 3) Get period totals using the cache service
+    const periodTotals = await getLedgerTotalsFromCache(companyId, fromDate, toDate);
 
     // 4) Build Trial Balance rows
     const rows: TBRow[] = [];
@@ -188,5 +186,4 @@ export const reportsService = {
       balanceSheet: { assetsNet, liabilitiesNet, equityNet, assetsAmount, liabilitiesAmount, equityAmount, liabilitiesPlusEquity, profit },
       groupTotals,
     };
-  },
-};
+}

@@ -24,7 +24,7 @@ var __importStar = (this && this.__importStar) || function (mod) {
     return result;
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.helloWorld = exports.onPaymentApproved = exports.onGoalUpdate = exports.onMilestoneUpdate = exports.handleOrderUpdates = exports.handleVoucherCreation = exports.handleWorkOrderCreation = exports.handleQuotationCreation = exports.onStockTransfer = exports.onDebitNoteCreated = exports.onCreditNoteCreated = exports.onInvoiceCreated = exports.handleOrderCreation = exports.verifyUpiPaymentAndCreateOrder = void 0;
+exports.helloWorld = exports.onPaymentApproved = exports.onGoalUpdate = exports.onMilestoneUpdate = exports.handleOrderUpdates = exports.handleVoucherCreation = exports.handleWorkOrderCreation = exports.handleQuotationCreation = exports.onStockTransfer = exports.onDebitNoteCreated = exports.onCreditNoteCreated = exports.onInvoiceCreated = exports.handleOrderCreation = exports.verifyUpiPaymentAndCreateOrder = exports.closeFiscalYear = exports.reverseVoucher = exports.postSalesInvoice = void 0;
 // ✅ Use this SAME file content for BOTH paths:
 // 1) functions/src/index.ts
 // 2) src/functions/src/index.ts
@@ -39,6 +39,12 @@ const admin = __importStar(require("firebase-admin"));
 const firestore_admin_1 = require("firebase-admin/firestore");
 const number_series_1 = require("./number-series");
 const audit_1 = require("./audit");
+var post_sales_invoice_1 = require("./post-sales-invoice");
+Object.defineProperty(exports, "postSalesInvoice", { enumerable: true, get: function () { return post_sales_invoice_1.postSalesInvoice; } });
+var reverse_voucher_1 = require("./reverse-voucher");
+Object.defineProperty(exports, "reverseVoucher", { enumerable: true, get: function () { return reverse_voucher_1.reverseVoucher; } });
+var close_fiscal_year_1 = require("./close-fiscal-year");
+Object.defineProperty(exports, "closeFiscalYear", { enumerable: true, get: function () { return close_fiscal_year_1.closeFiscalYear; } });
 if (admin.apps.length === 0) {
     admin.initializeApp();
 }
@@ -505,14 +511,18 @@ exports.onPaymentApproved = (0, firestore_1.onDocumentUpdated)({ document: "paym
     if (before.status !== "Approved" && after.status === "Approved") {
         // Audit Log
         try {
-            const actor = after.recordedByUid ? await admin.auth().getUser(after.recordedByUid) : null;
+            const recordedByUid = after.recordedByUid;
+            const actor = recordedByUid ? await admin.auth().getUser(recordedByUid) : null;
             await (0, audit_1.createAuditLog)({
-                entityType: 'paymentSubmissions',
+                companyId: after.companyId || "unknown",
+                entityType: "paymentSubmissions",
                 entityId: event.data.after.id,
-                action: 'approve',
-                actorUid: actor?.uid || 'system',
-                actorDisplayName: actor?.displayName || 'System',
-                changes: { before: before, after: after }
+                action: "approve",
+                actorUid: actor?.uid || "system",
+                meta: {
+                    actorDisplayName: actor?.displayName || "System",
+                    changes: { before, after },
+                },
             });
         }
         catch (auditError) {
@@ -608,4 +618,4 @@ exports.helloWorld = (0, https_1.onCall)({ region: "asia-south1" }, (request) =>
     console.log("Hello from Firebase!");
     return { message: "Hello from Firebase!" };
 });
-
+//# sourceMappingURL=index.js.map

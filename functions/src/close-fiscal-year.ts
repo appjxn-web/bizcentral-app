@@ -57,22 +57,6 @@ function addDaysISO(dateISO: string, days: number) {
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
 }
-function daysInMonth(y: number, m: number) {
-  return new Date(y, m, 0).getDate();
-}
-function startOfMonth(month: string) {
-  return `${month}-01`;
-}
-function endOfMonth(month: string) {
-  const [y, m] = month.split("-").map(Number);
-  return `${month}-${String(daysInMonth(y, m)).padStart(2, "0")}`;
-}
-function isFullMonthRange(fromDate: string, toDate: string) {
-  const fm = monthKey(fromDate);
-  const tm = monthKey(toDate);
-  if (fm !== tm) return false;
-  return fromDate === startOfMonth(fm) && toDate === endOfMonth(tm);
-}
 
 async function loadMonthlyCache(companyId: string, month: string) {
   const ref = db.doc(`companies/${companyId}/report_cache/${month}`);
