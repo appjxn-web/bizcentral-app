@@ -1,3 +1,5 @@
+
+
 'use client';
 
 import * as React from 'react';
@@ -437,8 +439,9 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
     const [isCancelDialogOpen, setIsCancelDialogOpen] = React.useState(false);
     const { toast } = useToast();
     
-    const { data: userProfile, loading: userProfileLoading } = useDoc<UserProfile>(user ? doc(firestore, 'users', user.uid) : null);
-    
+    const userProfileRef = user ? doc(firestore, 'users', user.uid) : null;
+    const { data: userProfile, loading: userProfileLoading } = useDoc<UserProfile>(userProfileRef);
+
     const paymentSubmissionsQuery = React.useMemo(() => {
       if (!order.id || !user?.uid || !firestore) return null;
       return query(collection(firestore, 'paymentSubmissions'), where('orderId', '==', order.id));
@@ -446,7 +449,7 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
 
     const { data: paymentSubmissions } = useCollection<PaymentSubmission>(paymentSubmissionsQuery);
     
-    const { totalPaid, balanceDue, paymentHistory, hasInitialPayment } = React.useMemo(() => {
+    const { totalPaid, balanceDue, paymentHistory } = React.useMemo(() => {
         const approvedPayments = (paymentSubmissions || []).filter(p => p.status === 'Approved');
         const totalPaidAmount = approvedPayments.reduce((sum, p) => sum + p.amount, 0);
         
@@ -460,7 +463,6 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
             totalPaid: totalPaidAmount,
             balanceDue: order.grandTotal - totalPaidAmount,
             paymentHistory: history,
-            hasInitialPayment: totalPaidAmount > 0
         }
     }, [order.grandTotal, paymentSubmissions]);
 
@@ -518,16 +520,16 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
         }
     };
     
-    const canChangeStatus = ['Admin', 'Partner', 'Sales Manager', 'CEO'].includes(currentRole) && hasInitialPayment;
+    const canChangeStatus = ['Admin', 'Partner', 'Sales Manager', 'CEO'].includes(currentRole);
     
     const nextStatusOptions: Record<OrderStatus, OrderStatus[]> = {
-      'Awaiting Payment': ['Ordered'],
-      'Awaiting Payment Confirmation': ['Ordered'],
-      'Ordered': ['Manufacturing', 'Ready for Dispatch'],
-      'Manufacturing': ['Ready for Dispatch'],
+      'Awaiting Payment': ['Ordered', 'Canceled'],
+      'Awaiting Payment Confirmation': ['Ordered', 'Canceled'],
+      'Ordered': ['Manufacturing', 'Ready for Dispatch', 'Shipped'],
       'Ready for Dispatch': balanceDue <= 0 ? ['Shipped'] : ['Awaiting Payment'],
       'Invoice Sent': ['Shipped'],
       'Shipped': ['Delivered'],
+      'Manufacturing': ['Ready for Dispatch'],
       'Delivered': [],
       'Canceled': [],
       'Cancellation Requested': ['Ordered', 'Canceled'],
@@ -536,18 +538,26 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
     const availableStatuses = nextStatusOptions[order.status] || [];
     
     const handleGenerateInvoice = async () => {
-      // Fetch the full customer/party details before navigating
-      if (order.userId && firestore) {
-        const partyRef = doc(firestore, 'parties', order.userId);
-        const partySnap = await getDoc(partyRef);
-        if (partySnap.exists()) {
-          const partyData = partySnap.data() as Party;
-          localStorage.setItem('invoiceDataToCreate', JSON.stringify({ ...order, customerParty: partyData, userProfile }));
-          router.push('/dashboard/sales/create-invoice');
-        } else {
-          toast({ variant: 'destructive', title: 'Customer details not found.' });
-        }
+      if (!order.userId || !firestore || !userProfile) return;
+      
+      const partyRef = doc(firestore, 'parties', order.userId);
+      const partySnap = await getDoc(partyRef);
+      if (!partySnap.exists()) {
+        toast({ variant: 'destructive', title: 'Customer details not found.' });
+        return;
       }
+      const partyData = partySnap.data() as Party;
+
+      localStorage.setItem('invoiceDataToCreate', JSON.stringify({ 
+        ...order, 
+        customerParty: partyData,
+        userProfile: {
+          name: userProfile.name,
+          businessName: userProfile.businessName,
+        },
+        assignedToUid: order.assignedToUid
+      }));
+      router.push('/dashboard/sales/create-invoice');
     };
     
     return (
@@ -874,7 +884,3 @@ export default function OrdersPage() {
 
     return <OrdersPageContent />;
 }
-
-    
-
-    

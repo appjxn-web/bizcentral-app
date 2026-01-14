@@ -30,6 +30,7 @@ import { ArrowLeft, Info, Loader2, Building, User, CalendarClock } from 'lucide-
 import type { Product, Offer, UserRole, Party, CompanyInfo, Address, Order, OrderItem, CoaLedger, PickupPoint, UserProfile, SalesOrder } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useCollection, useUser, useDoc } from '@/firebase';
+import { getApp } from "firebase/app";
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { collection, query, where, getDoc, getDocs, doc, addDoc, serverTimestamp, writeBatch, setDoc, orderBy, limit, getCountFromServer } from 'firebase/firestore';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -99,6 +100,11 @@ export default function CheckoutPage() {
   
   const [dispatchEstimate, setDispatchEstimate] = React.useState<EstimateDispatchDateOutput | null>(null);
   const [isEstimating, setIsEstimating] = React.useState(false);
+
+  const functions = React.useMemo(() => {
+    // IMPORTANT: your callable is deployed in asia-south1
+    return getFunctions(getApp(), "asia-south1");
+  }, []);
 
 
   const companyInfoRef = firestore ? doc(firestore, 'company', 'info') : null;
@@ -274,22 +280,25 @@ export default function CheckoutPage() {
     };
     
     try {
-        const functions = getFunctions();
-        const verifyAndCreate = httpsCallable(functions, 'verifyUpiPaymentAndCreateOrder');
-        await verifyAndCreate({ order: newOrderPayload, upiTransactionId });
+      const verifyAndCreate = httpsCallable(functions, "verifyUpiPaymentAndCreateOrder");
+      await verifyAndCreate({ order: newOrderPayload, upiTransactionId });
 
-        toast({ title: 'Order Placed!', description: `Your order is awaiting payment confirmation.` });
-        localStorage.removeItem('cart');
-        localStorage.removeItem('appliedCoupons');
-        window.dispatchEvent(new CustomEvent('cartUpdated'));
-        router.push('/checkout/success');
+      toast({ title: "Order Placed!", description: `Your order is awaiting payment confirmation.` });
+      localStorage.removeItem("cart");
+      localStorage.removeItem("appliedCoupons");
+      window.dispatchEvent(new CustomEvent("cartUpdated"));
+      router.push("/checkout/success");
+  } catch (serverError: any) {
+      console.error(serverError);
+      toast({
+          variant: "destructive",
+          title: "Order Failed",
+          description: serverError?.message || "Could not place your order.",
+      });
+  } finally {
+      setIsPlacingOrder(false);
+  }
 
-    } catch (serverError: any) {
-        console.error(serverError);
-        toast({ variant: 'destructive', title: 'Order Failed', description: serverError.message || 'Could not place your order.' });
-    } finally {
-        setIsPlacingOrder(false);
-    }
   };
   
   return (
@@ -483,7 +492,3 @@ export default function CheckoutPage() {
     </div>
   );
 }
-
-
-  
-

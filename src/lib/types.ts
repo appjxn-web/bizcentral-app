@@ -1064,6 +1064,20 @@ export interface SupportCallbackRequest {
   createdByUid: string;
 }
       
-    
+// -----------------------------
+// Missing exports used by Checkout
+// -----------------------------
 
-    
+export interface CompanyInfo {
+  companyName: string;
+  primaryUpiId?: string;
+  addresses?: Address[];
+}
+
+export interface PickupPoint {
+  id: string;
+  name: string;
+  ownerUid?: string | null;
+  active: boolean;
+  addressLine?: string;
+}
