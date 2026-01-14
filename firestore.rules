@@ -44,12 +44,13 @@ service cloud.firestore {
 
     // ---------- ORDERS ----------
     match /orders/{orderId} {
-      allow read: if signedIn() && (
+      allow get: if signedIn() && (
         isAdmin() ||
         resource.data.userId == request.auth.uid ||
         resource.data.assignedToUid == request.auth.uid
       );
-
+      allow list: if isAdmin();
+      
       allow create: if signedIn() && (
         isAdmin() ||
         request.resource.data.userId == request.auth.uid
