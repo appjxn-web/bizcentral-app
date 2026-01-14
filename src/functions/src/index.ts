@@ -238,22 +238,27 @@ export const onInvoiceCreated = onDocumentCreated({ document: "salesInvoices/{in
       const finishedGoodsLedgerId = await getLedgerIdByName("Stock-in-Hand – Finished Goods");
 
       for (const item of invoice.items as any[]) {
-        // If invoice has assignedToUid, deduct from Partner stock: users/{partnerId}/stock/{prodId}
-        // Else, deduct from Warehouse: products/{prodId}
         const isPartnerSale = !!partnerId;
-        const stockRef = isPartnerSale
-          ? db.doc(`users/${partnerId}/stock/${item.productId}`)
-          : db.doc(`products/${item.productId}`);
-
+        const stockCollectionPath = isPartnerSale ? `users/${partnerId}/stock` : 'products';
+        const stockDocRef = db.doc(`${stockCollectionPath}/${item.productId}`);
         const fieldToDecrement = isPartnerSale ? "quantity" : "openingStock";
 
-        transaction.set(
-          stockRef,
-          { [fieldToDecrement]: admin.firestore.FieldValue.increment(-item.quantity) },
-          { merge: true }
-        );
+        // *** NEGATIVE STOCK CHECK ***
+        const stockDoc = await transaction.get(stockDocRef);
+        if (!stockDoc.exists) {
+            throw new Error(`Stock record not found for product ${item.productId}`);
+        }
+        const currentStock = (stockDoc.data() as any)[fieldToDecrement] || 0;
+        if (currentStock < item.quantity) {
+            throw new Error(`Insufficient stock for ${item.name} (${item.productId}). Available: ${currentStock}, Required: ${item.quantity}`);
+        }
+        // *** END CHECK ***
+        
+        transaction.update(stockDocRef, {
+            [fieldToDecrement]: admin.firestore.FieldValue.increment(-item.quantity)
+        });
 
-        // Calculate COGS based on original product cost
+        // Calculate COGS based on original product cost (always from the main product doc)
         const productRef = db.doc(`products/${item.productId}`);
         const productSnap = await transaction.get(productRef);
         if (productSnap.exists) {
@@ -284,8 +289,9 @@ export const onInvoiceCreated = onDocumentCreated({ document: "salesInvoices/{in
         transaction.update(db.collection("orders").doc((invoice as any).orderId), { status: "Invoice Sent" });
       }
     });
-  } catch (e) {
-    console.error("Critical Invoice logic failed:", e);
+  } catch (e: any) {
+    console.error("Critical Invoice logic failed:", e.message);
+    // Optional: Add a mechanism to notify admins of the failure
   }
 });
 
@@ -722,3 +728,4 @@ export const helloWorld = onCall({ region: "asia-south1" }, (request) => {
     
 
     
+
