@@ -1,8 +1,10 @@
 
+
 'use server';
 
 import { collection, query, orderBy, getDocs, type Firestore, doc, deleteDoc, addDoc, updateDoc, where, limit } from 'firebase/firestore';
 import { initializeFirebase } from '@/firebase';
+import { pathCoaGroups, pathCoaLedgers } from '@/firebase/paths';
 import type { CoaGroup, CoaLedger } from '@/features/finance/types/finance.types';
 
 /**
@@ -17,11 +19,11 @@ class CoaRepository {
     }
 
     private getGroupsCollection(companyId: string) {
-        return collection(this.db, 'companies', companyId, 'coa_groups');
+        return collection(this.db, pathCoaGroups(companyId));
     }
 
     private getLedgersCollection(companyId: string) {
-        return collection(this.db, 'companies', companyId, 'coa_ledgers');
+        return collection(this.db, pathCoaLedgers(companyId));
     }
 
     /**
