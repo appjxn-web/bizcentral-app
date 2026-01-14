@@ -7,10 +7,10 @@
 // - Fixed: invoiceNumber is guaranteed inside onInvoiceCreated (so narration + UI won't break)
 // - Kept: your existing features (UPI onCall, order number, JV posting, stock transfer, commissions, notes, milestones, payment approval)
 
-import { onDocumentCreated, onDocumentUpdated, onDocumentWritten, Change, DocumentSnapshot, FirestoreEvent } from "firebase-functions/v2/firestore";
-import { HttpsError, onCall, setGlobalOptions } from "firebase-functions/v2/https";
+import { onDocumentCreated, onDocumentUpdated, onDocumentWritten, Change, DocumentSnapshot } from "firebase-functions/v2/firestore";
+import { onCall, setGlobalOptions } from "firebase-functions/v2/https";
 import * as admin from "firebase-admin";
-import { getFirestore, FieldValue } from "firebase-admin/firestore";
+import { getFirestore } from "firebase-admin/firestore";
 import type {
   Order,
   SalesInvoice,
@@ -23,6 +23,7 @@ import type {
   Product,
   StockTransferRequest,
   PaymentSubmission,
+  SalesOrder,
 } from "./types";
 import { getNextDocNumber } from "./number-series";
 
@@ -108,77 +109,62 @@ const findOrCreateSpecificCustomerLedger = async (
   return newLedgerRef.id;
 };
 
-export const verifyUpiPaymentAndCreateOrder = onCall(async (request) => {
-  const { order, upiTransactionId } = request.data as any;
+export const verifyUpiPaymentAndCreateOrder = onCall(
+    { region: "asia-south1" },
+    async (req) => {
+    const { order, upiTransactionId } = req.data;
 
-  // 1) UPI Verification (Simulated)
-  console.log(`Verifying UPI transaction ID: ${upiTransactionId}...`);
-  const isPaymentValid = true;
+    if (!order?.userId || !upiTransactionId) {
+      throw new Error("Missing order/userId/upiTransactionId");
+    }
 
-  if (!isPaymentValid) {
-    throw new HttpsError(
-      "invalid-argument",
-      "The UPI transaction ID is invalid or the payment was not received."
-    );
-  }
+    const db = admin.firestore();
 
-  try {
-    const result = await db.runTransaction(async (transaction) => {
-      const orderRef = db.collection("orders").doc();
+    const now = new Date();
+    const yy = String(now.getFullYear()).slice(2);
+    const mm = String(now.getMonth() + 1).padStart(2, "0");
+    const yymm = `${yy}${mm}`;
 
-      // ---- A) Generate Order Number: SO-YYMM-XXXX ----
-      const now = new Date();
-      const yy = String(now.getFullYear()).slice(-2);
-      const mm = String(now.getMonth() + 1).padStart(2, "0");
-      
-      const counterRef = db.collection("counters").doc(`salesOrder_${yy}${mm}`);
-      const counterSnap = await transaction.get(counterRef);
-      
-      const current = counterSnap.exists ? (counterSnap.data()?.next ?? 1) : 1;
-      const orderNumber = `SO-${yy}${mm}-${String(current).padStart(4, "0")}`;
-      
-      transaction.set(counterRef, { next: current + 1 }, { merge: true });
+    const counterRef = db.doc(`counters/order_SO_${yymm}`);
+    const orderRef = db.collection("orders").doc(); // ✅ NEW DOC ID
+    const paymentRef = db.collection("paymentSubmissions").doc();
 
-      // ---- B) Create payment submission for ADVANCE ----
-      const submissionRef = db.collection("paymentSubmissions").doc();
-      transaction.set(submissionRef, {
-        userId: order.userId,
-        customerName: order.customerName,
-        orderId: orderRef.id,
-        orderNumber,
-        assignedToUid: order.assignedToUid || null,
-        amount: order.paymentReceived,
-        paymentMethod: "UPI / Online",
-        transactionDetails: upiTransactionId,
-        status: "Pending",
-        submittedAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
+    try {
+        await db.runTransaction(async (tx) => {
+            const counterSnap = await tx.get(counterRef);
+            const current = counterSnap.exists ? (counterSnap.data()?.next ?? 1) : 1;
 
-      // ---- C) Create Order ----
-      const newOrderData = {
-        ...order,
-        id: orderRef.id,
-        orderNumber,
-        paymentReceived: 0, // start with 0 verified payment
-        balance: order.grandTotal,
-        status: "Awaiting Payment Confirmation",
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      };
+            const orderNumber = `SO-${yymm}-${String(current).padStart(4, "0")}`;
 
-      transaction.set(orderRef, newOrderData);
+            tx.set(counterRef, { next: current + 1 }, { merge: true });
 
-      return { orderId: orderRef.id, orderNumber };
-    });
+            tx.set(orderRef, {
+                ...order,
+                orderNumber,
+                status: "Awaiting Payment Confirmation",
+                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
 
-    return { success: true, ...result };
-  } catch (error: any) {
-    console.error("Order creation transaction failed:", error);
-    throw new HttpsError(
-      "internal",
-      "An error occurred while creating the order.",
-      error?.message
-    );
-  }
+            tx.set(paymentRef, {
+                userId: order.userId,
+                orderId: orderRef.id,          // ✅ LINK BY DOC ID (important)
+                orderNumber,                   // optional for display
+                amount: order.paymentReceived,
+                paymentMethod: "UPI / Online",
+                transactionDetails: upiTransactionId,
+                status: "Pending",
+                submittedAt: admin.firestore.FieldValue.serverTimestamp(),
+                assignedToUid: order.assignedToUid ?? null,
+                customerName: order.customerName ?? "",
+            });
+        });
+
+        return { ok: true, orderId: orderRef.id };
+
+    } catch (error: any) {
+      console.error("Order creation transaction failed:", error);
+      throw new Error("An error occurred while creating the order.", error?.message);
+    }
 });
 
 
@@ -186,14 +172,9 @@ export const handleOrderCreation = onDocumentCreated("orders/{orderId}", async (
   const snap = event.data;
   if (!snap) return;
 
-  const prefixesSnap = await db.doc("company/settings").get();
-  const prefixes = prefixesSnap.data()?.prefixes;
-
-  const allOrders = await db.collection("orders").get();
-  const allOrdersData = allOrders.docs.map((d) => d.data());
-
-  const orderNumber = getNextDocNumber("Sales Order", prefixes, allOrdersData as any[]);
-  await snap.ref.update({ orderNumber });
+  // This function is now simplified as the order number is generated on creation.
+  // We can keep it for any post-creation logic if needed, or remove it.
+  // For now, let's keep it empty.
 });
 
 /**
@@ -414,7 +395,7 @@ export const onDebitNoteCreated = onDocumentCreated("debitNotes/{noteId}", async
 
 export const onStockTransfer = onDocumentUpdated(
   "stockTransferRequests/{requestId}",
-  async (event: FirestoreEvent<Change<DocumentSnapshot> | undefined, { requestId: string }>) => {
+  async (event) => {
     if (!event.data?.after) return;
 
     const before = event.data.before.data() as StockTransferRequest;
@@ -489,7 +470,7 @@ export const handleVoucherCreation = onDocumentCreated("journalVouchers/{id}", (
 
 export const handleOrderUpdates = onDocumentUpdated(
   "orders/{orderId}",
-  async (event: FirestoreEvent<Change<DocumentSnapshot> | undefined, { orderId: string }>) => {
+  async (event) => {
     if (!event.data) return;
 
     const before = event.data.before.data() as Order;
@@ -577,7 +558,7 @@ export const handleOrderUpdates = onDocumentUpdated(
 
 export const onMilestoneUpdate = onDocumentWritten(
   "goals/{goalId}/milestones/{milestoneId}",
-  async (event: FirestoreEvent<Change<DocumentSnapshot> | undefined>) => {
+  async (event) => {
     const goalId = (event.params as any).goalId;
     const goalRef = db.collection("goals").doc(goalId);
 
@@ -631,16 +612,24 @@ export const onPaymentApproved = onDocumentUpdated("paymentSubmissions/{id}", as
   const after = event.data.after.data() as PaymentSubmission;
   const before = event.data.before.data() as PaymentSubmission;
 
+  // Run only when status changes to Approved
   if (before.status !== "Approved" && after.status === "Approved") {
-    const orderRef = db.collection("orders").doc((after as any).orderId);
+    const orderId = (after as any).orderId as string | undefined;
+    if (!orderId) {
+      console.error("Payment submission approved but orderId is missing:", (after as any).id);
+      return;
+    }
+
+    const orderRef = db.collection("orders").doc(orderId);
 
     return db.runTransaction(async (transaction) => {
       const orderDoc = await transaction.get(orderRef);
       if (!orderDoc.exists) {
-        console.error(`Order ${(after as any).orderId} not found for payment submission ${(after as any).id}`);
+        console.error(`Order ${orderId} not found for payment submission ${(after as any).id}`);
         return;
       }
-      const orderData = orderDoc.data() as Order;
+
+      const orderData = orderDoc.data() as any; // keep as any for flexibility
 
       // CREDIT: Customer
       const customerLedgerId = await findOrCreateSpecificCustomerLedger(transaction, after);
@@ -649,53 +638,72 @@ export const onPaymentApproved = onDocumentUpdated("paymentSubmissions/{id}", as
       let receivingAccountId: string | null = (after as any).receivingAccountId || null;
 
       if (!receivingAccountId) {
+        // If manual cash and recorded by someone, try to debit their cash ledger
         if ((after as any).paymentMethod === "Cash" && (after as any).recordedByUid) {
-          const recorderSnap = await transaction.get(db.doc(`users/${(after as any).recordedByUid}`));
+          const recorderUid = (after as any).recordedByUid as string;
+          const recorderSnap = await transaction.get(db.doc(`users/${recorderUid}`));
           const recorderProfile = recorderSnap.data() as UserProfile | undefined;
 
           if (recorderProfile?.coaLedgerId) {
             receivingAccountId = recorderProfile.coaLedgerId;
           } else {
+            // fallback search by tag
             const ledgerSearch = await transaction.get(
-              db.collection("coa_ledgers").where("tags", "array-contains", (after as any).recordedByUid).limit(1)
+              db.collection("coa_ledgers").where("tags", "array-contains", recorderUid).limit(1)
             );
             receivingAccountId = !ledgerSearch.empty ? ledgerSearch.docs[0].id : "L-1.1.1-1";
           }
         } else {
+          // Online UPI: use company primary UPI ledger if available
           const companySnap = await transaction.get(db.doc("company/info"));
           const primaryUpi = (companySnap.data() as any)?.primaryUpiId;
+
           if (primaryUpi) {
             const ledgerSearchQuery = db.collection("coa_ledgers").where("bank.upiId", "==", primaryUpi).limit(1);
             const ledgerSearch = await transaction.get(ledgerSearchQuery);
             if (!ledgerSearch.empty) receivingAccountId = ledgerSearch.docs[0].id;
           }
+
+          // final fallback if still null
+          if (!receivingAccountId) receivingAccountId = "L-1.1.1-1";
         }
       }
 
+      // ✅ Create JV with orderId stored (THIS FIXES MIXED PAYMENT HISTORY)
       if (receivingAccountId && customerLedgerId) {
         const jvRef = db.collection("journalVouchers").doc();
+        const orderNumber = orderData?.orderNumber || orderData?.id || orderId;
+
         transaction.set(jvRef, {
           id: jvRef.id,
           date: new Date().toISOString().split("T")[0],
-          narration: `Payment for Order #${(orderData as any).orderNumber || (orderData as any).id}. Method: ${(after as any).paymentMethod}. Ref: ${(after as any).transactionDetails}`,
+
+          narration: `Payment for Order #${orderNumber}. Method: ${(after as any).paymentMethod}. Ref: ${(after as any).transactionDetails}`,
+
+          // ✅ IMPORTANT FIELDS (use these in UI filter)
+          orderId: orderId,
+          orderNumber: orderNumber,
+          customerId: orderData?.userId || (after as any).userId || null,
+
           voucherType: "Receipt Voucher",
-          orderId: after.orderId,
-          orderNumber: orderData.orderNumber || null,
-          customerId: orderData.userId || null,
           entries: [
             { accountId: receivingAccountId, debit: (after as any).amount, credit: 0 },
             { accountId: customerLedgerId, debit: 0, credit: (after as any).amount },
           ],
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
-          createdByUid: (after as any).recordedByUid || (after as any).userId,
+          createdByUid: (after as any).recordedByUid || (after as any).userId || null,
         });
       } else {
-        console.error("Could not determine receiving account. JV not created for payment:", (after as any).id);
+        console.error("Could not determine receivingAccountId or customerLedgerId. JV not created for payment:", (after as any).id);
       }
 
       // Update Order totals + status
-      const newTotalPaid = ((orderData as any).paymentReceived || 0) + (after as any).amount;
-      const newBalance = (orderData as any).grandTotal - newTotalPaid;
+      const prevPaid = Number(orderData?.paymentReceived || 0);
+      const paidNow = Number((after as any).amount || 0);
+
+      const newTotalPaid = prevPaid + paidNow;
+      const grandTotal = Number(orderData?.grandTotal || 0);
+      const newBalance = grandTotal - newTotalPaid;
 
       transaction.update(orderRef, {
         paymentReceived: newTotalPaid,
@@ -703,12 +711,15 @@ export const onPaymentApproved = onDocumentUpdated("paymentSubmissions/{id}", as
         status: newBalance <= 0 ? "Ready for Dispatch" : "Ordered",
       } as any);
 
-      // Automatic invoice generation removed (manual by partner/frontend)
+      // Optional: mark submission "processed" flag (not required, but can prevent double-jv if something weird happens)
+      // const submissionRef = db.collection("paymentSubmissions").doc((after as any).id);
+      // transaction.update(submissionRef, { processedAt: admin.firestore.FieldValue.serverTimestamp() } as any);
     });
   }
 
   return;
 });
+
 
 export const helloWorld = onCall({ region: "asia-south1" }, (request) => {
     console.log("Hello from Firebase!");

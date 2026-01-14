@@ -300,7 +300,7 @@ function PayBalanceDialog({ order, companyInfo, balance }: { order: Order; compa
                         </div>
                     </div>
                     <DialogFooter>
-                        <DialogClose asChild><Button type="button" variant="outline">Close</Button></DialogClose>
+                        <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
                         <Button type="button" onClick={() => handleSubmit('manual')} disabled={isSubmitting || !amountToPay || !receivingAccountId}>
                             {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                             Record Payment
@@ -466,22 +466,18 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
     const { data: customerParty, loading: customerPartyLoading } = useDoc<Party>(order.userId ? doc(firestore, 'parties', order.userId) : null);
     
     const { totalPaid, balanceDue, paymentHistory } = React.useMemo(() => {
-        const approvedPayments = (paymentSubmissions || [])
-            .filter(p => p.status === 'Approved')
-            .reduce((sum, p) => sum + p.amount, 0);
-
         const jvHistory = (allJournalVouchers || [])
             .filter(jv => (jv as any).orderId === order.id)
             .map(jv => {
-                 const creditEntry = jv.entries.find(e => e.accountId === customerParty?.coaLedgerId && e.credit && e.credit > 0);
-                 if (!creditEntry) return null;
-                 return {
+                const creditEntry = jv.entries.find(e => e.accountId === customerParty?.coaLedgerId && e.credit && e.credit > 0);
+                if (!creditEntry) return null;
+                return {
                     amount: creditEntry.credit || 0,
                     date: jv.createdAt.toDate(),
                     details: jv.narration,
                     status: 'Approved',
                     type: 'jv'
-                 }
+                }
             })
             .filter(Boolean) as any[];
 
@@ -577,7 +573,7 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
     const availableStatuses = nextStatusOptions[order.status] || [];
     
     const handleGenerateInvoice = () => {
-      localStorage.setItem('invoiceDataToCreate', JSON.stringify({ ...order }));
+      localStorage.setItem('invoiceDataToCreate', JSON.stringify({ ...order, customerId: order.userId }));
       router.push('/dashboard/sales/create-invoice');
     };
     

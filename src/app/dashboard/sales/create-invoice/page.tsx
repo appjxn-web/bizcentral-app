@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -58,6 +59,7 @@ import { useRole } from '@/app/dashboard/_components/role-provider';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useFirestore, useCollection, useUser, useDoc } from '@/firebase';
 import { collection, doc, addDoc, serverTimestamp, setDoc, query, where, orderBy, limit, getDocs, updateDoc, writeBatch } from 'firebase/firestore';
+import { getNextDocNumber } from '@/lib/number-series';
 import { estimateDispatchDate, type EstimateDispatchDateOutput } from '@/ai/flows/estimate-dispatch-date-flow';
 import { QRCodeSVG } from 'qrcode.react';
 
@@ -136,7 +138,9 @@ export default function CreateInvoicePage() {
   const [assignedToUid, setAssignedToUid] = React.useState<string | null>(null);
   
   const { data: allProducts, loading: productsLoading } = useCollection<Product>(query(collection(firestore, 'products'), where('saleable', '==', true)));
-  
+  const { data: allSalesInvoices, loading: invoicesLoading } = useCollection<SalesInvoice>(collection(firestore, 'salesInvoices'));
+  const { data: settingsData } = useDoc<any>(doc(firestore, 'company', 'settings'));
+
   const [paymentDate, setPaymentDate] = React.useState(format(new Date(), 'yyyy-MM-dd'));
   const [paymentMode, setPaymentMode] = React.useState('UPI');
   const [paymentAmount, setPaymentAmount] = React.useState('');
@@ -151,14 +155,11 @@ export default function CreateInvoicePage() {
   const [invoiceIdToEdit, setInvoiceIdToEdit] = React.useState<string | null>(null);
   const [isFromSalesOrder, setIsFromSalesOrder] = React.useState(false);
 
-  const { data: parties, loading: partiesLoading } = useCollection<Party>(collection(firestore, 'parties'));
-  const { data: coaLedgers, loading: ledgersLoading } = useCollection<CoaLedger>(collection(firestore, 'coa_ledgers'));
-  const { data: companyInfo } = useDoc<CompanyInfo>(doc(firestore, 'company', 'info'));
-  const userProfileRef = authUser ? doc(firestore, 'users', authUser.uid) : null;
-  const { data: userProfile } = useDoc<UserProfile>(userProfileRef);
+  const [selectedParty, setSelectedParty] = React.useState<Party | null>(null);
+  const [userProfile, setUserProfile] = React.useState<UserProfile | null>(null);
+  
   const [appliedCoupons, setAppliedCoupons] = React.useState<Offer[]>([]);
   
-  // Stock logic for Partners
   const partnerStockQuery = (currentRole === 'Partner' && authUser) ? query(collection(firestore, 'users', authUser.uid, 'stock')) : null;
   const { data: partnerStock, loading: partnerStockLoading } = useCollection<PartnerStockItem>(partnerStockQuery);
 
@@ -178,6 +179,9 @@ export default function CreateInvoicePage() {
     return allProducts;
   }, [allProducts, partnerStock, currentRole]);
   
+  const { data: coaLedgers, loading: ledgersLoading } = useCollection<CoaLedger>(collection(firestore, 'coa_ledgers'));
+  const { data: companyInfo } = useDoc<CompanyInfo>(doc(firestore, 'company', 'info'));
+  
   const paymentAccounts = React.useMemo(() => {
     if (!coaLedgers) return [];
     return coaLedgers.filter(l => l.groupId === '1.1.1');
@@ -191,9 +195,11 @@ export default function CreateInvoicePage() {
           setIsFromSalesOrder(true);
           const data = JSON.parse(rawData);
           
-          setSelectedPartyId(data.userId || data.customerId);
+          setSelectedPartyId(data.customerId || data.userId);
           setOrderDocumentId(data.id);
           setAssignedToUid(data.assignedToUid || (currentRole === 'Partner' ? authUser.uid : null));
+          setSelectedParty(data.customer);
+          setUserProfile(data.userProfile);
 
           const submissionsRef = collection(firestore, 'paymentSubmissions');
           const q = query(submissionsRef, where('orderId', '==', data.id), where('status', '==', 'Approved'));
@@ -276,12 +282,6 @@ export default function CreateInvoicePage() {
       fetchEstimate();
     }
   }, [items]);
-
-
-  const selectedParty = React.useMemo(() => {
-    if (!parties) return null;
-    return parties.find(p => p.id === selectedPartyId) || null;
-  }, [selectedPartyId, parties]);
   
   const isInterstate = React.useMemo(() => {
     if (!selectedParty?.gstin) return false;
@@ -389,9 +389,9 @@ export default function CreateInvoicePage() {
       toast({ variant: 'destructive', title: 'Missing Information', description: 'Please select a customer and add items.' });
       return;
     }
-    if (!firestore || !parties) return;
+    if (!firestore || !settingsData || !coaLedgers) return;
   
-    const customerCoaId = parties.find(p => p.id === selectedPartyId)?.coaLedgerId;
+    const customerCoaId = selectedParty?.coaLedgerId;
     if (!customerCoaId) {
         toast({ variant: 'destructive', title: 'Ledger Missing', description: 'This customer does not have a linked ledger account. Please create one.' });
         return;
@@ -421,7 +421,6 @@ export default function CreateInvoicePage() {
           status: finalBalanceDue <= 0 ? 'Paid' : 'Unpaid',
           appliedCoupons: appliedCoupons,
           assignedToUid: finalAssignedToUid || null,
-          createdByUid: authUser?.uid,
       };
       
       if (isEditMode && invoiceIdToEdit) {
@@ -817,6 +816,7 @@ export default function CreateInvoicePage() {
   );
 }
 
-    
+  
 
-    
+
+
