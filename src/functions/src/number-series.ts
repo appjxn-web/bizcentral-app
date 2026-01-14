@@ -2,12 +2,12 @@
 
 import * as admin from "firebase-admin";
 import { DocPrefixConfig } from "./types";
-import type { Firestore, Transaction } from "firebase-admin/firestore";
+import type { Transaction } from "firebase-admin/firestore";
 
 /**
  * Gets the next sequential number for a given document type within a transaction.
  * This is a more robust and scalable method than querying all documents.
- * 
+ *
  * @param transaction - The Firestore transaction to run this operation in.
  * @param type - The document type (e.g., "Sales Order", "Sales Invoice").
  * @param configs - The array of prefix configurations.

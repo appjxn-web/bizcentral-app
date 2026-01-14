@@ -24,28 +24,27 @@ type ListOpts = { take?: number };
 
 const { firestore: db } = initializeFirebase();
 
-export const coaRepository = {
-  async getLedger(companyId: string, ledgerId: string) {
+export async function getLedger(companyId: string, ledgerId: string) {
     const ref = doc(db, financePaths.coaLedgers(companyId), ledgerId);
     const snap = await getDoc(ref);
     return snap.exists() ? { id: snap.id, ...snap.data() } : null;
-  },
+}
 
-  async listGroups(companyId: string, opts: ListOpts = {}) {
+export async function listGroups(companyId: string, opts: ListOpts = {}) {
     const ref = collection(db, financePaths.coaGroups(companyId));
     const q = query(ref, orderBy("path", "asc"), limit(opts.take ?? 500));
     const snap = await getDocs(q);
     return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-  },
+}
 
-  async listLedgers(companyId: string, opts: ListOpts = {}) {
+export async function listLedgers(companyId: string, opts: ListOpts = {}) {
     const ref = collection(db, financePaths.coaLedgers(companyId));
     const q = query(ref, orderBy("name", "asc"), limit(opts.take ?? 2000));
     const snap = await getDocs(q);
     return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-  },
+}
 
-  async createGroup(companyId: string, input: CoaGroupInput, actorUid: string) {
+export async function createGroup(companyId: string, input: CoaGroupInput, actorUid: string) {
     const data = coaGroupSchema.parse(input);
     const ref = collection(db, financePaths.coaGroups(companyId));
     const res = await addDoc(ref, {
@@ -56,20 +55,19 @@ export const coaRepository = {
       updatedAt: serverTimestamp(),
     });
     return res.id;
-  },
+}
 
-  async updateGroup(companyId: string, groupId: string, patch: Partial<CoaGroupInput>, actorUid: string) {
-    // validate by merging is safer; keep simple for now:
+export async function updateGroup(companyId: string, groupId: string, patch: Partial<CoaGroupInput>, actorUid: string) {
     const ref = doc(db, financePaths.coaGroups(companyId), groupId);
     await updateDoc(ref, {
       ...patch,
       updatedAt: serverTimestamp(),
       updatedBy: actorUid,
     });
-  },
+}
 
-  async createLedger(companyId: string, input: any, actorUid: string) {
-    const data = input; // Simplified
+export async function createLedger(companyId: string, input: any, actorUid: string) {
+    const data = input;
     const ref = collection(db, financePaths.coaLedgers(companyId));
     const res = await addDoc(ref, {
       ...data,
@@ -79,18 +77,15 @@ export const coaRepository = {
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
-    // Post-creation update to set the ID within the document
     await updateDoc(res, { id: res.id });
     return res.id;
-  },
+}
 
-  async deleteGroupSafe(companyId: string, groupId: string) {
-    // Rule: cannot delete group if any ledgers exist in it
+export async function deleteGroupSafe(companyId: string, groupId: string) {
     const ledRef = collection(db, financePaths.coaLedgers(companyId));
     const q = query(ledRef, where("groupId", "==", groupId), limit(1));
     const snap = await getDocs(q);
     if (!snap.empty) throw new Error("Cannot delete group: ledgers exist in this group.");
 
     await deleteDoc(doc(db, financePaths.coaGroups(companyId), groupId));
-  },
-};
+}
