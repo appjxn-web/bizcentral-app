@@ -1,5 +1,4 @@
 
-'use server';
 import {
   onDocumentCreated,
   onDocumentUpdated,
@@ -107,73 +106,21 @@ const findOrCreateSpecificCustomerLedger = async (
   return newLedgerRef.id;
 };
 
-export const verifyUpiPaymentAndCreateOrder = onCall(
-  { region: "asia-south1" },
-  async (req) => {
-    const { order, upiTransactionId } = req.data;
-
-    if (!order?.userId || !upiTransactionId) {
-      throw new HttpsError("invalid-argument", "Missing order/userId/upiTransactionId");
-    }
-
-    const db = admin.firestore();
-
-    const now = new Date();
-    const yy = String(now.getFullYear()).slice(2);
-    const mm = String(now.getMonth() + 1).padStart(2, "0");
-    const yymm = `${yy}${mm}`;
-
-    const counterRef = db.doc(`counters/order_SO_${yymm}`);
-    const orderRef = db.collection("orders").doc(); // ✅ NEW DOC ID
-    const paymentRef = db.collection("paymentSubmissions").doc();
-
-    try {
-        await db.runTransaction(async (tx) => {
-            const counterSnap = await tx.get(counterRef);
-            const current = counterSnap.exists ? (counterSnap.data()?.next ?? 1) : 1;
-
-            const orderNumber = `SO-${yymm}-${String(current).padStart(4, "0")}`;
-
-            tx.set(counterRef, { next: current + 1 }, { merge: true });
-
-            tx.set(orderRef, {
-                ...order,
-                id: orderRef.id, // Storing the document ID within the document
-                orderNumber,
-                status: "Awaiting Payment Confirmation",
-                createdAt: admin.firestore.FieldValue.serverTimestamp(),
-            });
-
-            tx.set(paymentRef, {
-                userId: order.userId,
-                orderId: orderRef.id,          // ✅ LINK BY DOC ID (important)
-                orderNumber,                   // optional for display
-                amount: order.paymentReceived,
-                paymentMethod: "UPI / Online",
-                transactionDetails: upiTransactionId,
-                status: "Pending",
-                submittedAt: admin.firestore.FieldValue.serverTimestamp(),
-                assignedToUid: order.assignedToUid ?? null,
-                customerName: order.customerName ?? "",
-            });
-        });
-
-        return { ok: true, orderId: orderRef.id };
-
-    } catch (error: any) {
-      console.error("Order creation transaction failed:", error);
-      throw new HttpsError("internal", "An error occurred while creating the order.", {
-        message: error?.message,
-      });
-    }
-});
-
-
 export const handleOrderCreation = onDocumentCreated({ document: "orders/{orderId}", region: "asia-south1" }, async (event) => {
-  // This function is now completely empty. The logic has been centralized
-  // in the `verifyUpiPaymentAndCreateOrder` callable function to prevent conflicts.
-  // We keep the function definition here to avoid deployment errors if it's still
-  // declared in Firebase, but it does nothing.
+  const snap = event.data;
+  if (!snap) return;
+
+  const prefixesSnap = await db.doc('company/settings').get();
+  const prefixes = prefixesSnap.data()?.prefixes;
+  
+  // To prevent race conditions, we get all documents in a transaction-like manner
+  const allOrdersQuery = db.collection('orders');
+  const allOrdersSnap = await allOrdersQuery.get();
+  const allOrdersData = allOrdersSnap.docs.map(d => d.data());
+
+  const orderNumber = getNextDocNumber('Sales Order', prefixes, allOrdersData as any[]);
+  
+  await snap.ref.update({ orderNumber });
 });
 
 /**
