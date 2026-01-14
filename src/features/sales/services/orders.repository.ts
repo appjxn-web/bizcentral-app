@@ -9,7 +9,7 @@ import type { UserRole } from '@/features/users/types/users.types';
 const { firestore: db } = initializeFirebase();
 const collectionRef = collection(db, 'orders');
 
-async function getOrders(options: { pageLimit?: number, startAfter?: DocumentSnapshot | null, role?: UserRole | null, userId?: string | null } = {}) {
+export async function getOrders(options: { pageLimit?: number, startAfter?: DocumentSnapshot | null, role?: UserRole | null, userId?: string | null } = {}) {
     const { pageLimit = 10, startAfter = null, role, userId } = options;
 
     let q: Query;
@@ -37,7 +37,7 @@ async function getOrders(options: { pageLimit?: number, startAfter?: DocumentSna
     return { newOrders, lastVisible };
 }
 
-async function getOrderCounts() {
+export async function getOrderCounts() {
     const totalQuery = query(collectionRef);
     const inProcessQuery = query(collectionRef, where('status', 'in', ['Ordered', 'Manufacturing', 'Ready for Dispatch', 'Awaiting Payment', 'Awaiting Payment Confirmation', 'Cancellation Requested']));
     const shippedQuery = query(collectionRef, where('status', '==', 'Shipped'));
@@ -58,13 +58,7 @@ async function getOrderCounts() {
     };
 }
 
-async function updateOrderStatus(orderId: string, status: OrderStatus): Promise<void> {
+export async function updateOrderStatus(orderId: string, status: OrderStatus): Promise<void> {
     const orderRef = doc(db, 'orders', orderId);
     await updateDoc(orderRef, { status });
 }
-
-export const ordersRepository = {
-    getOrders,
-    getOrderCounts,
-    updateOrderStatus
-};

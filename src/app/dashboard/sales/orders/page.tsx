@@ -79,7 +79,7 @@ import { useToast } from '@/hooks/use-toast';
 import { ref, uploadBytes, getDownloadURL, getStorage } from 'firebase/storage';
 import { Loader2 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ordersRepository } from '@/features/sales/services/orders.repository';
+import { getOrders, getOrderCounts, updateOrderStatus as updateRepoOrderStatus } from '@/features/sales/services/orders.repository';
 
 
 function getStatusBadgeVariant(status: Order['status'] | 'Refund Pending' | 'Refund Complete' | SalesInvoice['status']) {
@@ -737,6 +737,9 @@ function OrdersPageContent() {
   const [hasMore, setHasMore] = React.useState(true);
   const [loading, setLoading] = React.useState(true);
   const [isFetchingMore, setIsFetchingMore] = React.useState(false);
+  const { currentRole } = useRole();
+  const { user } = useUser();
+  const { toast } = useToast();
   
   const [totalOrderCount, setTotalOrderCount] = React.useState(0);
   const [totalInProcess, setTotalInProcess] = React.useState(0);
@@ -745,21 +748,17 @@ function OrdersPageContent() {
 
   const { data: allSalesInvoices, loading: invoicesLoading } = useCollection<SalesInvoice>(collection(useFirestore(), 'salesInvoices'));
   
-  React.useEffect(() => {
-    fetchOrders(true);
-  }, []);
-
-  const fetchOrders = async (initial = false) => {
+  const fetchOrders = React.useCallback(async (initial = false) => {
     if (initial) setLoading(true); else setIsFetchingMore(true);
 
-    const { newOrders, lastVisible } = await ordersRepository.getOrders({ pageLimit: 10, startAfter: initial ? undefined : lastDoc });
+    const { newOrders, lastVisible } = await getOrders({ pageLimit: 10, startAfter: initial ? undefined : lastDoc, role: currentRole, userId: user?.uid });
     
     setLastDoc(lastVisible || null);
     setHasMore(newOrders.length === 10);
     setOrders(prev => initial ? newOrders : [...prev, ...newOrders]);
 
     if (initial) {
-      const counts = await ordersRepository.getOrderCounts();
+      const counts = await getOrderCounts();
       setTotalOrderCount(counts.total);
       setTotalInProcess(counts.inProcess);
       setTotalShipped(counts.shipped);
@@ -767,14 +766,21 @@ function OrdersPageContent() {
     }
 
     if (initial) setLoading(false); else setIsFetchingMore(false);
-  };
+  }, [lastDoc, currentRole, user?.uid]);
+
+
+  React.useEffect(() => {
+    if(currentRole && user){
+        fetchOrders(true);
+    }
+  }, [currentRole, user]);
   
   const handleStatusChange = async (order: Order, newStatus: OrderStatus) => {
       const firestore = useFirestore();
       const user = useUser().user;
       if (!user) return;
       try {
-          await ordersRepository.updateOrderStatus(order.id, newStatus);
+          await updateRepoOrderStatus(order.id, newStatus);
 
           const batch = writeBatch(firestore);
           const notificationRef = doc(collection(firestore, 'users', order.userId, 'notifications'));
@@ -866,5 +872,6 @@ export default function OrdersPage() {
 }
 
     
+
 
 
