@@ -61,8 +61,6 @@ import { collection, doc, addDoc, serverTimestamp, setDoc, query, where, orderBy
 import { getNextDocNumber } from '@/lib/number-series';
 import { estimateDispatchDate, type EstimateDispatchDateOutput } from '@/ai/flows/estimate-dispatch-date-flow';
 import { QRCodeSVG } from 'qrcode.react';
-import { salesService } from '@/features/sales/services/sales.service';
-
 
 interface OrderItem {
   id: string;
@@ -156,6 +154,7 @@ export default function CreateInvoicePage() {
   const [invoiceIdToEdit, setInvoiceIdToEdit] = React.useState<string | null>(null);
   const [isFromSalesOrder, setIsFromSalesOrder] = React.useState(false);
 
+  const { data: parties, loading: partiesLoading } = useCollection<Party>(collection(firestore, 'parties'));
   const [selectedParty, setSelectedParty] = React.useState<Party | null>(null);
   const [userProfile, setUserProfile] = React.useState<UserProfile | null>(null);
   
@@ -393,33 +392,37 @@ export default function CreateInvoicePage() {
       toast({ variant: 'destructive', title: 'Missing Information', description: 'Please select a customer and add items.' });
       return;
     }
-
-    const companyId = 'default'; // In a real app, get this from user's context
-    const warehouseId = 'main_warehouse'; // In a real app, this should be selectable
-
-    const invoiceInput = {
-      invoiceDate,
-      invoiceNo: `INV-${Date.now()}`, // Temporary, will be replaced by service
-      customerId: selectedPartyId,
-      warehouseId,
-      items: items.map(item => ({
-          productId: item.productId,
-          qty: item.quantity,
-          rate: item.rate,
-          gstRate: item.gstRate,
-      })),
-      discount: calculations.totalDiscountAmount,
-      shipping: 0, // Placeholder
-      note: terms,
-    };
-    
+  
     try {
-      await salesService.createSalesInvoice(companyId, invoiceInput, authUser.uid);
-      toast({ title: 'Invoice Saved', description: 'Invoice, stock, and accounting entries have been created.' });
+      const invoiceData: Omit<SalesInvoice, 'id'> = {
+          orderId: orderDocumentId || '',
+          orderNumber: salesOrderNumber,
+          customerId: selectedPartyId,
+          customerName: selectedParty?.name || '',
+          date: invoiceDate,
+          items: items.map(({id, category, price, ...rest}) => ({...rest, discount: overallDiscount})),
+          subtotal: calculations.subtotal,
+          discount: calculations.totalDiscountAmount,
+          taxableAmount: calculations.taxableAmount,
+          cgst: calculations.cgst,
+          sgst: calculations.sgst,
+          igst: calculations.igst,
+          grandTotal: calculations.grandTotal,
+          amountPaid: bookingAmount,
+          balanceDue: calculations.grandTotal - bookingAmount,
+          status: 'Unpaid',
+          appliedCoupons: appliedCoupons,
+          assignedToUid: assignedToUid,
+          createdByUid: authUser.uid
+      };
+      
+      const newInvoiceRef = await addDoc(collection(firestore, 'salesInvoices'), invoiceData);
+      
+      toast({ title: 'Invoice Created', description: `Invoice is being processed in the background.` });
       router.push('/dashboard/sales/invoice');
-    } catch (e: any) {
+    } catch (e) {
         console.error(e);
-        toast({ variant: 'destructive', title: 'Save failed', description: e.message });
+        toast({ variant: 'destructive', title: 'Save failed' });
     }
   };
 
@@ -799,3 +802,11 @@ export default function CreateInvoicePage() {
     </>
   );
 }
+
+  
+
+
+
+
+
+    
