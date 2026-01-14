@@ -3,7 +3,6 @@
 'use client';
 
 import * as React from 'react';
-import { useRouter } from 'next/navigation';
 import { PageHeader } from '@/components/page-header';
 import { Button, buttonVariants } from '@/components/ui/button';
 import {
@@ -38,7 +37,6 @@ import type { CoaGroup, CoaLedger } from '@/features/finance/types/finance.types
 
 function ChartOfAccountsPageContent() {
   const { toast } = useToast();
-  const router = useRouter();
   
   const [coaGroups, setCoaGroups] = React.useState<CoaGroup[]>([]);
   const [coaLedgers, setCoaLedgers] = React.useState<CoaLedger[]>([]);
@@ -195,7 +193,7 @@ function ChartOfAccountsPageContent() {
       );
 
       const ledgerRows = childLedgers.map(ledger => (
-        <TableRow key={ledger.id} onClick={() => router.push(`/dashboard/finance-accounting/balance-sheet/view?accountId=${ledger.id}`)} className="cursor-pointer">
+        <TableRow key={ledger.id} className="cursor-pointer">
           <TableCell style={{ paddingLeft: `${(level + 1) * 1.5}rem` }}>{ledger.name}</TableCell>
           <TableCell>{ledger.nature}</TableCell>
           <TableCell>Ledger</TableCell>

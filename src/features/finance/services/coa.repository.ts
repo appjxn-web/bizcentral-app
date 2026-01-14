@@ -89,3 +89,13 @@ export async function deleteGroupSafe(companyId: string, groupId: string) {
 
     await deleteDoc(doc(db, financePaths.coaGroups(companyId), groupId));
 }
+
+export const coaRepository = {
+    getLedger,
+    listGroups,
+    listLedgers,
+    createGroup,
+    updateGroup,
+    createLedger,
+    deleteGroupSafe,
+};
