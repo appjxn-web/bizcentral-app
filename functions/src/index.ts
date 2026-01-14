@@ -1,13 +1,4 @@
 
-// ✅ Use this SAME file content for BOTH paths:
-// 1) functions/src/index.ts
-// 2) src/functions/src/index.ts
-//
-// IMPORTANT:
-// - Removed: 'use server' (must not be in Cloud Functions)
-// - Fixed: invoiceNumber is guaranteed inside onInvoiceCreated (so narration + UI won't break)
-// - Kept: your existing features (UPI onCall, order number, JV posting, stock transfer, commissions, notes, milestones, payment approval)
-
 import { onDocumentCreated, onDocumentUpdated, onDocumentWritten, Change, DocumentSnapshot, FirestoreEvent } from "firebase-functions/v2/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import * as admin from "firebase-admin";
@@ -731,3 +722,5 @@ export const helloWorld = onCall({ region: "asia-south1" }, (request) => {
     
 
     
+
+  
