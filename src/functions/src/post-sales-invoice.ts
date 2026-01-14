@@ -19,6 +19,17 @@ function round2(n: number) {
   return Math.round(n * 100) / 100;
 }
 
+function monthKey(dateISO: string) {
+  return (dateISO || "").slice(0, 7);
+}
+
+function incLedger(cache: any, ledgerId: string, dr: number, cr: number) {
+  if (!cache.ledgers) cache.ledgers = {};
+  if (!cache.ledgers[ledgerId]) cache.ledgers[ledgerId] = { dr: 0, cr: 0 };
+  cache.ledgers[ledgerId].dr += dr;
+  cache.ledgers[ledgerId].cr += cr;
+}
+
 export const postSalesInvoice = onCall({ region: "asia-south1" }, async (req) => {
   const uid = req.auth?.uid;
   if (!uid) throw new HttpsError("unauthenticated", "Login required");
@@ -36,22 +47,16 @@ export const postSalesInvoice = onCall({ region: "asia-south1" }, async (req) =>
 
     const inv = invSnap.data() as any;
 
-    // ✅ Idempotency: if already posted, just return success
     if (inv.status === "POSTED") {
       return { ok: true, invoiceId, voucherId: inv.voucherId ?? null, alreadyPosted: true };
     }
-
-    // Prevent double posting
     if (inv.status === "POSTING") {
       throw new HttpsError("failed-precondition", "Invoice is already posting. Please retry after a few seconds.");
     }
-
-    // Only allow DRAFT/FAILED re-post
     if (!["DRAFT", "FAILED"].includes(inv.status)) {
       throw new HttpsError("failed-precondition", `Invoice status must be DRAFT/FAILED to post. Current: ${inv.status}`);
     }
 
-    // Mark POSTING
     tx.update(invoiceRef, {
       status: "POSTING",
       postError: FieldValue.delete(),
@@ -59,7 +64,6 @@ export const postSalesInvoice = onCall({ region: "asia-south1" }, async (req) =>
       postingStartedBy: uid,
     });
 
-    // --- Load finance settings (default ledgers) ---
     const settingsSnap = await tx.get(settingsRef);
     const settings = settingsSnap.exists ? (settingsSnap.data() as any) : null;
     if (!settings?.defaultSalesLedgerId || !settings?.defaultGstOutputLedgerId || !settings?.defaultSundryDebtorsGroupId) {
@@ -69,7 +73,6 @@ export const postSalesInvoice = onCall({ region: "asia-south1" }, async (req) =>
       );
     }
 
-    // --- Resolve customer party ledger id (create if missing) ---
     const customerRef = db.doc(`parties/${inv.customerId}`);
     const customerSnap = await tx.get(customerRef);
     if (!customerSnap.exists) throw new HttpsError("failed-precondition", "Customer not found");
@@ -78,173 +81,90 @@ export const postSalesInvoice = onCall({ region: "asia-south1" }, async (req) =>
     let arLedgerId = customer.coaLedgerId as string | undefined;
 
     if (!arLedgerId) {
-      // Create party ledger
       const ledgerRef = db.collection(`coa_ledgers`).doc();
       arLedgerId = ledgerRef.id;
-
       tx.set(ledgerRef, {
-        companyId,
-        name: customer.name ?? customer.companyName ?? "Customer",
-        groupId: settings.defaultSundryDebtorsGroupId,
-        type: "PARTY",
-        openingBalance: 0,
-        openingBalanceType: "DR",
-        isActive: true,
-        createdAt: FieldValue.serverTimestamp(),
-        createdBy: uid,
-        updatedAt: FieldValue.serverTimestamp(),
+        companyId, name: customer.name ?? customer.companyName ?? "Customer", groupId: settings.defaultSundryDebtorsGroupId,
+        type: "PARTY", openingBalance: 0, openingBalanceType: "DR", isActive: true,
+        createdAt: FieldValue.serverTimestamp(), createdBy: uid, updatedAt: FieldValue.serverTimestamp(),
       });
-
-      // Save mapping
-      tx.update(customerRef, {
-        coaLedgerId: arLedgerId,
-        updatedAt: FieldValue.serverTimestamp(),
-        updatedBy: uid,
-      });
+      tx.update(customerRef, { coaLedgerId: arLedgerId, updatedAt: FieldValue.serverTimestamp(), updatedBy: uid });
     }
 
-    // --- Compute totals from invoice ---
     const items = Array.isArray(inv.items) ? inv.items : [];
     if (items.length < 1) throw new HttpsError("failed-precondition", "Invoice must contain items");
 
     const subTotal = round2(items.reduce((s: number, it: any) => s + (Number(it.qty) || 0) * (Number(it.rate) || 0), 0));
-    const gstTotal = round2(
-      items.reduce((s: number, it: any) => {
-        const amt = (Number(it.qty) || 0) * (Number(it.rate) || 0);
-        const gst = (Number(it.gstRate) || 0) / 100;
-        return s + amt * gst;
-      }, 0)
-    );
+    const gstTotal = round2(items.reduce((s: number, it: any) => (s + (Number(it.qty) || 0) * (Number(it.rate) || 0) * ((Number(it.gstRate) || 0) / 100)), 0));
     const discount = Number(inv.discount) || 0;
     const shipping = Number(inv.shipping) || 0;
-
     const taxablePlusCharges = round2(subTotal - discount + shipping);
     const grandTotal = round2(taxablePlusCharges + gstTotal);
 
-    // --- Create voucher + journal entries ---
     const voucherRef = db.collection(`companies/${companyId}/vouchers`).doc();
     const voucherId = voucherRef.id;
 
     tx.set(voucherRef, {
-      companyId,
-      voucherType: "SALES_INVOICE",
-      voucherDate: inv.invoiceDate,
-      refNo: inv.invoiceNo,
-      narration: inv.note ?? "",
-      totalDr: grandTotal,
-      totalCr: grandTotal,
-      createdAt: FieldValue.serverTimestamp(),
-      createdBy: uid,
+      companyId, voucherType: "SALES_INVOICE", voucherDate: inv.invoiceDate, refNo: inv.invoiceNo, narration: inv.note ?? "",
+      totalDr: grandTotal, totalCr: grandTotal, createdAt: FieldValue.serverTimestamp(), createdBy: uid,
     });
 
     const jcol = db.collection(`companies/${companyId}/journal_entries`);
-
     const salesLedgerId = settings.defaultSalesLedgerId;
     const gstOutputLedgerId = settings.defaultGstOutputLedgerId;
+    const month = monthKey(inv.invoiceDate);
 
-    // 3 journal lines
-    const j1 = jcol.doc();
-    const j2 = jcol.doc();
-    const j3 = jcol.doc();
+    const createJournalEntry = (ledgerId: string, dr: number, cr: number, narration: string) => {
+        const jRef = jcol.doc();
+        tx.set(jRef, {
+            companyId, voucherId, voucherType: "SALES_INVOICE", voucherDate: inv.invoiceDate, month,
+            lineNo: jcol.doc().id, ledgerId, dr, cr, narration, createdAt: FieldValue.serverTimestamp(),
+        });
+    };
 
-    tx.set(j1, {
-      companyId,
-      voucherId,
-      voucherType: "SALES_INVOICE",
-      voucherDate: inv.invoiceDate,
-      lineNo: 1,
-      ledgerId: arLedgerId,
-      dr: grandTotal,
-      cr: 0,
-      narration: "Sales Invoice",
-      createdAt: FieldValue.serverTimestamp(),
-    });
+    createJournalEntry(arLedgerId, grandTotal, 0, "Sales Invoice");
+    createJournalEntry(salesLedgerId, 0, taxablePlusCharges, "Sales");
+    createJournalEntry(gstOutputLedgerId, 0, gstTotal, "GST Output");
 
-    tx.set(j2, {
-      companyId,
-      voucherId,
-      voucherType: "SALES_INVOICE",
-      voucherDate: inv.invoiceDate,
-      lineNo: 2,
-      ledgerId: salesLedgerId,
-      dr: 0,
-      cr: taxablePlusCharges,
-      narration: "Sales",
-      createdAt: FieldValue.serverTimestamp(),
-    });
-
-    tx.set(j3, {
-      companyId,
-      voucherId,
-      voucherType: "SALES_INVOICE",
-      voucherDate: inv.invoiceDate,
-      lineNo: 3,
-      ledgerId: gstOutputLedgerId,
-      dr: 0,
-      cr: gstTotal,
-      narration: "GST Output",
-      createdAt: FieldValue.serverTimestamp(),
-    });
-
-    // --- Stock movements (SALES_OUT) ---
     const mvCol = db.collection(`companies/${companyId}/stock_movements`);
     const warehouseId = inv.warehouseId;
     if (!warehouseId) throw new HttpsError("failed-precondition", "warehouseId missing in invoice");
 
-    // ⚠️ Transaction write limit: 500 writes. This is fine for typical invoices.
     items.forEach((it: any, idx: number) => {
       const mvRef = mvCol.doc();
       const qty = Number(it.qty) || 0;
       if (qty <= 0) throw new HttpsError("failed-precondition", "Invalid qty in invoice items");
-
       const signedQty = outTypes.has("SALES_OUT") ? -qty : qty;
-
       tx.set(mvRef, {
-        companyId,
-        type: "SALES_OUT",
-        productId: it.productId,
-        warehouseId,
-        qty,
-        signedQty,
-        refType: "SALES_INVOICE",
-        refId: invoiceId,
-        note: inv.invoiceNo ?? "",
-        createdAt: FieldValue.serverTimestamp(),
-        createdBy: uid,
-        lineNo: idx + 1,
+        companyId, type: "SALES_OUT", productId: it.productId, warehouseId, qty, signedQty,
+        refType: "SALES_INVOICE", refId: invoiceId, note: inv.invoiceNo ?? "",
+        createdAt: FieldValue.serverTimestamp(), createdBy: uid, lineNo: idx + 1,
       });
     });
 
-    // --- Finalize invoice status ---
+    const cacheRef = db.doc(`companies/${companyId}/report_cache/${month}`);
+    const cacheSnap = await tx.get(cacheRef);
+    const cache = cacheSnap.exists ? (cacheSnap.data() as any) : { month, ledgers: {} };
+    
+    incLedger(cache, arLedgerId, grandTotal, 0);
+    incLedger(cache, salesLedgerId, 0, taxablePlusCharges);
+    incLedger(cache, gstOutputLedgerId, 0, gstTotal);
+
+    tx.set(cacheRef, { ...cache, month, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+
     tx.update(invoiceRef, {
-      status: "POSTED",
-      voucherId,
-      subTotal,
-      gstTotal,
-      grandTotal,
-      postedAt: FieldValue.serverTimestamp(),
-      postedBy: uid,
-      updatedAt: FieldValue.serverTimestamp(),
-      updatedBy: uid,
+      status: "POSTED", voucherId, subTotal, gstTotal, grandTotal,
+      postedAt: FieldValue.serverTimestamp(), postedBy: uid, updatedAt: FieldValue.serverTimestamp(), updatedBy: uid,
     });
 
     return { ok: true, invoiceId, voucherId, alreadyPosted: false };
   }).catch(async (err: any) => {
-    // If transaction throws, invoice might be left as POSTING only if update succeeded before error.
-    // We try best-effort to mark FAILED (non-transactional fallback).
     try {
-      await invoiceRef.set(
-        {
-          status: "FAILED",
-          postError: err?.message ?? String(err),
-          updatedAt: FieldValue.serverTimestamp(),
-          updatedBy: uid ?? null,
-        },
-        { merge: true }
-      );
-    } catch {
-      // ignore
-    }
+      await invoiceRef.set({
+          status: "FAILED", postError: err?.message ?? String(err),
+          updatedAt: FieldValue.serverTimestamp(), updatedBy: uid ?? null,
+      }, { merge: true });
+    } catch {}
     throw err;
   });
 });

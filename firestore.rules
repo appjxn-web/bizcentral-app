@@ -13,22 +13,18 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
 
-    // NEW: Check if user is a member of a specific company
     function isCompanyMember(companyId) {
       return signedIn() && getUserData().companyMemberships.exists(c, c.companyId == companyId);
     }
 
-    // NEW: Get user's role within a specific company
     function getCompanyRole(companyId) {
       return getUserData().companyMemberships.filter(c, c.companyId == companyId)[0].role;
     }
 
-    // NEW: Check if user has an admin-level role in a company
     function isCompanyAdmin(companyId) {
       return isCompanyMember(companyId) && getCompanyRole(companyId) in ['Admin', 'CEO', 'Accounts Manager'];
     }
 
-    // Helper: allow only certain fields to change (field-level protection)
     function onlyChanges(allowed) {
       return request.resource.data.diff(resource.data).changedKeys().hasOnly(allowed);
     }
@@ -88,6 +84,11 @@ service cloud.firestore {
         allow read: if hasCompanyAccess(companyId);
         allow write: if isAdmin(companyId);
       }
+      
+      match /report_cache/{monthId} {
+        allow read: if hasCompanyAccess(companyId);
+        allow write: if false;
+      }
 
       // =========================
       // SALES INVOICES (CLIENT DRAFT OK)
@@ -95,29 +96,22 @@ service cloud.firestore {
       match /sales_invoices/{invoiceId} {
         allow read: if hasCompanyAccess(companyId);
 
-        // ✅ Create only DRAFT from client
         allow create: if hasCompanyAccess(companyId)
           && isCreatingDraft()
           && request.resource.data.companyId == companyId
           && request.resource.data.createdBy == request.auth.uid;
 
-        // ✅ Update: only allowed when invoice is still DRAFT
-        // Client can change business fields, but NOT posting fields.
         allow update: if hasCompanyAccess(companyId)
           && isDraftDoc()
           && resource.data.createdBy == request.auth.uid
           && onlyChanges([
-              // business editable fields
               "invoiceDate", "invoiceNo", "customerId", "warehouseId",
               "items", "discount", "shipping", "note",
-              // safe metadata
               "updatedAt", "updatedBy",
-              // allow status to remain DRAFT (no POSTED/POSTING from client)
               "status"
           ])
           && request.resource.data.status == "DRAFT";
 
-        // ✅ Delete: allow deleting only DRAFT (optional)
         allow delete: if hasCompanyAccess(companyId)
           && isDraftDoc()
           && (resource.data.createdBy == request.auth.uid || isAdmin(companyId));
@@ -126,7 +120,6 @@ service cloud.firestore {
       // =========================
       // SERVER-ONLY LEDGERS (POSTING OUTPUT)
       // =========================
-      // Cloud Functions (Admin SDK) bypasses rules, so we BLOCK client writes.
       match /vouchers/{id} {
         allow read: if hasCompanyAccess(companyId);
         allow write: if false;

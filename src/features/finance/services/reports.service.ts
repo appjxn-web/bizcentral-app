@@ -12,6 +12,7 @@ import {
 import { initializeFirebase } from "@/firebase";
 import { netFromOpening, round2 } from "@/features/finance/utils/accounting";
 import type { CoaGroup, CoaLedger, CoaNature } from '@/lib/types';
+import { reportsCacheService } from "./reports-cache.service";
 
 const { firestore: db } = initializeFirebase();
 
@@ -75,72 +76,68 @@ function abs(n: number) {
 
 export const reportsService = {
   async compute(companyId: string, fromDate: string, toDate: string): Promise<ReportsResult> {
-    // 1) Load COA groups
+    // 1) Load COA groups and ledgers
     const gRef = collection(db, `companies/${companyId}/coa_groups`);
-    const gSnap = await getDocs(query(gRef, orderBy("name", "asc"), limit(5000)));
+    const lRef = collection(db, `companies/${companyId}/coa_ledgers`);
+
+    const [gSnap, lSnap] = await Promise.all([
+        getDocs(query(gRef, orderBy("path", "asc"), limit(5000))),
+        getDocs(query(lRef, orderBy("name", "asc"), limit(10000)))
+    ]);
+
     const groups: CoaGroup[] = gSnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
+    const ledgers: CoaLedger[] = lSnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
 
     const groupById = new Map(groups.map((g) => [g.id, g]));
 
-    // 2) Load ledgers
-    const lRef = collection(db, `companies/${companyId}/coa_ledgers`);
-    const lSnap = await getDocs(query(lRef, orderBy("name", "asc"), limit(10000)));
-    const ledgers: CoaLedger[] = lSnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
+    // 2) Use the new cache service to get period totals
+    const periodTotals = await reportsCacheService.getLedgerTotals(companyId, fromDate, toDate);
 
-    // Opening net
+    // 3) Calculate opening balances by summing all journal entries BEFORE fromDate
     const openingNetByLedger = new Map<string, number>();
     for (const l of ledgers) {
-      const openNet = netFromOpening(Number(l.openingBalance?.amount || 0), (l.openingBalance?.drCr || "DR") as any);
+      const openNet = netFromOpening(l.openingBalance?.amount || 0, (l.openingBalance?.drCr || "DR"));
       openingNetByLedger.set(l.id, openNet);
     }
-
-    // 3) Load journal entries within range
+    
+    // This part is slow for large datasets. In a real scenario, opening balances would also be cached.
+    // For now, we query journals before the start date.
     const jRef = collection(db, `companies/${companyId}/journal_entries`);
-    const jQ = query(
-      jRef,
-      orderBy("voucherDate", "asc"),
-      where("voucherDate", ">=", fromDate),
-      where("voucherDate", "<=", toDate),
-      limit(200000) // later you will cache by month
-    );
-    const jSnap = await getDocs(jQ);
-
-    const periodDr = new Map<string, number>();
-    const periodCr = new Map<string, number>();
-
-    jSnap.forEach((d) => {
-      const x = d.data() as any;
-      const ledgerId = x.ledgerId as string;
-      const dr = Number(x.dr || 0);
-      const cr = Number(x.cr || 0);
-      periodDr.set(ledgerId, (periodDr.get(ledgerId) || 0) + dr);
-      periodCr.set(ledgerId, (periodCr.get(ledgerId) || 0) + cr);
+    const openingJournalQuery = query(jRef, where("voucherDate", "<", fromDate), limit(50000)); // Limit to prevent crash
+    const openingJournalSnap = await getDocs(openingJournalQuery);
+    
+    openingJournalSnap.forEach((d) => {
+      const entry = d.data() as any;
+      const ledgerId = entry.ledgerId;
+      const currentOpening = openingNetByLedger.get(ledgerId) || 0;
+      openingNetByLedger.set(ledgerId, currentOpening + (entry.dr || 0) - (entry.cr || 0));
     });
 
-    // 4) Build Trial Balance rows
+
+    // 4) Build Trial Balance rows using cached period totals
     const rows: TBRow[] = [];
     for (const l of ledgers) {
       const openNet = openingNetByLedger.get(l.id) || 0;
-      const dr = round2(periodDr.get(l.id) || 0);
-      const cr = round2(periodCr.get(l.id) || 0);
-      const closeNet = round2(openNet + (dr - cr));
+      const periodDr = periodTotals.get(l.id)?.dr || 0;
+      const periodCr = periodTotals.get(l.id)?.cr || 0;
+      const closeNet = round2(openNet + (periodDr - periodCr));
 
-      if (openNet === 0 && dr === 0 && cr === 0 && closeNet === 0) continue;
+      if (openNet === 0 && periodDr === 0 && periodCr === 0 && closeNet === 0) continue;
 
       rows.push({
         ledgerId: l.id,
         ledgerName: l.name,
         groupId: l.groupId,
         openingNet: openNet,
-        periodDr: dr,
-        periodCr: cr,
+        periodDr: periodDr,
+        periodCr: periodCr,
         closingNet: closeNet,
       });
     }
 
     const totalPeriodDr = round2(rows.reduce((s, r) => s + r.periodDr, 0));
     const totalPeriodCr = round2(rows.reduce((s, r) => s + r.periodCr, 0));
-
+    
     // 5) Group totals from closingNet
     const groupTotalsMap = new Map<string, number>();
     for (const r of rows) {
@@ -161,12 +158,7 @@ export const reportsService = {
     groupTotals.sort((a, b) => a.groupName.localeCompare(b.groupName));
 
     // 6) Summaries by nature (using ledger closingNet)
-    let assetsNet = 0;
-    let liabilitiesNet = 0;
-    let equityNet = 0;
-    let incomeNet = 0;
-    let expenseNet = 0;
-
+    let assetsNet = 0, liabilitiesNet = 0, equityNet = 0, incomeNet = 0, expenseNet = 0;
     for (const r of rows) {
       const g = groupById.get(r.groupId);
       if (!g) continue;
@@ -178,12 +170,6 @@ export const reportsService = {
       if (g.nature === "EXPENSE") expenseNet += r.closingNet;
     }
 
-    assetsNet = round2(assetsNet);
-    liabilitiesNet = round2(liabilitiesNet);
-    equityNet = round2(equityNet);
-    incomeNet = round2(incomeNet);
-    expenseNet = round2(expenseNet);
-
     const incomeAmount = round2(abs(incomeNet));
     const expenseAmount = round2(abs(expenseNet));
     const profit = round2(incomeAmount - expenseAmount);
@@ -194,32 +180,10 @@ export const reportsService = {
     const liabilitiesPlusEquity = round2(liabilitiesAmount + equityAmount + profit);
 
     return {
-      fromDate,
-      toDate,
-      groups,
-      ledgers,
-      trialBalance: {
-        rows,
-        totalPeriodDr,
-        totalPeriodCr,
-      },
-      pnl: {
-        incomeNet,
-        expenseNet,
-        incomeAmount,
-        expenseAmount,
-        profit,
-      },
-      balanceSheet: {
-        assetsNet,
-        liabilitiesNet,
-        equityNet,
-        assetsAmount,
-        liabilitiesAmount,
-        equityAmount,
-        liabilitiesPlusEquity,
-        profit,
-      },
+      fromDate, toDate, groups, ledgers,
+      trialBalance: { rows, totalPeriodDr, totalPeriodCr },
+      pnl: { incomeNet, expenseNet, incomeAmount, expenseAmount, profit },
+      balanceSheet: { assetsNet, liabilitiesNet, equityNet, assetsAmount, liabilitiesAmount, equityAmount, liabilitiesPlusEquity, profit },
       groupTotals,
     };
   },
