@@ -32,14 +32,25 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useFirestore, useCollection, useUser, useDoc } from '@/firebase';
-import { collection, query, where, addDoc, serverTimestamp, setDoc, doc } from 'firebase/firestore';
+import { collection, doc, setDoc, addDoc, updateDoc, deleteDoc, writeBatch } from 'firebase/firestore';
 import type { Product, Order, WorkOrder, CompanyInfo, PurchaseRequest, RequestStatus, BillOfMaterial, StockMovement } from '@/lib/types';
-import { PlusCircle, AlertCircle, ListFilter, Archive, AlertTriangle, Boxes, ShoppingCart } from 'lucide-react';
+import { PlusCircle, AlertCircle, ListFilter, Archive, AlertTriangle, Boxes, ShoppingCart, Copy, MoreHorizontal, Upload, Download } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { AddProductDialog } from '../../products-services/_components/add-product-dialog';
+import { Switch } from '@/components/ui/switch';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
+import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { getNextDocNumber } from '@/lib/number-series';
 
@@ -337,7 +348,7 @@ function StocksPageContent() {
                 <FilterHeader title="Type" width="w-[10%]" filterValues={typeFilters} allValues={allTypes} onFilterChange={handleTypeFilterChange} />
                 <FilterHeader title="Category" width="w-[10%]" filterValues={categoryFilters} allValues={allCategories} onFilterChange={handleCategoryFilterChange} />
                 <FilterHeader title="Source" width="w-[10%]" filterValues={sourceFilters} allValues={allSources} onFilterChange={handleSourceFilterChange} />
-                <TableHead className="text-center w-[8%]">Stock</TableHead>
+                <TableHead className="text-center w-[8%]">Stock on Hand</TableHead>
                 <TableHead className="text-center w-[8%]">Min. Stock</TableHead>
                 <TableHead className="text-center w-[8%]">Req. for Order</TableHead>
                 <TableHead className="text-center w-[8%]">WIP</TableHead>
@@ -463,9 +474,4 @@ export default function StocksPageWrapper() {
 
     return <StocksPageContent />;
 }
-
-
-
-
-
 

@@ -581,20 +581,14 @@ export function AddProductDialog({ open, onOpenChange, productToEdit, isDuplicat
                                 </SelectContent>
                             </Select>
                         </div>
-                        <div className="grid grid-cols-3 gap-4">
-                            <div className="space-y-2 col-span-2">
-                                <Label htmlFor="opening-stock">Opening Stock</Label>
-                                <Input id="opening-stock" type="number" placeholder="e.g., 100" value={productData.openingStock} onChange={(e) => handleInputChange('openingStock', e.target.value)} disabled={currentRole !== 'Admin'} />
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="product-unit">Unit</Label>
-                                <Select value={productData.unit} onValueChange={handleSelectChange('unit')}>
-                                    <SelectTrigger id="product-unit"><SelectValue /></SelectTrigger>
-                                    <SelectContent>
-                                        {allUnits.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
-                                    </SelectContent>
-                                </Select>
-                            </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="product-unit">Unit</Label>
+                            <Select value={productData.unit} onValueChange={handleSelectChange('unit')}>
+                                <SelectTrigger id="product-unit"><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                    {allUnits.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
+                                </SelectContent>
+                            </Select>
                         </div>
                     </div>
                     <div className="space-y-2">
