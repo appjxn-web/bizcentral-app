@@ -1,120 +1,54 @@
-
 {
   "entities": {
-    "Company": {
-      "title": "Company",
-      "description": "Represents a single company or business entity in the system.",
-      "type": "object",
-      "properties": {
-        "name": { "type": "string", "description": "The legal name of the company." },
-        "ownerUid": { "type": "string", "description": "The UID of the user who owns this company." }
-      },
-      "required": ["name", "ownerUid"]
-    },
-    "UserProfile": {
-      "title": "User Profile",
-      "description": "Represents a user's global profile information.",
-      "type": "object",
-      "properties": {
-        "uid": { "type": "string", "description": "The user's unique ID." },
-        "email": { "type": "string", "format": "email", "description": "The user's email address." },
-        "displayName": { "type": "string", "description": "The user's display name." },
-        "photoURL": { "type": "string", "format": "uri", "description": "URL of the user's profile picture." },
-        "companyMemberships": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "properties": {
-              "companyId": { "type": "string" },
-              "role": { "type": "string" }
-            }
-          }
-        }
-      },
-      "required": ["uid", "email"]
-    },
     "Product": {
       "title": "Product",
-      "description": "A product or service offered by the company.",
+      "description": "Represents a product in the catalog.",
       "type": "object",
       "properties": {
-        "name": { "type": "string" },
-        "sku": { "type": "string" },
-        "price": { "type": "number" }
+        "name": { "type": "string", "description": "The name of the product." },
+        "description": { "type": "string", "description": "A description of the product." },
+        "price": { "type": "number", "description": "The price of the product." },
+        "sku": { "type": "string", "description": "The stock keeping unit." }
       },
-      "required": ["name", "sku", "price"]
+      "required": ["name", "price", "sku"]
     },
     "Order": {
-      "title": "Order",
-      "description": "A customer order.",
-      "type": "object",
-      "properties": {
-        "orderNumber": { "type": "string" },
-        "customerId": { "type": "string" },
-        "total": { "type": "number" }
-      },
-      "required": ["orderNumber", "customerId", "total"]
-    },
-    "CoaGroup": {
-      "title": "Chart of Accounts Group",
-      "description": "A grouping for ledger accounts.",
-      "type": "object",
-      "properties": {
-        "name": { "type": "string" },
-        "nature": { "type": "string", "enum": ["ASSET", "LIABILITY", "EQUITY", "INCOME", "EXPENSE"] }
-      },
-      "required": ["name", "nature"]
-    },
-    "JournalVoucher": {
-      "title": "Journal Voucher",
-      "description": "A record of a financial transaction with double entries.",
-      "type": "object",
-      "properties": {
-        "date": { "type": "string", "format": "date" },
-        "narration": { "type": "string" },
-        "entries": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "properties": {
-              "accountId": { "type": "string" },
-              "debit": { "type": "number" },
-              "credit": { "type": "number" }
+        "title": "Order",
+        "description": "Represents a customer's order.",
+        "type": "object",
+        "properties": {
+            "userId": { "type": "string", "description": "The ID of the user who placed the order." },
+            "items": { 
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "productId": { "type": "string" },
+                        "quantity": { "type": "number" }
+                    }
+                }
             },
-            "required": ["accountId"]
-          }
-        }
-      },
-      "required": ["date", "narration", "entries"]
+            "status": { "type": "string", "enum": ["Pending", "Shipped", "Delivered", "Canceled"] },
+            "createdAt": { "type": "string", "format": "date-time" }
+        },
+        "required": ["userId", "items", "status", "createdAt"]
     }
   },
   "auth": {
     "providers": ["password", "google.com"]
   },
   "firestore": {
-    "/users/{userId}": {
-      "schema": { "$ref": "#/entities/UserProfile" },
-      "description": "Stores global user profile information."
-    },
     "/products/{productId}": {
       "schema": { "$ref": "#/entities/Product" },
-      "description": "Company-specific products."
+      "description": "Stores all product information."
     },
     "/orders/{orderId}": {
       "schema": { "$ref": "#/entities/Order" },
-      "description": "Company-specific orders."
+      "description": "Stores all customer orders."
     },
-    "/coa_groups/{groupId}": {
-      "schema": { "$ref": "#/entities/CoaGroup" },
-      "description": "Company-specific Chart of Account groups."
-    },
-    "/coa_ledgers/{ledgerId}": {
-      "schema": { "$ref": "#/entities/CoaLedger" },
-      "description": "Company-specific ledger accounts."
-    },
-    "/journalVouchers/{voucherId}": {
-      "schema": { "$ref": "#/entities/JournalVoucher" },
-      "description": "Company-specific immutable journal entries for accounting."
+    "/users/{userId}/orders/{orderId}": {
+        "schema": { "$ref": "#/entities/Order" },
+        "description": "A subcollection of orders for a specific user."
     }
   }
 }

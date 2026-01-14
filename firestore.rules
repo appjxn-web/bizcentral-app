@@ -1,106 +1,92 @@
 
 rules_version = '2';
-
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // --- Helper Functions ---
-    function signedIn() {
-      return request.auth != null;
-    }
+    // --- 1. GLOBAL HELPERS ---
+    function signedIn() { return request.auth != null; }
+    function getRole() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role; }
+    function isAdmin() { return signedIn() && getRole() in ['Admin', 'CEO', 'Sales Manager', 'Accounts Manager', 'Accountant']; }
+    function isOwner(userId) { return signedIn() && request.auth.uid == userId; }
 
-    function isOwner(userId) {
-      return signedIn() && request.auth.uid == userId;
-    }
-    
-    function getUserData(uid) {
-        return get(/databases/$(database)/documents/users/$(uid)).data;
-    }
-
-    function isAdmin() {
-      return signedIn() && getUserData(request.auth.uid).role in ['Admin', 'CEO', 'Accounts Manager'];
-    }
-
-    // =========================
-    // PUBLIC-READABLE COLLECTIONS
-    // =========================
-    match /products/{productId} { allow read: if true; allow write: if isAdmin(); }
-    match /vacancies/{vacancyId} { allow read: if true; allow write: if isAdmin(); }
-    match /posts/{postId} { allow read: if true; allow write: if isAdmin(); }
-    match /locations/{locationId} { allow read: if true; allow write: if isAdmin(); }
-    match /pickupPoints/{pointId} { allow read: if true; allow write: if isAdmin(); }
-    match /company/{docId} { allow read: if true; allow write: if isAdmin(); }
-    
-    match /offers/{offerId} {
-      allow read: if signedIn();
-      allow write: if isAdmin();
-    }
-    
-    // =========================
-    // USERS & USER-SPECIFIC DATA
-    // =========================
+    // --- 2. USERS & PROFILES ---
     match /users/{userId} {
-      allow read: if signedIn();
-      allow create: if request.auth.uid == userId;
-      allow update: if isOwner(userId);
-      allow delete: if isAdmin();
-
-      match /referrals/{referralId} {
-        allow read, write: if isOwner(userId);
-      }
-      match /wallet/{walletId} {
+      allow get: if signedIn(); 
+      allow list: if isAdmin();
+      allow write: if isOwner(userId) || isAdmin();
+      
+      match /notifications/{id} { 
         allow read: if isOwner(userId) || isAdmin();
-        allow write: if isAdmin(); // Only functions should write here
+        allow create: if signedIn(); 
+        allow update, delete: if isAdmin();
       }
-       match /registeredProducts/{productId} {
-        allow read, write: if isOwner(userId);
-      }
-       match /stock/{stockId} {
-        allow read, write: if isOwner(userId);
-      }
+      match /wallet/main { allow read, write: if isOwner(userId) || isAdmin(); }
+      match /referrals/{id} { allow read, write: if isOwner(userId) || isAdmin(); }
+      match /registeredProducts/{id} { allow read, list: if isOwner(userId) || isAdmin(); }
+      match /stock/{productId} { allow read: if isOwner(userId); }
     }
-    
-    // =========================
-    // ORDERS
-    // =========================
+
+    // --- 3. LOGISTICS (Orders & Invoices) ---
     match /orders/{orderId} {
-      allow get: if signedIn() && 
-                     (isAdmin() || resource.data.userId == request.auth.uid || resource.data.assignedToUid == request.auth.uid);
-      allow list, create, update, delete: if signedIn() && isAdmin();
-      allow create, update: if signedIn() && (request.resource.data.userId == request.auth.uid || (resource.data.assignedToUid == request.auth.uid || resource.data.userId == request.auth.uid));
+      allow get: if signedIn() && (isAdmin() || resource.data.userId == request.auth.uid || resource.data.assignedToUid == request.auth.uid);
+      allow list: if signedIn() && (isAdmin() || request.query.where.userId == request.auth.uid || request.query.where.assignedToUid == request.auth.uid);
+      allow create: if signedIn();
+      allow update: if signedIn() && (isAdmin() || resource.data.userId == request.auth.uid || resource.data.assignedToUid == request.auth.uid || request.resource.data.assignedToUid == request.auth.uid);
     }
 
+    match /salesInvoices/{invoiceId} {
+      allow get: if signedIn();
+      allow list: if signedIn() && (isAdmin() || request.query.where.customerId == request.auth.uid || request.query.where.assignedToUid == request.auth.uid);
+      allow create, update: if signedIn() && (isAdmin() || getRole() == 'Partner');
+    }
 
-    // =========================
-    // GLOBAL COLLECTIONS
-    // =========================
-    match /leads/{leadId} { allow read, write: if signedIn(); }
-    match /quotations/{quotationId} { allow read, write: if signedIn(); }
-    match /salesInvoices/{invoiceId} { allow read, write: if signedIn(); }
-    match /creditNotes/{noteId} { allow read, write: if signedIn(); }
-    match /debitNotes/{noteId} { allow read, write: if signedIn(); }
-    match /purchaseRequests/{prId} { allow read, write: if signedIn(); }
-    match /purchaseOrders/{poId} { allow read, write: if signedIn(); }
-    match /grns/{grnId} { allow read, write: if signedIn(); }
-    match /workOrders/{woId} { allow read, write: if signedIn(); }
-    match /boms/{bomId} { allow read, write: if signedIn(); }
-    match /tasks/{taskId} { allow read, write: if signedIn(); }
-    match /serviceRequests/{srId} { allow read, write: if signedIn(); }
-    match /reimbursementRequests/{rrId} { allow read, write: if signedIn(); }
-    match /salaryAdvanceRequests/{arId} { allow read, write: if signedIn(); }
-    match /payoutRequests/{prId} { allow read, write: if signedIn(); }
-    match /paymentSubmissions/{psId} { allow read, write: if signedIn(); }
-    match /stockTransferRequests/{strId} { allow read, write: if signedIn(); }
+    // --- 4. SALES & SERVICE ---
+    match /leads/{id} {
+      allow read, list: if signedIn() && (isAdmin() || resource.data.ownerId == request.auth.uid);
+      allow create: if signedIn();
+      allow write: if signedIn() && (isAdmin() || resource.data.ownerId == request.auth.uid);
+    }
     
-    // --- Accounting ---
-    match /coa_groups/{groupId} { allow read, write: if isAdmin(); }
-    match /coa_ledgers/{ledgerId} { allow read, write: if isAdmin(); }
-    match /journalVouchers/{jvId} { allow read, write: if isAdmin(); }
-    match /parties/{partyId} { allow read, write: if signedIn(); }
-    match /counters/{counterId} { allow write: if signedIn(); }
+    match /quotations/{id} {
+      allow get, list: if signedIn() && (isAdmin() || resource.data.createdBy == request.auth.uid);
+      allow create: if signedIn();
+      allow update: if signedIn() && (isAdmin() || resource.data.createdBy == request.auth.uid);
+    }
 
-    // --- System / Read-only ---
-    match /report_cache/{monthId} { allow read: if isAdmin(); allow write: if false; }
-    match /fy_openings/{fyId} { allow read: if isAdmin(); allow write: if false; }
+    match /serviceRequests/{id} {
+      allow read, list: if signedIn() && (isAdmin() || resource.data.customer.id == request.auth.uid || resource.data.assignedToUid == request.auth.uid);
+      allow create: if signedIn();
+      allow update: if isAdmin();
+    }
+
+    // --- 5. ACCOUNTING ---
+    match /coa_ledgers/{id} { allow read: if signedIn(); allow write: if isAdmin(); }
+    match /coa_groups/{id} { allow read: if signedIn(); allow write: if isAdmin(); }
+    match /journalVouchers/{id} { allow read, list: if signedIn(); allow write: if isAdmin(); }
+    match /parties/{id} { allow read: if signedIn(); allow write: if isAdmin(); }
+
+    // --- 6. PUBLIC CONTENT & PAYMENTS ---
+    match /products/{id} { allow read, list: if true; allow write: if isAdmin(); }
+    match /posts/{id} { allow read, list: if true; allow write: if isAdmin(); }
+    
+    // CORRECTED RULE: Allow any signed-in user to list offers.
+    // The application logic handles filtering which offers are shown to which role.
+    match /offers/{offerId} { 
+        allow read, list: if signedIn(); 
+        allow write: if isAdmin(); 
+    }
+
+    match /company/{id} { allow read: if true; allow write: if isAdmin(); }
+    
+    match /paymentSubmissions/{id} {
+      allow read, list: if signedIn() && (isAdmin() || resource.data.userId == request.auth.uid || resource.data.assignedToUid == request.auth.uid);
+      allow create: if signedIn();
+      allow update, delete: if isAdmin();
+    }
+
+    // --- FINAL GLOBAL SAFETY NET ---
+    match /{path=**} {
+      allow read, write: if isAdmin();
+    }
   }
 }

@@ -1,5 +1,3 @@
-
-
 'use client';
 
 import * as React from 'react';
@@ -32,25 +30,14 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useFirestore, useCollection, useUser, useDoc } from '@/firebase';
-import { collection, doc, setDoc, addDoc, updateDoc, deleteDoc, writeBatch } from 'firebase/firestore';
-import type { Product, Order, WorkOrder, CompanyInfo, PurchaseRequest, RequestStatus, BillOfMaterial, StockMovement } from '@/lib/types';
-import { PlusCircle, AlertCircle, ListFilter, Archive, AlertTriangle, Boxes, ShoppingCart, Copy, MoreHorizontal, Upload, Download } from 'lucide-react';
+import { collection, query, where, addDoc, serverTimestamp, setDoc, doc } from 'firebase/firestore';
+import type { Product, Order, WorkOrder, CompanyInfo, PurchaseRequest, RequestStatus, BillOfMaterial } from '@/lib/types';
+import { PlusCircle, AlertCircle, ListFilter, Archive, AlertTriangle, Boxes, ShoppingCart } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { AddProductDialog } from '../../products-services/_components/add-product-dialog';
-import { Switch } from '@/components/ui/switch';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from '@/components/ui/alert-dialog';
-import { Badge } from '@/components/ui/badge';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { getNextDocNumber } from '@/lib/number-series';
 
@@ -99,7 +86,6 @@ function StocksPageContent() {
   const { data: boms, loading: bomsLoading } = useCollection<BillOfMaterial>(collection(firestore, 'boms'));
   const { data: settingsData } = useDoc<any>(doc(firestore, 'company', 'settings'));
   const { data: requests } = useCollection<PurchaseRequest>(collection(firestore, 'purchaseRequests'));
-  const { data: stockMovements } = useCollection<StockMovement>(collection(firestore, 'stockMovements'));
   
   const [typeFilters, setTypeFilters] = React.useState<string[]>([]);
   const [categoryFilters, setCategoryFilters] = React.useState<string[]>([]);
@@ -127,19 +113,6 @@ function StocksPageContent() {
   const handleCategoryFilterChange = createFilterHandler(setCategoryFilters);
   const handleSourceFilterChange = createFilterHandler(setSourceFilters);
 
-  const productStockMap = React.useMemo(() => {
-    const stockMap = new Map<string, number>();
-    if (!stockMovements || !products) return stockMap;
-
-    products.forEach(p => stockMap.set(p.id, p.openingStock || 0));
-    
-    stockMovements.forEach(movement => {
-        const currentStock = stockMap.get(movement.productId) || 0;
-        stockMap.set(movement.productId, currentStock + movement.quantity);
-    });
-
-    return stockMap;
-  }, [stockMovements, products]);
 
   const filteredProducts = React.useMemo(() => {
     if (!products) return [];
@@ -210,17 +183,17 @@ function StocksPageContent() {
     if (!products || !orders || !workOrders) return { totalProducts: 0, itemsBelowMin: 0, totalStockValue: 0, totalToProcure: 0 };
 
     const itemsBelowMin = products.filter(p => {
-      const stockAvailable = productStockMap.get(p.id) || 0;
+      const stockAvailable = p.openingStock;
       return stockAvailable < (p.minStockLevel || 0);
     }).length;
 
     const totalStockValue = products.reduce((acc, p) => {
-      const stockAvailable = productStockMap.get(p.id) || 0;
+      const stockAvailable = p.openingStock;
       return acc + (stockAvailable * (p.cost || 0));
     }, 0);
 
     const totalToProcure = products.filter(p => p.source === 'Bought').reduce((acc, p) => {
-      const stockAvailable = productStockMap.get(p.id) || 0;
+      const stockAvailable = p.openingStock;
       const wip = getAllottedForWIP(p);
       const orderInHand = getOrderInHand(p.id);
       const minStock = p.minStockLevel || 0;
@@ -234,7 +207,7 @@ function StocksPageContent() {
       totalStockValue,
       totalToProcure
     };
-  }, [products, orders, workOrders, getAllottedForWIP, getOrderInHand, productStockMap]);
+  }, [products, orders, workOrders, getAllottedForWIP, getOrderInHand]);
 
 
   const handleCreatePurchaseRequest = async (product: Product, quantity: number) => {
@@ -348,7 +321,7 @@ function StocksPageContent() {
                 <FilterHeader title="Type" width="w-[10%]" filterValues={typeFilters} allValues={allTypes} onFilterChange={handleTypeFilterChange} />
                 <FilterHeader title="Category" width="w-[10%]" filterValues={categoryFilters} allValues={allCategories} onFilterChange={handleCategoryFilterChange} />
                 <FilterHeader title="Source" width="w-[10%]" filterValues={sourceFilters} allValues={allSources} onFilterChange={handleSourceFilterChange} />
-                <TableHead className="text-center w-[8%]">Stock on Hand</TableHead>
+                <TableHead className="text-center w-[8%]">Stock</TableHead>
                 <TableHead className="text-center w-[8%]">Min. Stock</TableHead>
                 <TableHead className="text-center w-[8%]">Req. for Order</TableHead>
                 <TableHead className="text-center w-[8%]">WIP</TableHead>
@@ -364,7 +337,7 @@ function StocksPageContent() {
                   </TableCell>
                 </TableRow>
               ) : filteredProducts.map((product) => {
-                const stockAvailable = productStockMap.get(product.id) || 0;
+                const stockAvailable = product.openingStock;
                 const orderInHand = getOrderInHand(product.id);
                 const wip = getAllottedForWIP(product);
                 const minStock = product.minStockLevel || 0;
@@ -474,4 +447,7 @@ export default function StocksPageWrapper() {
 
     return <StocksPageContent />;
 }
+
+
+
 

@@ -166,10 +166,9 @@ export default function PaymentApprovalPage() {
     const submissionRef = doc(firestore, 'paymentSubmissions', submission.id);
 
     try {
-        await updateDoc(submissionRef, { 
-            status: newStatus,
-            recordedByUid: user?.uid, // Record who approved/rejected it
-        });
+        // Just update the submission. The Cloud Function onPaymentApproved
+        // will handle updating the Order and creating the JV.
+        await updateDoc(submissionRef, { status: newStatus });
 
         toast({ title: `Payment ${newStatus}` });
     } catch (error) {

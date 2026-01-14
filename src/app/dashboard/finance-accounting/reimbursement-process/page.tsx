@@ -1,3 +1,4 @@
+
 'use client';
 
 import * as React from 'react';
@@ -21,11 +22,11 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
   DialogClose,
-  DialogDescription,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -34,19 +35,24 @@ import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { useFirestore, useCollection, useUser, useDoc } from '@/firebase';
-import { collection, doc, updateDoc, writeBatch, serverTimestamp, addDoc, increment, query, where, getDocs } from 'firebase/firestore';
-import type { PayoutRequest, CoaLedger, Order, ReimbursementRequest, SalaryAdvanceRequest, UserProfile } from '@/lib/types';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Badge } from '@/components/ui/badge';
+import { collection, doc, updateDoc, writeBatch, serverTimestamp, addDoc, query, where, increment } from 'firebase/firestore';
+import type { ReimbursementRequest, CoaLedger, Party, Grn, AdvanceRequest, PurchaseRequest, RefundRequest, SalaryAdvanceRequest, UserProfile } from '@/lib/types';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
+import { Badge } from '@/components/ui/badge';
 
 
-type GrnPaymentRequest = any; // Simplified for this file context
-type AdvanceRequest = any;
-type RefundRequest = any;
+type PaymentRequestStatus = 'Pending' | 'Approved' | 'Rejected' | 'Paid';
 
+const allStatuses: ReimbursementRequest['status'][] = ['Pending Approval', 'Approved', 'Rejected', 'Paid'];
 
 function getStatusBadgeVariant(status: string) {
   const variants: Record<string, string> = {
@@ -75,7 +81,7 @@ export default function ReimbursementProcessPage() {
   const { data: salaryAdvances, loading: salaryAdvancesLoading } = useCollection<SalaryAdvanceRequest>(collection(firestore, 'salaryAdvanceRequests'));
   const { data: coaLedgers, loading: ledgersLoading } = useCollection<CoaLedger>(collection(firestore, 'coa_ledgers'));
   
-  const { data: grnsData, loading: grnsLoading } = useCollection<GrnPaymentRequest>(query(collection(firestore, 'grns'), where('paymentStatus', '==', 'Approved')));
+  const { data: grnsData, loading: grnsLoading } = useCollection<Grn>(query(collection(firestore, 'grns'), where('paymentStatus', '==', 'Approved')));
   const { data: advanceRequestsData, loading: advancesLoading } = useCollection<AdvanceRequest>(query(collection(firestore, 'advanceRequests'), where('status', '==', 'Approved')));
   const { data: refundRequests, loading: refundsLoading } = useCollection<RefundRequest>(query(collection(firestore, 'refundRequests'), where('status', '==', 'Pending')));
   
@@ -249,7 +255,7 @@ export default function ReimbursementProcessPage() {
         setPaymentDialog({ isOpen: false, request: null });
     } catch (error: any) {
         console.error("Error processing payment:", error);
-        toast({ variant: 'destructive', title: 'Payment Failed', description: error.message || 'An unknown error occurred.' });
+        toast({ variant: 'destructive', title: 'Payment Failed', description: error.message || 'An error occurred.' });
     } finally {
         setIsProcessingPayment(false);
     }
@@ -589,4 +595,5 @@ export default function ReimbursementProcessPage() {
       </Dialog>
     </>
   );
-}
+
+    

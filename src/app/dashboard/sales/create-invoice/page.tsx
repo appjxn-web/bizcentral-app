@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -32,7 +31,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { PlusCircle, Save, Trash2, Check, ChevronsUpDown, CalendarClock, Loader2, DollarSign } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import type { Party, Product, UserRole, SalesOrder, Quotation, CoaLedger, SalesInvoice, CompanyInfo, PartyType, CoaNature, Offer } from '@/lib/types';
+import type { Party, Product, UserRole, SalesOrder, Quotation, CoaLedger, SalesInvoice, CompanyInfo, PartyType, CoaNature, Offer, UserProfile, JournalVoucher, PaymentSubmission } from '@/lib/types';
 import { format, startOfMonth } from 'date-fns';
 import { Separator } from '@/components/ui/separator';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -59,7 +58,6 @@ import { useRole } from '@/app/dashboard/_components/role-provider';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useFirestore, useCollection, useUser, useDoc } from '@/firebase';
 import { collection, doc, addDoc, serverTimestamp, setDoc, query, where, orderBy, limit, getDocs, updateDoc, writeBatch } from 'firebase/firestore';
-import { getNextDocNumber } from '@/lib/number-series';
 import { estimateDispatchDate, type EstimateDispatchDateOutput } from '@/ai/flows/estimate-dispatch-date-flow';
 import { QRCodeSVG } from 'qrcode.react';
 
@@ -72,6 +70,7 @@ interface OrderItem {
   unit: string;
   discount: number;
   rate: number;
+  price: number;
   gstRate: number;
   amount: number;
   category?: string;
@@ -94,6 +93,9 @@ const getMaxDiscount = (role: UserRole, category: string): number => {
     }
     if (role === 'Sales Manager') {
         return 20;
+    }
+    if (role === 'Partner') {
+        return 15;
     }
     if (role === 'Manager') { 
         if (category === 'Electronics') return 12;
@@ -134,9 +136,7 @@ export default function CreateInvoicePage() {
   const [assignedToUid, setAssignedToUid] = React.useState<string | null>(null);
   
   const { data: allProducts, loading: productsLoading } = useCollection<Product>(query(collection(firestore, 'products'), where('saleable', '==', true)));
-  const { data: allSalesInvoices } = useCollection<SalesInvoice>(collection(firestore, 'salesInvoices'));
-  const { data: settingsData } = useDoc<any>(doc(firestore, 'company', 'settings'));
-
+  
   const [paymentDate, setPaymentDate] = React.useState(format(new Date(), 'yyyy-MM-dd'));
   const [paymentMode, setPaymentMode] = React.useState('UPI');
   const [paymentAmount, setPaymentAmount] = React.useState('');
@@ -149,53 +149,73 @@ export default function CreateInvoicePage() {
   const [openProductCombobox, setOpenProductCombobox] = React.useState<string | null>(null);
   const [isEditMode, setIsEditMode] = React.useState(false);
   const [invoiceIdToEdit, setInvoiceIdToEdit] = React.useState<string | null>(null);
+  const [isFromSalesOrder, setIsFromSalesOrder] = React.useState(false);
 
   const { data: parties, loading: partiesLoading } = useCollection<Party>(collection(firestore, 'parties'));
   const { data: coaLedgers, loading: ledgersLoading } = useCollection<CoaLedger>(collection(firestore, 'coa_ledgers'));
   const { data: companyInfo } = useDoc<CompanyInfo>(doc(firestore, 'company', 'info'));
-  const saleableProducts = allProducts || [];
+  const userProfileRef = authUser ? doc(firestore, 'users', authUser.uid) : null;
+  const { data: userProfile } = useDoc<UserProfile>(userProfileRef);
   const [appliedCoupons, setAppliedCoupons] = React.useState<Offer[]>([]);
+  
+  // Stock logic for Partners
+  const partnerStockQuery = (currentRole === 'Partner' && authUser) ? query(collection(firestore, 'users', authUser.uid, 'stock')) : null;
+  const { data: partnerStock, loading: partnerStockLoading } = useCollection<PartnerStockItem>(partnerStockQuery);
+
+  const saleableProducts = React.useMemo(() => {
+    if (!allProducts) return [];
+    
+    if (currentRole === 'Partner' && partnerStock) {
+      const partnerStockMap = new Map(partnerStock.map(item => [item.id, item.quantity]));
+      return allProducts
+        .filter(p => partnerStockMap.has(p.id))
+        .map(p => ({
+          ...p,
+          openingStock: partnerStockMap.get(p.id) || 0,
+        }));
+    }
+    
+    return allProducts;
+  }, [allProducts, partnerStock, currentRole]);
   
   const paymentAccounts = React.useMemo(() => {
     if (!coaLedgers) return [];
     return coaLedgers.filter(l => l.groupId === '1.1.1');
   }, [coaLedgers]);
-  
-  const partnerStockQuery = (currentRole === 'Partner' && authUser) ? query(collection(firestore, 'users', authUser.uid, 'stock')) : null;
-  const { data: partnerStock, loading: partnerStockLoading } = useCollection<PartnerStockItem>(partnerStockQuery);
 
 
    React.useEffect(() => {
-    const editId = searchParams.get('id');
-    if (editId && firestore && allSalesInvoices) {
-      const invoiceToEdit = allSalesInvoices.find(inv => inv.invoiceNumber === editId);
-      if (invoiceToEdit) {
-        setIsEditMode(true);
-        setInvoiceIdToEdit(editId);
-        setSelectedPartyId(invoiceToEdit.customerId);
-        setInvoiceDate(invoiceToEdit.date);
-        setOrderDocumentId(invoiceToEdit.orderId);
-        setItems(invoiceToEdit.items.map((item, i) => ({
-          ...item,
-          id: `item-${Date.now()}-${i}`,
-        })));
-        setOverallDiscount((invoiceToEdit.discount / invoiceToEdit.subtotal) * 100 || 0);
-        setBookingAmount(invoiceToEdit.amountPaid || 0);
-        setSalesOrderNumber(invoiceToEdit.orderNumber || '');
-        setAppliedCoupons((invoiceToEdit as any).appliedCoupons || []);
-      }
-    } else {
-      const rawData = localStorage.getItem('invoiceDataToCreate');
-      if (rawData && allProducts && allProducts.length > 0) {
+    const loadData = async () => {
+        const rawData = localStorage.getItem('invoiceDataToCreate');
+        if (rawData && allProducts && allProducts.length > 0 && authUser) {
+          setIsFromSalesOrder(true);
           const data = JSON.parse(rawData);
-          setSelectedPartyId(data.customerId);
-          setOrderDocumentId(data.id); // Set the document ID
-          setAssignedToUid(data.assignedToUid); // Set the partner ID
+          
+          setSelectedPartyId(data.userId || data.customerId);
+          setOrderDocumentId(data.id);
+          setAssignedToUid(data.assignedToUid || (currentRole === 'Partner' ? authUser.uid : null));
+
+          const submissionsRef = collection(firestore, 'paymentSubmissions');
+          const q = query(submissionsRef, where('orderId', '==', data.id), where('status', '==', 'Approved'));
+          const snap = await getDocs(q);
+          
+          let actualPaidTotal = 0;
+          let historyLines: string[] = [];
+          
+          snap.forEach((doc) => {
+            const pay = doc.data();
+            actualPaidTotal += (pay.amount || 0);
+            const dateStr = pay.submittedAt?.toDate ? format(pay.submittedAt.toDate(), 'dd/MM/yy') : '';
+            historyLines.push(`${dateStr}: ₹${pay.amount.toFixed(2)} - Ref: ${pay.transactionDetails}`);
+          });
+
+          setBookingAmount(actualPaidTotal);
+          setPaymentDetails(historyLines.join('\n'));
 
           const mappedItems = data.items.map((item: any, i: number) => {
               const product = allProducts.find(p => p.id === item.productId);
               const rate = item.price || item.rate || 0;
-              const quantity = item.quantity || 1;
+              const quantity = item.quantity || item.qty || 1;
               
               return {
                   id: `item-${Date.now()}-${i}`,
@@ -205,7 +225,8 @@ export default function CreateInvoicePage() {
                   quantity: quantity,
                   unit: product?.unit || item.unit || 'pcs',
                   rate: rate,
-                  gstRate: (product as any)?.gstRate || item.gstRate || 18,
+                  price: rate,
+                  gstRate: 18,
                   amount: rate * quantity,
                   category: product?.category || item.category,
                   discount: 0,
@@ -215,15 +236,16 @@ export default function CreateInvoicePage() {
           setItems(mappedItems);
           setOverallDiscount(data.overallDiscount || 0);
           setSalesOrderNumber(data.orderNumber || data.id);
-          setBookingAmount(data.paymentReceived || 0);
-          setPaymentDetails(data.paymentDetails || '');
           setAppliedCoupons(data.appliedCoupons || []);
+          setInvoiceDate(format(new Date(), 'yyyy-MM-dd'));
           
           localStorage.removeItem('invoiceDataToCreate');
           toast({ title: "Pre-filled from Sales Order" });
-      }
-    }
-  }, [searchParams, firestore, allSalesInvoices, allProducts, toast]);
+        }
+    };
+
+    loadData();
+  }, [allProducts, authUser, currentRole, firestore, toast]);
   
     React.useEffect(() => {
     const fetchEstimate = async () => {
@@ -288,18 +310,20 @@ export default function CreateInvoicePage() {
   }, [items, isInterstate, overallDiscount]);
   
   const maxAllowedDiscount = React.useMemo(() => {
-    if (appliedCoupons && appliedCoupons.length > 0) {
-        return 100; // Allow any discount if a coupon was applied
+    if (isFromSalesOrder) {
+        return overallDiscount; // Lock discount to what came from the sales order
     }
-    if (!items.length) return getMaxDiscount(currentRole, '');
-    
-    const maxDiscounts = items.map(item => {
-        const product = saleableProducts.find(p => p.id === item.productId);
-        return getMaxDiscount(currentRole, product?.category || '');
-    });
-
-    return Math.min(...maxDiscounts);
-  }, [items, currentRole, saleableProducts, appliedCoupons]);
+    if (currentRole === 'Partner' && userProfile?.partnerMatrix) {
+        if (!items.length) return 0;
+        const maxDiscounts = items.map(item => {
+            const rule = userProfile.partnerMatrix?.find(r => r.category === item.category);
+            return rule?.maxDiscount ?? 0;
+        });
+        return Math.min(...maxDiscounts);
+    }
+    // Fallback for other roles (this can be expanded)
+    return 100;
+  }, [items, currentRole, userProfile, isFromSalesOrder, overallDiscount]);
 
   const isSaveDisabled = React.useMemo(() => {
     return overallDiscount > maxAllowedDiscount;
@@ -320,6 +344,7 @@ export default function CreateInvoicePage() {
       unit: 'pcs',
       discount: 0,
       rate: 0,
+      price: 0,
       gstRate: 18,
       amount: 0,
     };
@@ -339,6 +364,7 @@ export default function CreateInvoicePage() {
                         updatedItem.name = product.name;
                         updatedItem.hsn = product.hsn || product.id.slice(0,4).toUpperCase();
                         updatedItem.rate = product.price;
+                        updatedItem.price = product.price;
                         updatedItem.gstRate = 18; 
                         updatedItem.category = product.category;
                     }
@@ -363,7 +389,7 @@ export default function CreateInvoicePage() {
       toast({ variant: 'destructive', title: 'Missing Information', description: 'Please select a customer and add items.' });
       return;
     }
-    if (!firestore || !settingsData?.prefixes || !allSalesInvoices || !parties) return;
+    if (!firestore || !parties) return;
   
     const customerCoaId = parties.find(p => p.id === selectedPartyId)?.coaLedgerId;
     if (!customerCoaId) {
@@ -372,6 +398,9 @@ export default function CreateInvoicePage() {
     }
 
     try {
+      const finalAssignedToUid = currentRole === 'Partner' ? authUser?.uid : assignedToUid;
+      const finalBalanceDue = calculations.grandTotal - bookingAmount;
+      
       const invoiceData: Omit<SalesInvoice, 'id' | 'invoiceNumber'> = {
           orderId: orderDocumentId || '',
           orderNumber: salesOrderNumber,
@@ -388,10 +417,11 @@ export default function CreateInvoicePage() {
           taxableAmount: calculations.taxableAmount,
           grandTotal: calculations.grandTotal,
           amountPaid: bookingAmount,
-          balanceDue: calculations.grandTotal - bookingAmount,
-          status: 'Unpaid',
+          balanceDue: finalBalanceDue,
+          status: finalBalanceDue <= 0 ? 'Paid' : 'Unpaid',
           appliedCoupons: appliedCoupons,
-          assignedToUid: assignedToUid,
+          assignedToUid: finalAssignedToUid || null,
+          createdByUid: authUser?.uid,
       };
       
       if (isEditMode && invoiceIdToEdit) {
@@ -399,10 +429,9 @@ export default function CreateInvoicePage() {
         await updateDoc(invoiceRef, invoiceData);
         toast({ title: 'Invoice Updated', description: `Invoice ${invoiceIdToEdit} has been updated.` });
       } else {
-        const newInvoiceId = getNextDocNumber('Sales Invoice', settingsData.prefixes, allSalesInvoices);
-        const invoiceRef = doc(firestore, 'salesInvoices', newInvoiceId);
-        await setDoc(invoiceRef, { ...invoiceData, id: newInvoiceId, invoiceNumber: newInvoiceId });
-        toast({ title: 'Invoice Saved', description: `Invoice ${newInvoiceId} has been saved.` });
+        const invoiceRef = doc(collection(firestore, 'salesInvoices'));
+        await setDoc(invoiceRef, { ...invoiceData, id: invoiceRef.id });
+        toast({ title: 'Invoice Saved', description: 'Invoice has been saved. The backend will assign an invoice number.' });
       }
 
       router.push('/dashboard/sales/invoice');
@@ -446,37 +475,52 @@ export default function CreateInvoicePage() {
 
   const handleRecordPayment = async () => {
     const amount = Number(paymentAmount);
-    if (!amount || amount <= 0 || !bankAccountId || !selectedParty) {
-        toast({ variant: 'destructive', title: 'Invalid Payment', description: 'Please enter a valid amount, select a customer and a payment account.' });
-        return;
+    if (!amount || amount <= 0 || !bankAccountId || !selectedParty || !allSalesInvoices) {
+      toast({ variant: 'destructive', title: 'Invalid Payment', description: 'Please enter a valid amount, select a customer and a payment account.' });
+      return;
     }
-
+  
+    const bankLedger = paymentAccounts.find(acc => acc.id === bankAccountId);
+    if (!bankLedger) return;
+  
     try {
       const partyLedger = await getOrCreatePartyLedger(selectedParty);
-      const bankLedger = paymentAccounts.find(acc => acc.id === bankAccountId);
-
-      if (!partyLedger || !bankLedger) {
-        throw new Error('Could not find ledger accounts for transaction.');
-      }
       
+      const newVoucherId = getNextDocNumber('Receipt Voucher', settingsData?.prefixes, allSalesInvoices || []);
+
       const jvData = {
+        id: newVoucherId,
+        voucherNumber: newVoucherId,
         date: paymentDate,
-        narration: `Payment received from ${selectedParty.name} via ${bankLedger.name}. Ref: ${paymentRef}`,
+        narration: `Payment received from ${selectedParty.name} via ${bankLedger.name}. Ref: ${paymentRef}. SO#${salesOrderNumber}`,
         voucherType: 'Receipt Voucher',
         entries: [
           { accountId: bankAccountId, debit: amount, credit: 0 },
           { accountId: partyLedger.id, debit: 0, credit: amount }
         ],
         createdAt: serverTimestamp(),
+        createdByUid: authUser?.uid
       };
       
-      await addDoc(collection(firestore, 'journalVouchers'), jvData);
-
+      await setDoc(doc(firestore, 'journalVouchers', newVoucherId), jvData);
+  
       setBookingAmount(prev => prev + amount);
       const details = `Mode: ${bankLedger.name}, Ref: ${paymentRef}, Date: ${paymentDate}, Amount: ₹${amount.toFixed(2)}`;
-      setPaymentDetails(prev => prev ? `${prev}\\n${details}` : details);
+      setPaymentDetails(prev => prev ? `${prev}\n${details}` : details);
       
-      toast({ title: 'Payment Recorded', description: `A journal entry for ₹${amount.toFixed(2)} has been created.` });
+      const receiptData = {
+        type: 'Receipt',
+        id: newVoucherId,
+        date: paymentDate,
+        partyName: selectedParty.name,
+        amount: amount,
+        narration: jvData.narration,
+      };
+      
+      localStorage.setItem('receiptToPrint', JSON.stringify(receiptData));
+      window.open('/dashboard/finance-accounting/receipt/view', '_blank');
+
+      toast({ title: 'Payment Recorded', description: `A journal entry and receipt for ₹${amount.toFixed(2)} have been created.` });
       
       setIsPaymentDialogOpen(false);
       setPaymentAmount('');
@@ -613,7 +657,7 @@ export default function CreateInvoicePage() {
                                   role="combobox"
                                   className="w-full justify-between"
                                   disabled={productsLoading || partnerStockLoading}
-                              >
+                                >
                                   {item.productId ? saleableProducts.find(p => p.id === item.productId)?.name : "Select Item..."}
                                   <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                               </Button>
@@ -668,13 +712,13 @@ export default function CreateInvoicePage() {
              <div className="space-y-4">
                 <div className="space-y-2">
                     <Label htmlFor="terms">Terms & Conditions</Label>
-                    <Textarea id="terms" value={terms} onChange={e => setTerms(e.target.value)} rows={3} />
+                    <Textarea id="terms" value={terms} onChange={e => setTerms(e.target.value)} rows={5} />
                 </div>
                 <div className="space-y-2">
                     <Label htmlFor="payment-details">Payment Details</Label>
                     <Textarea id="payment-details" value={paymentDetails} onChange={e => setPaymentDetails(e.target.value)} placeholder="e.g., Transaction ID, Cheque No." />
                 </div>
-                 <Dialog open={isPaymentDialogOpen} onOpenChange={setIsPaymentDialogOpen}>
+                <Dialog open={isPaymentDialogOpen} onOpenChange={setIsPaymentDialogOpen}>
                     <DialogTrigger asChild>
                         <Button variant="outline">Record Payment Received</Button>
                     </DialogTrigger>
@@ -719,7 +763,7 @@ export default function CreateInvoicePage() {
                <div className="flex justify-between items-center">
                   <Label htmlFor="overall-discount" className="text-sm">Discount (%)</Label>
                   <div className="w-24">
-                      <Input id="overall-discount" type="number" value={overallDiscount} onChange={(e) => setOverallDiscount(Number(e.target.value))} className="text-right" placeholder="%" />
+                      <Input id="overall-discount" type="number" value={overallDiscount} onChange={(e) => setOverallDiscount(Number(e.target.value))} className="text-right" placeholder="%" disabled={isFromSalesOrder} />
                       <p className="text-xs text-muted-foreground mt-1">Max: {maxAllowedDiscount}%</p>
                   </div>
               </div>
@@ -773,3 +817,6 @@ export default function CreateInvoicePage() {
   );
 }
 
+    
+
+    

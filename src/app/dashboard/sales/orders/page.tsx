@@ -1,5 +1,3 @@
-
-
 'use client';
 
 import * as React from 'react';
@@ -57,7 +55,7 @@ import {
 import Image from 'next/image';
 import { Separator } from '@/components/ui/separator';
 import { useFirestore, useCollection, useUser, useDoc } from '@/firebase';
-import { collection, query, orderBy, doc, where, or, updateDoc, writeBatch, serverTimestamp, addDoc, Timestamp, getDoc, getDocs, getCountFromServer, limit, startAfter, type DocumentData, type DocumentSnapshot } from 'firebase/firestore';
+import { collection, query, orderBy, doc, where, or, updateDoc, writeBatch, serverTimestamp, addDoc, Timestamp, getDoc, getDocs, setDoc } from 'firebase/firestore';
 import { OrderStatusTracker } from '../../my-orders/_components/order-status';
 import {
   Dialog,
@@ -79,7 +77,6 @@ import { useToast } from '@/hooks/use-toast';
 import { ref, uploadBytes, getDownloadURL, getStorage } from 'firebase/storage';
 import { Loader2 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { getOrders, getOrderCounts, updateOrderStatus as updateRepoOrderStatus } from '@/features/sales/services/orders.repository';
 
 
 function getStatusBadgeVariant(status: Order['status'] | 'Refund Pending' | 'Refund Complete' | SalesInvoice['status']) {
@@ -171,7 +168,6 @@ function PayBalanceDialog({ order, companyInfo, balance }: { order: Order; compa
         recordedByUid: user.uid, 
         customerName: order.customerName,
         orderId: order.id,
-        orderNumber: (order as SalesOrder).orderNumber || order.id,
         assignedToUid: order.assignedToUid || null,
         amount: Number(amountToPay),
         paymentMethod: paymentType === 'upi' ? 'UPI / Online' : manualPaymentMethod,
@@ -301,7 +297,7 @@ function PayBalanceDialog({ order, companyInfo, balance }: { order: Order; compa
                         </div>
                     </div>
                     <DialogFooter>
-                        <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
+                        <DialogClose asChild><Button type="button" variant="outline">Close</Button></DialogClose>
                         <Button type="button" onClick={() => handleSubmit('manual')} disabled={isSubmitting || !amountToPay || !receivingAccountId}>
                             {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                             Record Payment
@@ -441,72 +437,32 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
     const [isCancelDialogOpen, setIsCancelDialogOpen] = React.useState(false);
     const { toast } = useToast();
     
-    const userProfileRef = user ? doc(firestore, 'users', user.uid) : null;
-    const { data: userProfile } = useDoc<UserProfile>(userProfileRef);
-
-    const customerPartyRef = React.useMemo(() => {
-        if(!order.userId || !firestore) return null;
-        return doc(firestore, 'parties', order.userId);
-    }, [order.userId, firestore]);
-    const { data: customerParty } = useDoc<Party>(customerPartyRef);
+    const { data: userProfile, loading: userProfileLoading } = useDoc<UserProfile>(user ? doc(firestore, 'users', user.uid) : null);
     
     const paymentSubmissionsQuery = React.useMemo(() => {
       if (!order.id || !user?.uid || !firestore) return null;
-      const submissionsRef = collection(firestore, 'paymentSubmissions');
-    
-      if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
-        return query(submissionsRef, where('orderId', '==', order.id), orderBy('submittedAt', 'desc'));
-      }
-    
-      const securityField = currentRole === 'Partner' ? 'assignedToUid' : 'userId';
-      return query(
-        submissionsRef,
-        where('orderId', '==', order.id),
-        where(securityField, '==', user.uid),
-        orderBy('submittedAt', 'desc')
-      );
-    }, [order.id, user?.uid, currentRole, firestore]);
-
-    const { data: allJournalVouchers, loading: jvsLoading } = useCollection<JournalVoucher>(collection(firestore, 'journalVouchers'));
+      return query(collection(firestore, 'paymentSubmissions'), where('orderId', '==', order.id));
+    }, [order.id, user?.uid, firestore]);
 
     const { data: paymentSubmissions } = useCollection<PaymentSubmission>(paymentSubmissionsQuery);
     
-    const { totalPaid, balanceDue, paymentHistory } = React.useMemo(() => {
-        const jvHistory = (allJournalVouchers || [])
-            .filter(jv => (jv as any).orderId === order.id)
-            .map(jv => {
-                const creditEntry = jv.entries.find(e => e.accountId === customerParty?.coaLedgerId && e.credit && e.credit > 0);
-                if (!creditEntry) return null;
-                return {
-                    amount: creditEntry.credit || 0,
-                    date: jv.createdAt.toDate(),
-                    details: jv.narration,
-                    status: 'Approved',
-                    type: 'jv'
-                };
-            })
-            .filter(Boolean) as any[];
-
-
-        const pendingSubmissions = (paymentSubmissions || [])
-            .filter(p => p.status === 'Pending')
-            .map(p => ({
-                amount: p.amount,
-                date: p.submittedAt.toDate(),
-                details: `Ref: ${p.transactionDetails || 'N/A'} (${p.paymentMethod})`,
-                status: p.status,
-                type: 'submission'
-            }));
-
-        const combinedHistory = [...jvHistory, ...pendingSubmissions].sort((a,b) => a.date.getTime() - b.date.getTime());
-        const totalFromJvs = jvHistory.reduce((sum, p) => sum + p.amount, 0);
+    const { totalPaid, balanceDue, paymentHistory, hasInitialPayment } = React.useMemo(() => {
+        const approvedPayments = (paymentSubmissions || []).filter(p => p.status === 'Approved');
+        const totalPaidAmount = approvedPayments.reduce((sum, p) => sum + p.amount, 0);
+        
+        const history = (paymentSubmissions || []).map(p => ({
+            amount: p.amount,
+            date: p.submittedAt.toDate(),
+            details: `Ref: ${p.transactionDetails || 'N/A'} (${p.paymentMethod}) - ${p.status}`,
+        })).sort((a,b) => a.date.getTime() - b.date.getTime());
 
         return {
-            totalPaid: totalFromJvs,
-            balanceDue: order.grandTotal - totalFromJvs,
-            paymentHistory: combinedHistory,
+            totalPaid: totalPaidAmount,
+            balanceDue: order.grandTotal - totalPaidAmount,
+            paymentHistory: history,
+            hasInitialPayment: totalPaidAmount > 0
         }
-    }, [order, paymentSubmissions, allJournalVouchers, customerParty]);
+    }, [order.grandTotal, paymentSubmissions]);
 
 
     const refundQuery = order.status === 'Canceled' && user
@@ -562,16 +518,16 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
         }
     };
     
-    const canChangeStatus = ['Admin', 'Partner', 'Sales Manager', 'CEO'].includes(currentRole);
+    const canChangeStatus = ['Admin', 'Partner', 'Sales Manager', 'CEO'].includes(currentRole) && hasInitialPayment;
     
     const nextStatusOptions: Record<OrderStatus, OrderStatus[]> = {
-      'Awaiting Payment': ['Ordered', 'Canceled'],
-      'Awaiting Payment Confirmation': ['Ordered', 'Canceled'],
-      'Ordered': ['Manufacturing', 'Ready for Dispatch', 'Shipped'],
-      'Ready for Dispatch': balanceDue <= 0 ? ['Invoice Sent', 'Shipped'] : [],
-      'Invoice Sent': balanceDue <= 0 ? ['Shipped', 'Delivered'] : [],
-      'Shipped': balanceDue <= 0 ? ['Delivered'] : [],
+      'Awaiting Payment': ['Ordered'],
+      'Awaiting Payment Confirmation': ['Ordered'],
+      'Ordered': ['Manufacturing', 'Ready for Dispatch'],
       'Manufacturing': ['Ready for Dispatch'],
+      'Ready for Dispatch': balanceDue <= 0 ? ['Shipped'] : ['Awaiting Payment'],
+      'Invoice Sent': ['Shipped'],
+      'Shipped': ['Delivered'],
       'Delivered': [],
       'Canceled': [],
       'Cancellation Requested': ['Ordered', 'Canceled'],
@@ -579,9 +535,19 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
     
     const availableStatuses = nextStatusOptions[order.status] || [];
     
-    const handleGenerateInvoice = () => {
-      localStorage.setItem('invoiceDataToCreate', JSON.stringify({ ...order, customer: customerParty, userProfile: userProfile }));
-      router.push('/dashboard/sales/create-invoice');
+    const handleGenerateInvoice = async () => {
+      // Fetch the full customer/party details before navigating
+      if (order.userId && firestore) {
+        const partyRef = doc(firestore, 'parties', order.userId);
+        const partySnap = await getDoc(partyRef);
+        if (partySnap.exists()) {
+          const partyData = partySnap.data() as Party;
+          localStorage.setItem('invoiceDataToCreate', JSON.stringify({ ...order, customerParty: partyData, userProfile }));
+          router.push('/dashboard/sales/create-invoice');
+        } else {
+          toast({ variant: 'destructive', title: 'Customer details not found.' });
+        }
+      }
     };
     
     return (
@@ -701,7 +667,7 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
                                         </Link>
                                     </Button>
                                     <Button variant="outline" size="sm" asChild>
-                                        <Link href={`/dashboard/sales/orders/gate-pass?id=${(order as SalesOrder).orderNumber}`}>
+                                        <Link href={`/dashboard/sales/orders/gate-pass?id=${order.orderNumber}`}>
                                             <Ticket className="mr-2 h-4 w-4" />
                                             Generate Gate Pass
                                         </Link>
@@ -732,57 +698,72 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
 }
 
 function OrdersPageContent() {
-  const [orders, setOrders] = React.useState<Order[]>([]);
-  const [lastDoc, setLastDoc] = React.useState<DocumentSnapshot<DocumentData> | null>(null);
-  const [hasMore, setHasMore] = React.useState(true);
-  const [loading, setLoading] = React.useState(true);
-  const [isFetchingMore, setIsFetchingMore] = React.useState(false);
-  const { currentRole } = useRole();
-  const { user } = useUser();
+  const router = useRouter();
+  const firestore = useFirestore();
   const { toast } = useToast();
+  const { user } = useUser();
+  const { currentRole } = useRole();
   
-  const [totalOrderCount, setTotalOrderCount] = React.useState(0);
-  const [totalInProcess, setTotalInProcess] = React.useState(0);
-  const [totalShipped, setTotalShipped] = React.useState(0);
-  const [totalDelivered, setTotalDelivered] = React.useState(0);
+  const ordersQuery = React.useMemo(() => {
+      if (!user?.uid || !currentRole) return null;
+      const ordersRef = collection(firestore, 'orders');
 
-  const { data: allSalesInvoices, loading: invoicesLoading } = useCollection<SalesInvoice>(collection(useFirestore(), 'salesInvoices'));
+      if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
+          return query(ordersRef, orderBy('createdAt', 'desc'));
+      }
+
+      if (currentRole === 'Partner') {
+          return query(ordersRef, where('assignedToUid', '==', user.uid), orderBy('createdAt', 'desc'));
+      }
+      
+      // Default to customer view
+      return query(ordersRef, where('userId', '==', user.uid), orderBy('createdAt', 'desc'));
+  }, [user?.uid, currentRole, firestore]);
   
-  const fetchOrders = React.useCallback(async (initial = false) => {
-    if (initial) setLoading(true); else setIsFetchingMore(true);
-
-    const { newOrders, lastVisible } = await getOrders({ pageLimit: 10, startAfter: initial ? undefined : lastDoc, role: currentRole, userId: user?.uid });
-    
-    setLastDoc(lastVisible || null);
-    setHasMore(newOrders.length === 10);
-    setOrders(prev => initial ? newOrders : [...prev, ...newOrders]);
-
-    if (initial) {
-      const counts = await getOrderCounts();
-      setTotalOrderCount(counts.total);
-      setTotalInProcess(counts.inProcess);
-      setTotalShipped(counts.shipped);
-      setTotalDelivered(counts.delivered);
-    }
-
-    if (initial) setLoading(false); else setIsFetchingMore(false);
-  }, [lastDoc, currentRole, user?.uid]);
+  const invoicesQuery = React.useMemo(() => {
+      if (!user?.uid || !currentRole) return null;
+      const invoicesRef = collection(firestore, 'salesInvoices');
+  
+      if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
+          return query(invoicesRef, orderBy('date', 'desc'));
+      }
+  
+      if (currentRole === 'Partner') {
+          return query(invoicesRef, where('assignedToUid', '==', user.uid), orderBy('date', 'desc'));
+      }
+  
+      return query(invoicesRef, where('customerId', '==', user.uid), orderBy('date', 'desc'));
+  }, [user?.uid, currentRole, firestore]);
 
 
-  React.useEffect(() => {
-    if(currentRole && user){
-        fetchOrders(true);
-    }
-  }, [currentRole, user]);
+  const { data: orders, loading: ordersLoading } = useCollection<Order>(ordersQuery);
+  const { data: allSalesInvoices, loading: invoicesLoading } = useCollection<SalesInvoice>(invoicesQuery);
+
+  const kpis = React.useMemo(() => {
+      if (!orders) return { total: 0, inProcess: 0, shipped: 0, delivered: 0 };
+      
+      const total = orders.length;
+      const inProcess = orders.filter(o => ['Ordered', 'Manufacturing', 'Ready for Dispatch', 'Awaiting Payment', 'Awaiting Payment Confirmation', 'Cancellation Requested'].includes(o.status)).length;
+      const shipped = orders.filter(o => o.status === 'Shipped').length;
+      const delivered = orders.filter(o => o.status === 'Delivered').length;
+
+      return { total, inProcess, shipped, delivered };
+  }, [orders]);
   
   const handleStatusChange = async (order: Order, newStatus: OrderStatus) => {
-      const firestore = useFirestore();
-      const user = useUser().user;
       if (!user) return;
       try {
-          await updateRepoOrderStatus(order.id, newStatus);
-
           const batch = writeBatch(firestore);
+          const orderRef = doc(firestore, 'orders', order.id);
+          
+          const updateData: any = { status: newStatus };
+
+          if (currentRole === 'Partner' && !order.assignedToUid) {
+              updateData.assignedToUid = user.uid;
+          }
+
+          batch.update(orderRef, updateData);
+          
           const notificationRef = doc(collection(firestore, 'users', order.userId, 'notifications'));
           const orderNumber = (order as SalesOrder).orderNumber || order.id;
 
@@ -798,11 +779,8 @@ function OrdersPageContent() {
 
           toast({
               title: 'Status Updated',
-              description: `Order status changed to "${newStatus}" and customer notified.`,
+              description: `Order status changed to "${newStatus}" successfully.`,
           });
-          
-          setOrders(prev => prev.map(o => o.id === order.id ? {...o, status: newStatus} : o));
-          
       } catch (error) {
           console.error("Status Update Error:", error);
           toast({
@@ -814,18 +792,52 @@ function OrdersPageContent() {
   };
 
 
-  if (loading) {
-    return <PageHeader title="Loading Orders..." />;
-  }
+  const loading = ordersLoading || invoicesLoading;
 
   return (
     <>
       <PageHeader title="Sales Orders" />
        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card><CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Total Orders</CardTitle></CardHeader><CardContent><div className="text-2xl font-bold">{totalOrderCount}</div></CardContent></Card>
-        <Card><CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Awaiting Dispatch</CardTitle></CardHeader><CardContent><div className="text-2xl font-bold">{totalInProcess}</div></CardContent></Card>
-        <Card><CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Shipped</CardTitle></CardHeader><CardContent><div className="text-2xl font-bold">{totalShipped}</div></CardContent></Card>
-        <Card><CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Delivered</CardTitle></CardHeader><CardContent><div className="text-2xl font-bold">{totalDelivered}</div></CardContent></Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Orders</CardTitle>
+            <Package className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{kpis.total}</div>
+            <p className="text-xs text-muted-foreground">All orders in the system</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Awaiting Dispatch</CardTitle>
+            <RefreshCcw className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{kpis.inProcess}</div>
+            <p className="text-xs text-muted-foreground">Orders being processed</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Shipped</CardTitle>
+            <Truck className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{kpis.shipped}</div>
+            <p className="text-xs text-muted-foreground">Orders on their way</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Delivered</CardTitle>
+            <CheckCircle className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{kpis.delivered}</div>
+            <p className="text-xs text-muted-foreground">Successfully delivered orders</p>
+          </CardContent>
+        </Card>
       </div>
       
        <div className="space-y-4">
@@ -842,14 +854,6 @@ function OrdersPageContent() {
                     <p className="text-muted-foreground">No orders match the current criteria.</p>
                 </CardContent>
             </Card>
-        )}
-        {hasMore && (
-          <div className="text-center">
-            <Button onClick={() => fetchOrders()} disabled={isFetchingMore}>
-              {isFetchingMore ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              Load More
-            </Button>
-          </div>
         )}
       </div>
     </>
@@ -873,5 +877,4 @@ export default function OrdersPage() {
 
     
 
-
-
+    

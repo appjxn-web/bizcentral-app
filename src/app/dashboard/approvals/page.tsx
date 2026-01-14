@@ -685,4 +685,3 @@ export default function ApprovalsPage() {
     </>
   );
 }
-

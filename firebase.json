@@ -1,20 +1,5 @@
 
 {
-  "hosting": {
-    "source": ".",
-    "rewrites": [
-      {
-        "source": "**",
-        "apphosting": {
-          "backendId": "studio",
-          "region": "us-west1"
-        }
-      }
-    ],
-    "frameworksBackend": {
-      "region": "us-west1"
-    }
-  },
   "firestore": {
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"

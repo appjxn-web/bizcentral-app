@@ -1,9 +1,10 @@
 
-import type { UserProfile, UserRole } from '@/features/users/types/users.types';
-import type { CoaGroup, CoaLedger, JournalVoucher } from '@/features/finance/types/finance.types';
 
-export type { UserProfile, UserRole, CoaGroup, CoaLedger, JournalVoucher };
+'use client';
 
+import type { Timestamp } from 'firebase/firestore';
+
+export type UserRole = 'Admin' | 'Manager' | 'Employee' | 'Customer' | 'CEO' | 'Sales Manager' | 'Production Manager' | 'Purchase Manager' | 'Service Manager' | 'Accounts Manager' | 'HR Manager' | 'Gate Keeper' | 'Inventory Manager' | 'Partner' | 'Dealer' | 'Franchisee' | 'Sales Agent' | 'Accountant' | 'Staff';
 
 export interface CommissionRule {
     category: string;
@@ -20,24 +21,6 @@ export interface BankAccount {
     upiId?: string;
 }
 
-export interface Address {
-    id: string;
-    type: string;
-    line1: string;
-    line2?: string;
-    city: string;
-    district: string;
-    state: string;
-    country: string;
-    pin: string;
-    digitalPin?: string;
-    isPickupPoint?: boolean;
-    latitude?: number;
-    longitude?: number;
-    pickupContactName?: string;
-    pickupContactPhone?: string;
-}
-
 export interface User {
   id: string;
   name: string;
@@ -45,6 +28,22 @@ export interface User {
   photoURL?: string; // Corrected from avatar
   role: UserRole;
   status: 'Active' | 'Deactivated';
+}
+
+export interface UserProfile extends User {
+    wishlist?: string[];
+    businessName?: string;
+    contactPerson?: string;
+    mobile?: string;
+    pan?: string;
+    gstin?: string;
+    addresses?: Address[];
+    bankAccounts?: BankAccount[];
+    referredBy?: string;
+    partnerMatrix?: CommissionRule[];
+    coaLedgerId?: string;
+    walletBalance?: number;
+    commissionPayable?: number;
 }
 
 export interface UserWallet {
@@ -59,7 +58,7 @@ export interface Review {
   userAvatar: string;
   rating: number;
   comment: string;
-  createdAt: any;
+  createdAt: Timestamp;
 }
 
 export type OfferStatus = 'Active' | 'Expired' | 'Upcoming' | 'Draft';
@@ -99,9 +98,9 @@ export interface StockTransferRequest {
       quantity: number;
   }[];
   status: 'Pending Approval' | 'Approved' | 'Rejected' | 'Shipped';
-  createdAt: any;
-  approvedAt?: any;
-  shippedAt?: any;
+  createdAt: Timestamp;
+  approvedAt?: Timestamp;
+  shippedAt?: Timestamp;
   notes?: string;
 }
 
@@ -137,15 +136,13 @@ export interface PaymentSubmission {
   recordedByUid?: string; // The user (partner/admin) who recorded the manual payment
   customerName: string;
   orderId: string;
-  orderNumber?: string;
   amount: number;
   paymentMethod: string;
   transactionDetails?: string;
   proofUrl?: string;
   status: 'Pending' | 'Approved' | 'Rejected';
-  submittedAt: any;
+  submittedAt: Timestamp;
   assignedToUid: string | null;
-  receivingAccountId?: string;
 }
 
 
@@ -415,6 +412,24 @@ export interface OffboardingEmployee {
 export type PartyType = 'Customer' | 'Supplier' | 'Vendor' | 'Partner';
 export type PartyStatus = 'Active' | 'Inactive' | 'Blacklisted';
 
+export interface Address {
+    id: string;
+    type: string;
+    line1: string;
+    line2?: string;
+    city: string;
+    district: string;
+    state: string;
+    country: string;
+    pin: string;
+    digitalPin?: string;
+    isPickupPoint?: boolean;
+    latitude?: number;
+    longitude?: number;
+    pickupContactName?: string;
+    pickupContactPhone?: string;
+}
+
 export interface Party {
   id: string;
   name: string;
@@ -464,7 +479,7 @@ export interface Task {
   attachmentUrl?: string;
   proofImageUrl?: string;
   duration?: number; // Standard duration in minutes
-  actualDuration?: number; // Actual duration in seconds
+  actualDuration?: number; // Actual duration in minutes
   rating?: number; // 1-5 star rating
   startedAt?: string;
   pausedAt?: string;
@@ -654,9 +669,116 @@ export interface ReimbursementRequest {
 }
 
 
+export type CoaNature = "ASSET" | "LIABILITY" | "EQUITY" | "INCOME" | "EXPENSE";
+
+export type CoaGroup = {
+  id: string;
+  name: string;
+  code?: string;
+  nature: CoaNature;
+  parentId: string | null;
+  level: number;
+  sortOrder: number;
+  path: string;
+  isSystem: boolean;
+  isActive: boolean;
+  reporting: {
+    statement: "BS" | "PL";
+    section?: string;
+    cashFlowTag?: "OPERATING" | "INVESTING" | "FINANCING";
+  };
+  allowLedgerPosting: boolean;
+  createdAt: any;
+  updatedAt: any;
+};
+
+export type CoaLedger = {
+  id: string;
+  name: string;
+  ledgerCode?: string;
+  groupId: string;
+  nature: CoaNature;
+  type:
+    | "CASH"
+    | "BANK"
+    | "RECEIVABLE"
+    | "PAYABLE"
+    | "INVENTORY"
+    | "FIXED_ASSET"
+    | "DEPRECIATION"
+    | "GST_INPUT"
+    | "GST_OUTPUT"
+    | "TDS"
+    | "TCS"
+    | "EXPENSE"
+    | "INCOME"
+    | "CAPITAL"
+    | "LOAN"
+    | "ROUND_OFF"
+    | "SUSPENSE"
+    | "OTHER";
+
+  posting: {
+    isPosting: boolean;
+    normalBalance: "DEBIT" | "CREDIT";
+    isSystem: boolean;
+    allowManualJournal: boolean;
+  };
+
+  bank?: {
+    accountHolderName?: string;
+    bankName?: string;
+    accountNumber?: string;
+    accountNumberMasked?: string;
+    ifscCode?: string;
+    upiId?: string;
+    adCode?: string;
+    accountType?: "CURRENT" | "SAVINGS" | "OD_CC";
+  };
+
+  inventory?: {
+    valuationMethod?: "FIFO" | "WEIGHTED_AVG";
+    isStockLedger?: boolean;
+    cogsLedgerId?: string;
+  };
+
+  fixedAsset?: {
+    assetCategory?: string;
+    depreciationMethod?: "SLM" | "WDV";
+    depreciationRate?: number;
+    accumulatedDepLedgerId?: string;
+  };
+
+  openingBalance?: {
+    amount: number;
+    drCr: "DR" | "CR";
+    asOf: string; // ISO date
+  };
+
+  status: "ACTIVE" | "INACTIVE";
+  tags?: string[];
+  createdAt: any;
+  updatedAt: any;
+};
+
+
+export type JournalVoucher = {
+  id: string;
+  date: string;
+  narration: string;
+  voucherType?: string;
+  entries: {
+    accountId: string;
+    debit?: number;
+    credit?: number;
+  }[];
+  createdAt: any;
+  createdByUid?: string;
+};
+
 export interface PunchLog {
-  inTime: any;
-  outTime: any | null;
+  inTime: Timestamp;
+  outTime: Timestamp | null;
   type: 'Office' | 'Field';
   isApproved?: boolean;
   inLocation?: { lat: number; lon: number };
@@ -793,7 +915,7 @@ export interface SalesInvoice {
     grandTotal: number;
     amountPaid: number;
     balanceDue: number;
-    status: 'DRAFT' | 'POSTING' | 'POSTED' | 'FAILED' | 'Paid' | 'Unpaid' | 'Overdue';
+    status: 'Paid' | 'Unpaid' | 'Overdue';
     dueDate?: string;
     appliedCoupons?: Offer[];
     deliveryDetails?: {
@@ -806,10 +928,6 @@ export interface SalesInvoice {
     };
     assignedToUid?: string;
     createdByUid?: string;
-    postedAt?: any;
-    postedBy?: string;
-    postError?: string;
-    voucherId?: string;
 }
 
 export interface CreditItem extends Omit<SalesInvoiceItem, 'discount' | 'amount'> {
@@ -942,95 +1060,10 @@ export interface SupportCallbackRequest {
   topic: string;
   message?: string;
   status: 'NEW' | 'CALLED' | 'CLOSED';
-  createdAt: any;
+  createdAt: Timestamp;
   createdByUid: string;
 }
       
-// -----------------------------
-// Missing exports used by Checkout
-// -----------------------------
-
-export interface CompanyInfo {
-  companyName: string;
-  primaryUpiId?: string;
-  addresses?: Address[];
-  payrollConfig?: PayrollConfig;
-  attendanceConfig?: AttendanceConfig;
-  taxInfo?: {
-    [key: string]: {
-      id: string;
-      value: string;
-      fileUrl?: string;
-    };
-  };
-  commissionMatrix?: {
-    effectiveDate: string;
-    matrix: CommissionRule[];
-  };
-}
-
-export interface AttendanceConfig {
-    autoPunchOutForLunch: boolean;
-    punchInGracePeriod: number;
-    lunchOutTime: string;
-    lunchInTime: string;
-}
-
-
-export interface PayrollConfig {
-    monthly: {
-        basicPercent: number;
-        hraPercent: number;
-        pfContributionPercent: number;
-        professionalTax: number;
-    },
-    hourly: {
-        defaultRate: number;
-    },
-    overtime: {
-        slot1Multiplier: number;
-        slot2Multiplier: number;
-        slot3Multiplier: number;
-    }
-}
-
-export interface PickupPoint {
-  id: string;
-  name: string;
-  ownerUid?: string | null;
-  active: boolean;
-  addressLine?: string;
-  lat?: number;
-  lng?: number;
-}
-
-export type StockMovementType = 'Inward' | 'Outward' | 'Transfer' | 'Adjustment' | 'ProductionIssue' | 'ProductionReceipt';
-
-export interface StockMovement {
-  id: string;
-  type: StockMovementType;
-  productId: string;
-  quantity: number; // Can be negative for outward movements
-  referenceId: string; // e.g., GRN ID, Invoice ID, WO ID
-  referenceType: 'GRN' | 'Sales Invoice' | 'Work Order' | 'Stock Adjustment' | 'Stock Transfer';
-  createdAt: any;
-  createdBy: string;
-}
-
-export interface AuditLog {
-  id?: string;
-  entityType: string;
-  entityId: string;
-  action: 'create' | 'update' | 'delete' | 'approve' | 'reject' | 'login' | 'logout';
-  actorUid: string;
-  actorDisplayName: string;
-  timestamp: any;
-  changes?: {
-    before: any;
-    after: any;
-  };
-  context?: any;
-}
-
+    
 
     

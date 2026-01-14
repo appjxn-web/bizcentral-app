@@ -1,9 +1,11 @@
 
+
 'use client';
 
 import * as React from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
+import { z } from 'zod';
 import { Button } from '@/components/ui/button';
 import {
   Sheet,
@@ -33,17 +35,27 @@ import {
 } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
-import type { UserProfile, UserRole } from '@/lib/types';
+import type { UserProfile, UserRole, Party, CoaLedger, PartyType, CoaNature } from '@/lib/types';
 import { useFirestore, useCollection } from '@/firebase';
 import { collection, doc, writeBatch, serverTimestamp, query, where, addDoc } from 'firebase/firestore';
 import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { useAuth } from '@/firebase';
-import { userFormSchema, type UserFormValues } from '@/features/users/schemas/user.schema';
 
 
 const allRoles: UserRole[] = [
   'Admin', 'Manager', 'Employee', 'Customer', 'CEO', 'Sales Manager', 'Production Manager', 'Purchase Manager', 'Service Manager', 'Accounts Manager', 'HR Manager', 'Gate Keeper', 'Inventory Manager', 'Partner',
 ];
+
+const formSchema = z.object({
+  contactPerson: z.string().min(2, { message: 'Name must be at least 2 characters.' }),
+  email: z.string().email(),
+  role: z.enum(allRoles),
+  businessName: z.string().optional(),
+  mobile: z.string().optional(),
+  password: z.string().optional(),
+});
+
+export type UserFormValues = z.infer<typeof formSchema>;
 
 interface UserFormSheetProps {
   open: boolean;
@@ -57,8 +69,11 @@ export function UserFormSheet({ open, onOpenChange, initialData, onSave }: UserF
   const auth = useAuth();
   const firestore = useFirestore();
 
+  const { data: coaLedgers, loading: ledgersLoading } = useCollection<CoaLedger>(collection(firestore, 'coa_ledgers'));
+
+
   const form = useForm<UserFormValues>({
-    resolver: zodResolver(userFormSchema),
+    resolver: zodResolver(formSchema),
     defaultValues: {
       contactPerson: '',
       email: '',

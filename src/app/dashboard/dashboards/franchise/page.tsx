@@ -21,61 +21,29 @@ import {
   Tag,
   Wrench,
   ShieldCheck,
-  FileText,
-  ShoppingCart,
 } from 'lucide-react';
 import { OverviewChart } from '@/components/dashboard/overview-chart';
 import { useUser, useDoc, useFirestore, useCollection } from '@/firebase';
-import type { UserProfile, Order, Lead, ServiceRequest, RegisteredProduct, Offer, UserWallet, SalesInvoice } from '@/lib/types';
+import type { UserProfile, Order, Lead, ServiceRequest, RegisteredProduct, Offer } from '@/lib/types';
 import { collection, doc, query, where, orderBy } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
-import { useRole } from '../../_components/role-provider';
 
 const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(amount);
 }
 
-export default function PartnerDashboardPage() {
+export default function FranchiseDashboardPage() {
   const { user } = useUser();
   const firestore = useFirestore();
-  const { currentRole } = useRole();
 
   const userDocRef = user ? doc(firestore, 'users', user.uid) : null;
   const { data: userProfile } = useDoc<UserProfile>(userDocRef);
   
-  const walletDocRef = user ? doc(firestore, 'users', user.uid, 'wallet', 'main') : null;
-  const { data: walletData } = useDoc<UserWallet>(walletDocRef);
-  
-    const ordersQuery = React.useMemo(() => {
-    if (!user || !firestore) return null;
-    return query(
-        collection(firestore, 'orders'),
-        where('assignedToUid', '==', user.uid),
-        orderBy('date', 'desc') // CRITICAL: Matches your CIDAgJiUpoMK index
-    );
-  }, [user, firestore]);
-
-  const invoicesQuery = React.useMemo(() => {
-      if (!user || !firestore) return null;
-      return query(
-          collection(firestore, 'salesInvoices'),
-          where('assignedToUid', '==', user.uid),
-          orderBy('date', 'desc')
-      );
-  }, [user, firestore]);
-
+  const ordersQuery = user ? query(collection(firestore, 'orders'), where('assignedToUid', '==', user.uid)) : null;
   const { data: orders } = useCollection<Order>(ordersQuery);
-  const { data: salesInvoices } = useCollection<SalesInvoice>(invoicesQuery);
 
-  const leadsQuery = React.useMemo(() => {
-    if (!user?.uid) return null;
-    return query(
-        collection(firestore, 'leads'),
-        where('ownerId', '==', user.uid),
-        orderBy('createdAt', 'desc')
-    );
-  }, [user?.uid, firestore]);
+  const leadsQuery = user ? query(collection(firestore, 'leads'), where('ownerId', '==', user.uid)) : null;
   const { data: leads } = useCollection<Lead>(leadsQuery);
 
   const serviceRequestsQuery = user ? query(collection(firestore, 'serviceRequests'), where('assignedToUid', '==', user.uid)) : null;
@@ -122,7 +90,7 @@ export default function PartnerDashboardPage() {
 
     const franchiseCommission = deliveredOrders.reduce((acc, order) => acc + calculateCommission(order), 0);
     
-    const pendingCommissionOrders = orders
+    const pendingCommission = orders
         .filter(o => o.status !== 'Delivered' && o.status !== 'Canceled')
         .reduce((acc, order) => acc + calculateCommission(order), 0);
 
@@ -131,13 +99,13 @@ export default function PartnerDashboardPage() {
       totalLeads: leads.length,
       totalSales,
       franchiseCommission,
-      pendingCommission: pendingCommissionOrders,
-      walletBalance: walletData?.balance || 0,
+      pendingCommission: (userProfile.commissionPayable || 0) + pendingCommission,
+      walletBalance: userProfile.walletBalance || 0,
       openServiceTickets: serviceRequests?.filter(sr => sr.status !== 'Completed' && sr.status !== 'Canceled').length || 0,
       productsUnderWarranty: registeredProducts?.filter(p => p.status === 'Active').length || 0,
       activeOffers: offers?.filter(o => o.status === 'Active').length || 0,
     };
-  }, [orders, userProfile, leads, serviceRequests, registeredProducts, offers, walletData]);
+  }, [orders, userProfile, leads, serviceRequests, registeredProducts, offers]);
 
   const alerts = React.useMemo(() => {
     if (!orders) return [];
@@ -183,7 +151,7 @@ export default function PartnerDashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-green-600">{formatCurrency(kpis.totalSales)}</div>
-            <p className="text-xs text-muted-foreground">Gross sales from delivered orders</p>
+            <p className="text-xs text-muted-foreground">Gross sales in territory</p>
           </CardContent>
         </Card>
         <Card>
@@ -208,31 +176,8 @@ export default function PartnerDashboardPage() {
         </Card>
       </div>
 
-       <Card>
-        <CardHeader>
-          <CardTitle>Quick Actions</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-wrap gap-4">
-          <Button asChild>
-            <Link href="/dashboard/sales/lead">
-              <Users className="mr-2 h-4 w-4" /> Manage Leads
-            </Link>
-          </Button>
-          <Button asChild>
-            <Link href="/dashboard/sales/quotation">
-              <FileText className="mr-2 h-4 w-4" /> Manage Quotations
-            </Link>
-          </Button>
-          <Button asChild>
-            <Link href="/dashboard/sales/orders">
-              <ShoppingCart className="mr-2 h-4 w-4" /> Manage Orders
-            </Link>
-          </Button>
-        </CardContent>
-      </Card>
-
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
-        <Card className="col-span-full">
+        <Card className="col-span-full lg:col-span-7">
           <CardHeader>
             <CardTitle>Sales Growth Chart</CardTitle>
             <CardDescription>A chart showing monthly sales growth.</CardDescription>
@@ -302,9 +247,14 @@ export default function PartnerDashboardPage() {
                     </div>
                     <span className="font-mono text-lg font-bold">{kpis.activeOffers}</span>
                 </div>
-                <Button asChild variant="outline" className="w-full">
-                    <Link href="/dashboard/deals-offers">View All Offers</Link>
-                </Button>
+                <div className="flex gap-2">
+                    <Button asChild variant="outline" className="w-full">
+                        <Link href="/dashboard/deals-offers">View All Offers</Link>
+                    </Button>
+                     <Button asChild className="w-full">
+                        <Link href="/dashboard/create-deals-offer">Create New Offer</Link>
+                    </Button>
+                </div>
             </CardContent>
         </Card>
          <Card>

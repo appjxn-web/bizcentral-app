@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -28,8 +27,8 @@ import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 import { Loader2, Save, Percent } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
-import type { PurchaseOrder, Party, Grn, Product, CompanyInfo, CoaLedger, StockMovement } from '@/lib/types';
-import { useFirestore, useDoc, useCollection, useUser } from '@/firebase';
+import type { PurchaseOrder, Party, Grn, Product, CompanyInfo, CoaLedger } from '@/lib/types';
+import { useFirestore, useDoc, useCollection } from '@/firebase';
 import { collection, doc, updateDoc, addDoc, serverTimestamp, getDoc, writeBatch, increment, setDoc } from 'firebase/firestore';
 import { getNextDocNumber } from '@/lib/number-series';
 
@@ -63,7 +62,6 @@ export default function CreateGrnPage() {
   const searchParams = useSearchParams();
   const firestore = useFirestore();
   const poId = searchParams.get('id');
-  const { user } = useUser();
 
   const poRef = React.useMemo(() => poId ? doc(firestore, 'purchaseOrders', poId) : null, [firestore, poId]);
   const { data: po, loading: poLoading } = useDoc<PurchaseOrder>(poRef);
@@ -126,7 +124,7 @@ export default function CreateGrnPage() {
   };
   
   const handleSaveGrn = async () => {
-    if (!po || !settingsData?.prefixes || !allGrns || !coaLedgers || !allProducts || !supplier || !user) {
+    if (!po || !settingsData?.prefixes || !allGrns || !coaLedgers || !allProducts || !supplier) {
       toast({ variant: 'destructive', title: 'Data Missing', description: 'Cannot save GRN without PO, settings, or accounts data.' });
       return;
     }
@@ -175,24 +173,17 @@ export default function CreateGrnPage() {
         
         const journalEntries: any[] = [];
         
-        // 1. Create Stock Movements
+        // 1. Update Inventory and create Debit entries for inventory ledgers
         for (const item of grnItems) {
-            if (item.receivedQty > 0) {
-                const stockMovementRef = doc(collection(firestore, 'stockMovements'));
-                const movementData: Omit<StockMovement, 'id'> = {
-                    type: 'Inward',
-                    productId: item.productId,
-                    quantity: item.receivedQty,
-                    referenceId: newGrnId,
-                    referenceType: 'GRN',
-                    createdAt: serverTimestamp(),
-                    createdBy: user.uid,
-                };
-                batch.set(stockMovementRef, { ...movementData, id: stockMovementRef.id });
-            }
-
             const product = allProducts.find(p => p.id === item.productId);
-            const inventoryLedger = coaLedgers.find(l => l.id === product?.coaAccountId);
+            if (!product) continue;
+
+            const productRef = doc(firestore, 'products', item.productId);
+            const currentStock = product.openingStock || 0;
+            const newStock = currentStock + item.receivedQty;
+            batch.update(productRef, { openingStock: newStock });
+
+            const inventoryLedger = coaLedgers.find(l => l.id === product.coaAccountId);
             if (inventoryLedger) {
                 journalEntries.push({
                     accountId: inventoryLedger.id,
