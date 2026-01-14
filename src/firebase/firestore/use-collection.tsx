@@ -11,8 +11,6 @@ import {
 
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
-import { useCollectionQuery } from '@/hooks/use-collection-query';
-
 
 /**
  * Extracts the path from a Firestore query or collection reference.
@@ -27,34 +25,54 @@ function getQueryPath(q: Query | CollectionReference): string | undefined {
     return undefined;
 }
 
+type Options = {
+  enabled?: boolean;
+};
 
-/**
- * Safe collection listener hook.
- * - If q is null/undefined => no query runs (no Firestore request).
- * - Creates a stable dependency key so the listener re-subscribes only when the query changes.
- * - Emits permission error in a consistent way.
- */
-export function useCollection<T>(q: Query<DocumentData> | null | undefined) {
-  // Generate a stable key based on the collection path and serialized filters
+export function useCollection<T>(q: Query<DocumentData> | null | undefined, options: Options = {}) {
+  const { enabled = true } = options;
+  const [data, setData] = React.useState<T[]>([]);
+  const [loading, setLoading] = React.useState(enabled && !!q);
+  const [error, setError] = React.useState<Error | null>(null);
+
   const queryKey = React.useMemo(() => {
     if (!q) return 'null';
-    // Use the internal path and stringified constraints for a stable subscription key
-    return (q as any)._query?.path?.toString() + JSON.stringify((q as any)._query?.filters || []);
+    return getQueryPath(q) + JSON.stringify((q as any)._query?.filters || []);
   }, [q]);
 
-  const { data, loading, error } = useCollectionQuery<T>(q, queryKey);
-  
   React.useEffect(() => {
-    if (error) {
-        console.error("Firestore Permission Error on path:", getQueryPath(q!), error);
+    if (!enabled || !q) {
+      setLoading(false);
+      setData([]);
+      return;
+    }
+
+    setLoading(true);
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const docs = snapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        })) as T[];
+        setData(docs);
+        setLoading(false);
+        setError(null);
+      },
+      (err) => {
+        console.error("Firestore Error in useCollection:", err);
         const permissionError = new FirestorePermissionError({
-          path: getQueryPath(q!) || 'unknown collection',
+          path: getQueryPath(q) || 'unknown collection',
           operation: 'list',
         });
         errorEmitter.emit('permission-error', permissionError);
-    }
-  }, [error, q]);
+        setError(err);
+        setLoading(false);
+      }
+    );
 
+    return () => unsubscribe();
+  }, [enabled, queryKey]);
 
   return { data, loading, error };
 }
