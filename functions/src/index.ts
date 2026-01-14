@@ -1,4 +1,5 @@
 
+
 // ✅ Use this SAME file content for BOTH paths:
 // 1) functions/src/index.ts
 // 2) src/functions/src/index.ts
@@ -118,24 +119,15 @@ export const verifyUpiPaymentAndCreateOrder = onCall(
     }
 
     const db = admin.firestore();
+    const settingsSnap = await db.doc("company/settings").get();
+    const prefixes = settingsSnap.data()?.prefixes;
 
-    const now = new Date();
-    const yy = String(now.getFullYear()).slice(2);
-    const mm = String(now.getMonth() + 1).padStart(2, "0");
-    const yymm = `${yy}${mm}`;
-
-    const counterRef = db.doc(`counters/order_SO_${yymm}`);
     const orderRef = db.collection("orders").doc(); // ✅ NEW DOC ID
     const paymentRef = db.collection("paymentSubmissions").doc();
 
     try {
         await db.runTransaction(async (tx) => {
-            const counterSnap = await tx.get(counterRef);
-            const current = counterSnap.exists ? (counterSnap.data()?.next ?? 1) : 1;
-
-            const orderNumber = `SO-${yymm}-${String(current).padStart(4, "0")}`;
-
-            tx.set(counterRef, { next: current + 1 }, { merge: true });
+            const orderNumber = await getNextDocNumber(tx, "Sales Order", prefixes);
 
             tx.set(orderRef, {
                 ...order,
@@ -189,25 +181,22 @@ export const onInvoiceCreated = onDocumentCreated({ document: "salesInvoices/{in
   const snap = event.data;
   if (!snap) return;
 
-  const invoice = snap.data() as SalesInvoice & { assignedToUid?: string | null; createdByUid?: string };
-
-  // ✅ FIX: Ensure invoiceNumber exists BEFORE using it anywhere
-  if (!invoice.invoiceNumber) {
-    const settingsSnap = await db.doc("company/settings").get();
-    const prefixes = settingsSnap.data()?.prefixes;
-
-    const allInvoicesSnap = await db.collection("salesInvoices").get();
-    const allInvoicesData = allInvoicesSnap.docs.map((d) => d.data());
-
-    const invNumber = getNextDocNumber("Sales Invoice", prefixes, allInvoicesData as any[]);
-    await snap.ref.update({ invoiceNumber: invNumber });
-    invoice.invoiceNumber = invNumber;
-  }
+  let invoice = snap.data() as SalesInvoice & { assignedToUid?: string | null; createdByUid?: string };
 
   const partnerId = invoice.assignedToUid;
 
   try {
     await db.runTransaction(async (transaction) => {
+      // ✅ FIX: Ensure invoiceNumber exists BEFORE using it anywhere
+      if (!invoice.invoiceNumber) {
+        const settingsSnap = await transaction.get(db.doc("company/settings"));
+        const prefixes = settingsSnap.data()?.prefixes;
+        const newInvoiceNumber = await getNextDocNumber(transaction, "Sales Invoice", prefixes);
+        transaction.update(snap.ref, { invoiceNumber: newInvoiceNumber });
+        // Manually update the local object so subsequent logic has the number
+        invoice = { ...invoice, invoiceNumber: newInvoiceNumber };
+      }
+
       // 1) ACCOUNTS: Get/Create Customer Ledger
       const customerLedgerId = await findOrCreateSpecificCustomerLedger(transaction, invoice);
 
@@ -445,24 +434,18 @@ export const handleQuotationCreation = onDocumentCreated({ document: "quotations
   const data = snapshot.data() as any;
   if (data.quotationNumber) return;
 
-  try {
-    const prefixesSnap = await db.doc("company/settings").get();
-    const prefixes = prefixesSnap.data()?.prefixes;
-
-    const allDocs = await db.collection("quotations").get();
-    const allData = allDocs.docs.map((d) => d.data());
-
-    const newId = getNextDocNumber("Sales Quotation", prefixes, allData as any[]);
+  return db.runTransaction(async (tx) => {
+    const settingsSnap = await tx.get(db.doc("company/settings"));
+    const prefixes = settingsSnap.data()?.prefixes;
+    const newId = await getNextDocNumber(tx, "Sales Quotation", prefixes);
     const createdByUid = data.createdBy;
 
-    return snapshot.ref.update({
+    tx.update(snapshot.ref, {
       quotationNumber: newId,
       id: FieldValue.delete(),
       createdByUid,
     });
-  } catch (error) {
-    return null;
-  }
+  });
 });
 
 export const handleWorkOrderCreation = onDocumentCreated({ document: "workOrders/{id}", region: "asia-south1" }, () => {});
@@ -731,3 +714,4 @@ export const helloWorld = onCall({ region: "asia-south1" }, (request) => {
     
 
     
+
