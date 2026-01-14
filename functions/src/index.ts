@@ -1,5 +1,13 @@
 
-import { onDocumentCreated, onDocumentUpdated, onDocumentWritten, Change, DocumentSnapshot, FirestoreEvent } from "firebase-functions/v2/firestore";
+'use server';
+import {
+  onDocumentCreated,
+  onDocumentUpdated,
+  onDocumentWritten,
+  Change,
+  DocumentSnapshot,
+  FirestoreEvent
+} from "firebase-functions/v2/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import * as admin from "firebase-admin";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
@@ -294,94 +302,94 @@ export const onInvoiceCreated = onDocumentCreated({ document: "salesInvoices/{in
 });
 
 export const onCreditNoteCreated = onDocumentCreated({ document: "creditNotes/{noteId}", region: "asia-south1" }, async (event) => {
-  const snap = event.data;
-  if (!snap) return;
+    const snap = event.data;
+    if (!snap) return;
 
-  const note = snap.data() as CreditNote;
-  const batch = db.batch();
+    const note = snap.data() as CreditNote;
+    const batch = db.batch();
 
-  // 1) Create Journal Voucher
-  const jvRef = db.collection("journalVouchers").doc();
-  const narration = `Credit Note ${note.creditNoteNumber} issued to ${note.partyName} for: ${note.reason}`;
+    // 1) Create Journal Voucher
+    const jvRef = db.collection("journalVouchers").doc();
+    const narration = `Credit Note ${note.creditNoteNumber} issued to ${note.partyName} for: ${note.reason}`;
 
-  const partySnap = await db.collection("parties").doc(note.partyId).get();
-  const partyData = partySnap.data() as Party | undefined;
-  const customerLedgerId = partyData?.coaLedgerId;
+    const partySnap = await db.collection("parties").doc(note.partyId).get();
+    const partyData = partySnap.data() as Party | undefined;
+    const customerLedgerId = partyData?.coaLedgerId;
 
-  if (!customerLedgerId) {
-    console.error(`Could not find ledger for party ${note.partyId}`);
-    return;
-  }
+    if (!customerLedgerId) {
+        console.error(`Could not find ledger for party ${note.partyId}`);
+        return;
+    }
 
-  const taxableAmount = note.amount / 1.18;
-  const gstAmount = note.amount - taxableAmount;
+    const taxableAmount = note.amount / 1.18;
+    const gstAmount = note.amount - taxableAmount;
 
-  const entries = [
-    { accountId: "L-4.1-1", debit: taxableAmount, credit: 0 },
-    { accountId: "L-2.1.2-1", debit: gstAmount / 2, credit: 0 },
-    { accountId: "L-2.1.2-2", debit: gstAmount / 2, credit: 0 },
-    { accountId: customerLedgerId, debit: 0, credit: note.amount },
-  ];
+    const entries = [
+        { accountId: "L-4.1-1", debit: taxableAmount, credit: 0 },
+        { accountId: "L-2.1.2-1", debit: gstAmount / 2, credit: 0 },
+        { accountId: "L-2.1.2-2", debit: gstAmount / 2, credit: 0 },
+        { accountId: customerLedgerId, debit: 0, credit: note.amount },
+    ];
 
-  batch.set(jvRef, {
-    date: note.date,
-    narration,
-    entries,
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    voucherType: "Credit Note",
-    createdByUid: (snap.data() as any).createdByUid,
-  });
+    batch.set(jvRef, {
+        date: note.date,
+        narration,
+        entries,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        voucherType: "Credit Note",
+        createdByUid: (snap.data() as any).createdByUid,
+    });
 
-  // 2) Create Refund Request
-  const refundRequestRef = db.collection("refundRequests").doc();
-  const refundRequestData: Omit<RefundRequest, "id"> = {
-    orderId: (note as any).originalInvoiceId || "N/A",
-    customerId: note.partyId,
-    customerName: note.partyName,
-    refundAmount: note.amount,
-    requestDate: note.date,
-    status: "Pending",
-  };
-  batch.set(refundRequestRef, refundRequestData);
+    // 2) Create Refund Request
+    const refundRequestRef = db.collection("refundRequests").doc();
+    const refundRequestData: Omit<RefundRequest, "id"> = {
+        orderId: (note as any).originalInvoiceId || "N/A",
+        customerId: note.partyId,
+        customerName: note.partyName,
+        refundAmount: note.amount,
+        requestDate: note.date,
+        status: "Pending",
+    };
+    batch.set(refundRequestRef, refundRequestData);
 
-  await batch.commit();
+    await batch.commit();
 });
 
 export const onDebitNoteCreated = onDocumentCreated({ document: "debitNotes/{noteId}", region: "asia-south1" }, async (event) => {
-  const snap = event.data;
-  if (!snap) return;
+    const snap = event.data;
+    if (!snap) return;
 
-  const note = snap.data() as DebitNote;
-  const jvRef = db.collection("journalVouchers").doc();
-  const narration = `Debit Note ${note.debitNoteNumber} issued to ${note.partyName} for: ${note.reason}`;
+    const note = snap.data() as DebitNote;
+    const jvRef = db.collection("journalVouchers").doc();
+    const narration = `Debit Note ${note.debitNoteNumber} issued to ${note.partyName} for: ${note.reason}`;
 
-  const partySnap = await db.collection("parties").doc(note.partyId).get();
-  const partyData = partySnap.data() as Party | undefined;
-  const supplierLedgerId = partyData?.coaLedgerId;
+    const partySnap = await db.collection("parties").doc(note.partyId).get();
+    const partyData = partySnap.data() as Party | undefined;
+    const supplierLedgerId = partyData?.coaLedgerId;
 
-  if (!supplierLedgerId) {
-    console.error(`Could not find ledger for party ${note.partyId}`);
-    return;
-  }
+    if (!supplierLedgerId) {
+        console.error(`Could not find ledger for party ${note.partyId}`);
+        return;
+    }
 
-  const taxableAmount = note.amount / 1.18;
-  const gstAmount = note.amount - taxableAmount;
+    const taxableAmount = note.amount / 1.18;
+    const gstAmount = note.amount - taxableAmount;
 
-  const entries = [
-    { accountId: supplierLedgerId, debit: note.amount, credit: 0 },
-    { accountId: "L-5-3", debit: 0, credit: taxableAmount },
-    { accountId: "L-1.1.4-1", debit: 0, credit: gstAmount / 2 },
-    { accountId: "L-1.1.4-2", debit: 0, credit: gstAmount / 2 },
-  ];
+    const entries = [
+        { accountId: supplierLedgerId, debit: note.amount, credit: 0 },
+        { accountId: "L-5-3", debit: 0, credit: taxableAmount },
+        { accountId: "L-1.1.4-1", debit: 0, credit: gstAmount / 2 },
+        { accountId: "L-1.1.4-2", debit: 0, credit: gstAmount / 2 },
+    ];
 
-  await jvRef.set({
-    date: note.date,
-    narration,
-    entries,
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    voucherType: "Debit Note",
-    createdByUid: (snap.data() as any).createdByUid,
-  });
+    await jvRef.set({
+        date: note.date,
+        narration,
+        entries,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        voucherType: "Debit Note",
+        createdByUid: (snap.data() as any).createdByUid,
+    });
 });
 
 export const onStockTransfer = onDocumentUpdated(
@@ -701,10 +709,6 @@ export const onPaymentApproved = onDocumentUpdated({ document: "paymentSubmissio
         balance: newBalance,
         status: newBalance <= 0 ? "Ready for Dispatch" : "Ordered",
       } as any);
-
-      // Optional: mark submission "processed" flag (not required, but can prevent double-jv if something weird happens)
-      // const submissionRef = db.collection("paymentSubmissions").doc((after as any).id);
-      // transaction.update(submissionRef, { processedAt: admin.firestore.FieldValue.serverTimestamp() } as any);
     });
   }
 
@@ -717,10 +721,3 @@ export const helloWorld = onCall({ region: "asia-south1" }, (request) => {
     return { message: "Hello from Firebase!" };
   });
 
-    
-
-    
-
-    
-
-  
