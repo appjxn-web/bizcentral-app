@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -361,7 +362,7 @@ export default function CreateInvoicePage() {
     setItems(items.filter(item => item.id !== itemId));
   };
   
-  const handleSaveInvoice = async () => {
+  const handleSaveAndPostInvoice = async () => {
     if (isSaveDisabled) {
       toast({ variant: 'destructive', title: 'Discount Exceeded', description: `Your maximum allowed discount is ${maxAllowedDiscount}%.` });
       return;
@@ -370,16 +371,15 @@ export default function CreateInvoicePage() {
       toast({ variant: 'destructive', title: 'Missing Information', description: 'Please select a customer and add items.' });
       return;
     }
-    if (!firestore || !settingsData?.prefixes || !salesInvoices || !parties) return;
   
-    const customer = parties.find(p => p.id === selectedPartyId);
+    const customer = parties?.find(p => p.id === selectedPartyId);
     if (!customer) {
         toast({ variant: 'destructive', title: 'Customer Not Found' });
         return;
     }
 
     try {
-      const invoiceData = {
+      const invoiceDataForDraft = {
           orderId: orderDocumentId || '',
           orderNumber: salesOrderNumber,
           customerId: selectedPartyId,
@@ -395,27 +395,38 @@ export default function CreateInvoicePage() {
           grandTotal: calculations.grandTotal,
           amountPaid: bookingAmount,
           balanceDue: calculations.grandTotal - bookingAmount,
-          status: 'Unpaid' as 'Unpaid',
+          status: 'DRAFT' as 'DRAFT',
           appliedCoupons: appliedCoupons,
           assignedToUid: assignedToUid,
           createdByUid: authUser.uid,
+          warehouseId: 'main_warehouse' // Add a default warehouse
       };
       
-      await salesService.createSalesInvoice('default', invoiceData, authUser.uid);
+      const invoiceId = await salesService.createSalesInvoice('default', invoiceDataForDraft, authUser.uid, [], settingsData);
+
+      toast({ title: 'Invoice Saved as Draft', description: `Posting invoice ${invoiceId} to ledgers...` });
+
+      // Now call the cloud function to post it
+      const result = await salesService.postInvoice('default', invoiceId);
       
-      toast({ title: 'Invoice Created', description: `Invoice is being processed in the background.` });
-      router.push('/dashboard/sales/invoice');
+      if (result.ok) {
+          toast({ title: 'Invoice Posted Successfully', description: `Invoice ${invoiceId} has been posted.` });
+          router.push('/dashboard/sales/invoice');
+      } else {
+          throw new Error(result.message || "Posting failed.");
+      }
+
     } catch (e: any) {
         console.error(e);
-        toast({ variant: 'destructive', title: 'Save failed', description: e.message });
+        toast({ variant: 'destructive', title: 'Save & Post failed', description: e.message });
     }
   };
 
   return (
     <>
       <PageHeader title="Create Invoice">
-        <Button onClick={handleSaveInvoice} disabled={isSaveDisabled}>
-          <Save className="mr-2 h-4 w-4" /> Save Invoice
+        <Button onClick={handleSaveAndPostInvoice} disabled={isSaveDisabled}>
+          <Save className="mr-2 h-4 w-4" /> Save & Post Invoice
         </Button>
       </PageHeader>
       
@@ -589,10 +600,6 @@ export default function CreateInvoicePage() {
                     <Label htmlFor="terms">Terms & Conditions</Label>
                     <Textarea id="terms" value={terms} onChange={e => setTerms(e.target.value)} rows={5} />
                 </div>
-                <div className="space-y-2">
-                    <Label htmlFor="payment-details">Payment Details</Label>
-                    <Textarea id="payment-details" value={paymentDetails} readOnly disabled placeholder="e.g., Transaction ID, Cheque No." />
-                </div>
             </div>
             <div className="space-y-3 p-4 border rounded-md bg-muted/50">
               <div className="flex justify-between"><span>Subtotal</span><span className="font-mono">{formatIndianCurrency(calculations.subtotal)}</span></div>
@@ -620,31 +627,6 @@ export default function CreateInvoicePage() {
               
               <Separator />
               <div className="flex justify-between font-bold text-lg"><span>Grand Total</span><span className="font-mono">{formatIndianCurrency(calculations.grandTotal)}</span></div>
-              <div className="flex justify-between items-center text-primary">
-                  <span>Payment Received</span>
-                  <span className="font-mono font-bold">{formatIndianCurrency(bookingAmount)}</span>
-              </div>
-               <div className="flex justify-between items-center font-semibold">
-                  <span>Balance Due</span>
-                  <span className="font-mono">{formatIndianCurrency(calculations.grandTotal - bookingAmount)}</span>
-              </div>
-               {isEstimating ? (
-                  <div className="flex items-center justify-center p-4 text-muted-foreground"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Calculating dispatch time...</div>
-              ) : dispatchEstimate?.hasEstimate && (
-                  <div className="p-3 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-md space-y-1">
-                      <p className="font-semibold flex items-center gap-2"><CalendarClock className="h-4 w-4 text-blue-600"/> Estimated Dispatch Date</p>
-                      <p className="font-bold text-blue-700 dark:text-blue-400">{dispatchEstimate.estimatedDate}</p>
-                      <p className="text-xs text-muted-foreground">{dispatchEstimate.reasoning}</p>
-                  </div>
-              )}
-              {balanceDue > 0 && companyInfo?.primaryUpiId && (
-                <div className="flex flex-col items-center gap-2 pt-4 border-t">
-                    <p className="text-sm font-medium">Scan to Pay Balance</p>
-                    <div className="p-2 bg-white rounded-md">
-                        <QRCodeSVG value={qrUpiString} size={128} />
-                    </div>
-                </div>
-              )}
             </div>
           </div>
         </CardContent>
@@ -654,9 +636,4 @@ export default function CreateInvoicePage() {
 }
 
   
-
-
-
-
-
-    
+```
