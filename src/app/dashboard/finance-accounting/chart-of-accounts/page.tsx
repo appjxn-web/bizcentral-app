@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -27,8 +26,8 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuTrigger,
-  DropdownMenuLabel
 } from '@/components/ui/dropdown-menu';
 import { AddLedgerDialog } from './_components/add-ledger-dialog';
 import { AddGroupDialog } from './_components/add-group-dialog';
@@ -50,16 +49,19 @@ function ChartOfAccountsPageContent() {
   const [isAddGroupOpen, setIsAddGroupOpen] = React.useState(false);
   const [editingGroup, setEditingGroup] = React.useState<CoaGroup | null>(null);
   
+  // This is a placeholder. In a real multi-tenant app, you'd get this from user auth state.
+  const companyId = 'default'; 
+
   const fetchData = React.useCallback(async () => {
     setLoading(true);
     const [groups, ledgers] = await Promise.all([
-        coaRepository.listGroups(),
-        coaRepository.listLedgers(),
+        coaRepository.listGroups(companyId),
+        coaRepository.listLedgers(companyId),
     ]);
     setCoaGroups(groups);
     setCoaLedgers(ledgers);
     setLoading(false);
-  }, []);
+  }, [companyId]);
 
   React.useEffect(() => {
     fetchData();
@@ -97,7 +99,7 @@ function ChartOfAccountsPageContent() {
 
   const handleDelete = async (type: 'group' | 'ledger', id: string, name: string) => {
     if (type === 'group') {
-      const hasChildren = await coaRepository.groupHasChildren(id);
+      const hasChildren = await coaRepository.groupHasChildren(companyId, id);
       if (hasChildren) {
         toast({
           variant: 'destructive',
@@ -107,7 +109,7 @@ function ChartOfAccountsPageContent() {
         return;
       }
     }
-    await coaRepository.delete(type, id);
+    await coaRepository.delete(companyId, type, id);
     toast({ title: `${type.charAt(0).toUpperCase() + type.slice(1)} Deleted` });
     fetchData(); // Refresh data
   };
@@ -124,10 +126,10 @@ function ChartOfAccountsPageContent() {
   
   const handleSaveLedger = async (data: Partial<CoaLedger>) => {
     if (editingLedger) {
-      await coaRepository.updateLedger(editingLedger.id, data);
+      await coaRepository.updateLedger(companyId, editingLedger.id, data);
       toast({ title: 'Ledger Updated' });
     } else {
-      await coaRepository.createLedger(data);
+      await coaRepository.createLedger(companyId, data);
       toast({ title: 'Ledger Created' });
     }
     fetchData();
@@ -136,10 +138,10 @@ function ChartOfAccountsPageContent() {
 
   const handleSaveGroup = async (data: Partial<CoaGroup>) => {
     if (editingGroup) {
-      await coaRepository.updateGroup(editingGroup.id, data);
+      await coaRepository.updateGroup(companyId, editingGroup.id, data);
       toast({ title: 'Group Updated' });
     } else {
-      await coaRepository.createGroup(data);
+      await coaRepository.createGroup(companyId, data);
       toast({ title: 'Group Created' });
     }
     fetchData();
@@ -151,7 +153,6 @@ function ChartOfAccountsPageContent() {
     
     return childGroups.flatMap(group => {
       const childLedgers = ledgersByGroupId.get(group.id) || [];
-      const hasChildren = (groupsByParentId.get(group.id)?.length || 0) > 0 || childLedgers.length > 0;
       
       const groupRow = (
         <TableRow key={group.id} className="bg-muted/50 font-semibold">
