@@ -1,15 +1,9 @@
+// src/firebase/paths.ts
+export const companyPath = (companyId: string) => `companies/${companyId}`;
 
-export function pathCoaGroups(companyId: string) {
-    return `companies/${companyId}/coa_groups`;
-}
-
-export function pathCoaLedgers(companyId: string) {
-    return `companies/${companyId}/coa_ledgers`;
-}
-
-export function pathJournalVouchers(companyId: string) {
-    return `companies/${companyId}/journalVouchers`;
-}
-
-// Add other path builders as needed...
-// e.g., pathProducts, pathOrders, etc.
+export const financePaths = {
+  coaGroups: (companyId: string) => `${companyPath(companyId)}/coa_groups`,
+  coaLedgers: (companyId: string) => `${companyPath(companyId)}/coa_ledgers`,
+  vouchers: (companyId: string) => `${companyPath(companyId)}/vouchers`,
+  journalEntries: (companyId: string) => `${companyPath(companyId)}/journal_entries`,
+};
