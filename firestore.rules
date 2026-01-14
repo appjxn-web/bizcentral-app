@@ -31,12 +31,13 @@ service cloud.firestore {
     // =========================
     // PUBLIC-READABLE COLLECTIONS
     // =========================
-    match /products/{productId} { allow read: if true; allow write: if isAdmin(); }
-    match /vacancies/{vacancyId} { allow read: if true; allow write: if isAdmin(); }
-    match /posts/{postId} { allow read: if true; allow write: if isAdmin(); }
-    match /locations/{locationId} { allow read: if true; allow write: if isAdmin(); }
-    match /pickupPoints/{pointId} { allow read: if true; allow write: if isAdmin(); }
-    match /company/{docId} { allow read: if true; allow write: if isAdmin(); }
+    match /products/{productId} { allow read: if true; allow write: if isAdmin("default"); }
+    match /vacancies/{vacancyId} { allow read: if true; allow write: if isAdmin("default"); }
+    match /posts/{postId} { allow read: if true; allow write: if isAdmin("default"); }
+    match /locations/{locationId} { allow read: if true; allow write: if isAdmin("default"); }
+    match /pickupPoints/{pointId} { allow read: if true; allow write: if isAdmin("default"); }
+    match /company/{docId} { allow read: if true; allow write: if isAdmin("default"); }
+    match /offers/{offerId} { allow read: if signedIn(); allow write: if isAdmin(); }
     
     // =========================
     // USERS & USER-SPECIFIC DATA
