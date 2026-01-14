@@ -1,4 +1,3 @@
-
 'use client';
 
 import * as React from 'react';
@@ -158,8 +157,8 @@ export function CustomerMap() {
   
   const firestore = useFirestore();
 
-  const locationsQuery = React.useMemo(() => query(collection(firestore, 'locations')), [firestore]);
-  const pickupPointsQuery = React.useMemo(() => query(collection(firestore, 'pickupPoints'), where('active', '==', true)), [firestore]);
+  const locationsQuery = query(collection(firestore, 'locations'));
+  const pickupPointsQuery = query(collection(firestore, 'pickupPoints'), where('active', '==', true));
 
   const { data: customerLocations, loading: locationsLoading } = useCollection<Location>(locationsQuery);
   const { data: partnerLocationsData, loading: pickupPointsLoading } = useCollection<PickupPoint>(pickupPointsQuery);

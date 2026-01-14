@@ -23,6 +23,7 @@ export function useCollectionQuery<T = any>(
   React.useEffect(() => {
     if (!enabled || !q) {
       setLoading(false);
+      setData([]); // Ensure data is cleared when query is not active
       return;
     }
 
@@ -43,8 +44,7 @@ export function useCollectionQuery<T = any>(
     );
 
     return () => unsub();
-    // ✅ queryKey is the stable dependency, not Firestore internals
-  }, [enabled, queryKey]);
+  }, [enabled, queryKey]); // queryKey is the stable dependency
 
   return { data, loading, error };
 }
