@@ -37,7 +37,12 @@ service cloud.firestore {
     match /locations/{locationId} { allow read: if true; allow write: if isAdmin("default"); }
     match /pickupPoints/{pointId} { allow read: if true; allow write: if isAdmin("default"); }
     match /company/{docId} { allow read: if true; allow write: if isAdmin("default"); }
-    match /offers/{offerId} { allow read: if signedIn(); allow write: if isAdmin(); }
+    
+    // Corrected rule for the 'offers' collection
+    match /offers/{offerId} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
     
     // =========================
     // USERS & USER-SPECIFIC DATA
@@ -68,6 +73,7 @@ service cloud.firestore {
     // =========================
     match /companies/{companyId} {
       allow read: if isCompanyMember(companyId);
+      allow write: if isAdmin(companyId);
 
       // --- Orders Subcollection ---
       match /orders/{orderId} {
