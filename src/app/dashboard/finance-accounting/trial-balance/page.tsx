@@ -1,5 +1,5 @@
 
-'use client';
+"use client";
 
 import * as React from "react";
 import { useParams } from "next/navigation";
@@ -13,9 +13,9 @@ import {
   where,
 } from "firebase/firestore";
 
-import { useFirestore } from "@/firebase";
+import { initializeFirebase } from "@/firebase";
 import { useDoc } from "@/firebase/firestore/use-doc";
-import { fmt2, toDrCrFromNet, netFromOpening, round2 } from "@/features/finance/utils/balance";
+import { fmt2, toDrCrFromNet, netFromOpening, round2 } from "@/features/finance/utils/accounting";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -53,7 +53,7 @@ function firstDayOfMonthISO() {
 }
 
 export default function TrialBalancePage() {
-  const firestore = useFirestore();
+  const { firestore: db } = initializeFirebase();
   const companyId = "default";
 
   const [fromDate, setFromDate] = React.useState(firstDayOfMonthISO());
@@ -64,13 +64,12 @@ export default function TrialBalancePage() {
   const [error, setError] = React.useState<string | null>(null);
 
   const loadTrialBalance = React.useCallback(async () => {
-    if (!firestore) return;
+    if (!db) return;
     setLoading(true);
     setError(null);
 
     try {
-      // 1) Load ledgers
-      const ledRef = collection(firestore, `companies/${companyId}/coa_ledgers`);
+      const ledRef = collection(db, `companies/${companyId}/coa_ledgers`);
       const ledSnap = await getDocs(query(ledRef, orderBy("name", "asc"), limit(5000)));
 
       const ledgers: Ledger[] = ledSnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
@@ -84,8 +83,7 @@ export default function TrialBalancePage() {
         openingNetByLedger.set(l.id, openNet);
       }
 
-      // 2) Load journal entries in range
-      const jRef = collection(firestore, `companies/${companyId}/journal_entries`);
+      const jRef = collection(db, `companies/${companyId}/journal_entries`);
       const jQ = query(
         jRef,
         orderBy("voucherDate", "asc"),
@@ -135,7 +133,7 @@ export default function TrialBalancePage() {
     } finally {
       setLoading(false);
     }
-  }, [firestore, companyId, fromDate, toDate]);
+  }, [db, companyId, fromDate, toDate]);
 
   const totals = rows.reduce(
     (acc, r) => {
