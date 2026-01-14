@@ -162,6 +162,11 @@ service cloud.firestore {
         allow read, write: if signedIn();
       }
     }
+    
+    // This rule allows the collectionGroup query on 'milestones' for the leaderboard
+    match /{path=**}/milestones/{milestoneId} {
+        allow get, list: if signedIn();
+    }
 
 
     // -----------------------------
