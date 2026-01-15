@@ -288,9 +288,14 @@ export default function CheckoutPage() {
         window.dispatchEvent(new CustomEvent('cartUpdated'));
         router.push('/checkout/success');
 
-    } catch (serverError: any) {
-        console.error(serverError);
-        toast({ variant: 'destructive', title: 'Order Failed', description: serverError.message || 'Could not place your order.' });
+    } catch (e: any) {
+        console.error("Error creating order:", e);
+        // Display more specific error details from the callable function
+        toast({ 
+            variant: 'destructive', 
+            title: `Order Failed: ${e.code}`, 
+            description: e.details || e.message || 'Could not place your order.' 
+        });
     } finally {
         setIsPlacingOrder(false);
     }

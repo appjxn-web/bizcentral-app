@@ -223,6 +223,7 @@ export default function CreateSalesOrderPage() {
                   quantity: quantity,
                   unit: product?.unit || item.unit || 'pcs',
                   rate: rate,
+                  price: rate,
                   gstRate: (product as any)?.gstRate || item.gstRate || 18,
                   amount: rate * quantity,
                   category: product?.category || item.category,
@@ -763,3 +764,4 @@ export default function CreateSalesOrderPage() {
     </>
   );
 }
+

@@ -107,6 +107,24 @@ const findOrCreateSpecificCustomerLedger = async (
   return newLedgerRef.id;
 };
 
+// Helper to determine the financial year string like "24-25"
+function getFinancialYear(): string {
+  const now = new Date();
+  const currentMonth = now.getMonth(); // 0-11
+  const currentYear = now.getFullYear();
+  
+  // FY starts in April (month 3)
+  if (currentMonth >= 3) {
+    const startYear = String(currentYear).slice(-2);
+    const endYear = String(currentYear + 1).slice(-2);
+    return `${startYear}-${endYear}`;
+  } else {
+    const startYear = String(currentYear - 1).slice(-2);
+    const endYear = String(currentYear).slice(-2);
+    return `${startYear}-${endYear}`;
+  }
+}
+
 export const createOrder = onCall({ region: 'asia-south1' }, async (request) => {
     const { order, payment } = request.data;
     const uid = request.auth?.uid;
@@ -116,23 +134,22 @@ export const createOrder = onCall({ region: 'asia-south1' }, async (request) => 
     }
 
     try {
-        const orderNumber = await getNextDistributedCounter(db, 'sales_orders');
+        const fy = getFinancialYear();
+        const counterName = `sales_orders_${fy}`;
+        const orderNumber = await getNextDistributedCounter(db, counterName);
+        
         const prefixesSnap = await db.doc('company/settings').get();
         const prefixes = prefixesSnap.data()?.prefixes;
 
         const config = prefixes?.find((c: any) => c.type === 'Sales Order') || {
             prefix: 'SO',
             useDate: true,
-            digits: 4,
+            digits: 6,
         };
         
-        const now = new Date();
-        const yearShort = String(now.getFullYear()).slice(-2);
-        const month = String(now.getMonth() + 1).padStart(2, '0');
-        const dateStr = config.useDate ? `${yearShort}${month}` : '';
-        const paddedNum = String(orderNumber).padStart(config.digits || 4, '0');
+        const paddedNum = String(orderNumber).padStart(config.digits || 6, '0');
         
-        const formattedOrderNumber = dateStr ? `${config.prefix}-${dateStr}-${paddedNum}` : `${config.prefix}-${paddedNum}`;
+        const formattedOrderNumber = `SO-${fy}-${paddedNum}`;
 
         const newOrderRef = db.collection('orders').doc();
         
@@ -154,7 +171,7 @@ export const createOrder = onCall({ region: 'asia-south1' }, async (request) => 
                     orderId: newOrderRef.id,
                     amount: payment.amount,
                     paymentMethod: payment.method,
-                    transactionDetails: payment.ref, // Corrected from payment.transactionDetails
+                    transactionDetails: payment.ref,
                     status: "Pending",
                     submittedAt: admin.firestore.FieldValue.serverTimestamp(),
                     customerName: order.customerName,
