@@ -12,9 +12,9 @@ export default function HomePage() {
     <>
       <HeroBanner />
       <div className="container mx-auto px-4 md:px-6 py-12 space-y-12">
-        <ShopPageClient />
-        <Separator />
         <CustomerMap />
+        <Separator />
+        <ShopPageClient />
       </div>
     </>
   );

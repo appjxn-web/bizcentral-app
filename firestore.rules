@@ -81,9 +81,10 @@ service cloud.firestore {
     // --- 6. PUBLIC CONTENT & PAYMENTS ---
     match /products/{id} { allow read, list: if true; allow write: if isAdmin(); }
     match /posts/{id} { allow read, list: if true; allow write: if isAdmin(); }
+    match /vacancies/{id} { allow read, list: if true; allow write: if isAdmin(); }
+    match /locations/{id} { allow read, list: if true; allow write: if isAdmin(); }
+    match /pickupPoints/{id} { allow read, list: if true; allow write: if isAdmin(); }
     
-    // CORRECTED RULE: Allow any signed-in user to list offers.
-    // The application logic handles filtering which offers are shown to which role.
     match /offers/{offerId} { 
         allow read, list: if signedIn(); 
         allow write: if isAdmin(); 
