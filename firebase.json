@@ -15,7 +15,8 @@
         "firestore-debug.log",
         "firestore.indexes.json",
         "firestore.rules",
-        "storage.rules"
+        "storage.rules",
+        "lib"
       ],
       "predeploy": [
         "npm --prefix \"$RESOURCE_DIR\" run build"
