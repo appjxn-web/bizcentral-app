@@ -90,7 +90,7 @@ interface PartnerStockItem {
 }
 
 export default function CreateQuotationPage() {
-  const { toast } } from useToast();
+  const { toast } = useToast();
   const router = useRouter();
   const searchParams = useSearchParams();
   const editId = searchParams.get('id');
@@ -519,3 +519,4 @@ export default function CreateQuotationPage() {
     </>
   );
 }
+
