@@ -1,7 +1,5 @@
 
 
-'use server';
-
 import { collection, query, where, orderBy, getDocs, updateDoc, doc, type Firestore, type Query, limit, startAfter, type DocumentSnapshot, getCountFromServer, and } from 'firebase/firestore';
 import { initializeFirebase } from "@/firebase";
 import type { Order, OrderStatus } from '@/lib/types';

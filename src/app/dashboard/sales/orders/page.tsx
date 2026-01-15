@@ -1,3 +1,4 @@
+
 'use client';
 
 import * as React from 'react';
@@ -521,8 +522,8 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
     const canChangeStatus = ['Admin', 'Partner', 'Sales Manager', 'CEO'].includes(currentRole) && hasInitialPayment;
     
     const nextStatusOptions: Record<OrderStatus, OrderStatus[]> = {
-      'Awaiting Payment': ['Ordered'],
-      'Awaiting Payment Confirmation': ['Ordered'],
+      'Awaiting Payment': ['Ordered', 'Canceled'],
+      'Awaiting Payment Confirmation': ['Ordered', 'Canceled'],
       'Ordered': ['Manufacturing', 'Ready for Dispatch'],
       'Manufacturing': ['Ready for Dispatch'],
       'Ready for Dispatch': balanceDue <= 0 ? ['Shipped'] : ['Awaiting Payment'],

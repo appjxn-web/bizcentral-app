@@ -1,7 +1,5 @@
 
 
-'use server';
-
 import {
   collection,
   doc,

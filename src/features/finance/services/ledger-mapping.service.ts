@@ -1,7 +1,5 @@
 
 
-'use server';
-
 import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { coaRepository } from "@/features/finance/services/coa.repository";
 import { financeSettingsRepo } from "./finance-settings.repo";
