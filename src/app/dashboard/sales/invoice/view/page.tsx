@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -21,12 +20,13 @@ import {
   TableRow,
   TableFooter,
 } from '@/components/ui/table';
-import { Download, Loader2, ArrowLeft } from 'lucide-react';
+import { Download, Loader2, ArrowLeft, Printer, Phone, MapPin } from 'lucide-react';
 import { format } from 'date-fns';
 import { QRCodeSVG } from 'qrcode.react';
-import type { SalesInvoice, CompanyInfo, Party, Address, Order, CoaLedger, UserProfile } from '@/lib/types';
 import { useFirestore, useDoc, useCollection } from '@/firebase';
-import { collection, doc, query, where, limit, getDocs } from 'firebase/firestore';
+import { collection, query, where, doc, getDocs, limit, getDoc } from 'firebase/firestore';
+import type { CompanyInfo, SalesInvoice, Party, Address, Order, CoaLedger, UserProfile } from '@/lib/types';
+
 
 const numberToWords = (num: number): string => {
     if (num === null || num === undefined) return '';
@@ -83,7 +83,7 @@ const formatIndianCurrency = (num: number) => {
   }).format(num || 0);
 };
 
-export default function InvoiceViewPage() {
+function InvoiceViewContent() {
     const searchParams = useSearchParams();
     const invoiceId = searchParams.get('id'); // e.g., SI-2601-0001
     const pdfRef = React.useRef<HTMLDivElement>(null);
@@ -350,7 +350,7 @@ export default function InvoiceViewPage() {
                             </Table>
                         </section>
                         
-                        <div className="text-right my-4 text-xs md:text-sm font-semibold italic">
+                        <div className="text-right my-2 text-sm font-semibold italic">
                             Amount in words: {numberToWords(grandTotal)}
                         </div>
                         
@@ -387,3 +387,23 @@ export default function InvoiceViewPage() {
         </>
       );
 }
+
+export default function InvoiceViewPageWrapper() {
+  const [isClient, setIsClient] = React.useState(false);
+
+  React.useEffect(() => {
+    setIsClient(true);
+  }, []);
+
+  if (!isClient) {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <Loader2 className="animate-spin h-8 w-8" />
+      </div>
+    );
+  }
+
+  return <InvoiceViewContent />;
+}
+
+    
