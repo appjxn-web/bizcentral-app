@@ -135,8 +135,7 @@ export const createOrder = onCall({ region: 'asia-south1' }, async (request) => 
         const formattedOrderNumber = dateStr ? `${config.prefix}-${dateStr}-${paddedNum}` : `${config.prefix}-${paddedNum}`;
 
         const newOrderRef = db.collection('orders').doc();
-        const newPaymentRef = db.collection('paymentSubmissions').doc();
-
+        
         await db.runTransaction(async (transaction) => {
             const finalOrderData = {
                 ...order,
@@ -149,12 +148,13 @@ export const createOrder = onCall({ region: 'asia-south1' }, async (request) => 
             transaction.set(newOrderRef, finalOrderData);
 
             if (payment && payment.amount > 0) {
+                const newPaymentRef = db.collection('paymentSubmissions').doc();
                 const paymentSubmissionData = {
                     userId: order.userId,
                     orderId: newOrderRef.id,
                     amount: payment.amount,
                     paymentMethod: payment.method,
-                    transactionDetails: payment.ref,
+                    transactionDetails: payment.ref, // Corrected from payment.transactionDetails
                     status: "Pending",
                     submittedAt: admin.firestore.FieldValue.serverTimestamp(),
                     customerName: order.customerName,
@@ -717,4 +717,3 @@ export const helloWorld = onCall({ region: "asia-south1" }, (request) => {
     return { message: "Hello from Firebase!" };
   });
 
-    
