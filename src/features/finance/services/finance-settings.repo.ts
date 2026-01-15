@@ -1,4 +1,5 @@
 
+
 'use server';
 
 import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
@@ -16,21 +17,23 @@ export type FinanceSettings = {
 
 const { firestore: db } = initializeFirebase();
 
-const settingsDoc = (companyId: string) => doc(db, `companies/${companyId}/settings/finance`);
+const settingsDoc = () => doc(db, 'company', 'settings');
 
 export const financeSettingsRepo = {
-  async get(companyId: string): Promise<FinanceSettings | null> {
-    const snap = await getDoc(settingsDoc(companyId));
+  async get(): Promise<FinanceSettings | null> {
+    const snap = await getDoc(settingsDoc());
     return snap.exists() ? (snap.data() as any as FinanceSettings) : null;
   },
 
-  async upsert(companyId: string, data: Partial<FinanceSettings>, actorUid: string) {
+  async upsert(data: Partial<FinanceSettings>, actorUid: string) {
     await setDoc(
-      settingsDoc(companyId),
+      settingsDoc(),
       {
-        ...data,
-        updatedAt: serverTimestamp(),
-        updatedBy: actorUid,
+        finance: {
+            ...data,
+            updatedAt: serverTimestamp(),
+            updatedBy: actorUid,
+        }
       },
       { merge: true }
     );

@@ -1,4 +1,5 @@
 
+
 'use server';
 
 import { doc, setDoc, serverTimestamp, collection, getDocs, query, where, limit } from "firebase/firestore";
@@ -33,7 +34,7 @@ export const salesService = {
     settingsData: any
   ) {
     
-    const newInvoiceRef = doc(collection(db, `companies/${companyId}/sales_invoices`));
+    const newInvoiceRef = doc(collection(db, 'salesInvoices'));
     
     await setDoc(newInvoiceRef, {
         ...input,

@@ -29,10 +29,23 @@ service cloud.firestore {
     // --- 3. LOGISTICS (Orders & Invoices) ---
     match /orders/{orderId} {
       allow get: if signedIn() && (isAdmin() || resource.data.userId == request.auth.uid || resource.data.assignedToUid == request.auth.uid);
-      allow list: if signedIn() && (isAdmin() || request.query.where.userId == request.auth.uid || request.query.where.assignedToUid == request.auth.uid);
+      
+      allow list: if signedIn() && (
+        isAdmin() ||
+        request.query.where.userId == request.auth.uid ||
+        request.query.where.assignedToUid == request.auth.uid
+      );
+      
       allow create: if signedIn();
-      allow update: if signedIn() && (isAdmin() || resource.data.userId == request.auth.uid || resource.data.assignedToUid == request.auth.uid || request.resource.data.assignedToUid == request.auth.uid);
+      
+      allow update: if signedIn() && (
+        isAdmin() || 
+        resource.data.userId == request.auth.uid || 
+        resource.data.assignedToUid == request.auth.uid ||
+        (getRole() == 'Partner' && request.resource.data.assignedToUid == request.auth.uid)
+      );
     }
+
 
     match /salesInvoices/{invoiceId} {
       allow get: if signedIn();

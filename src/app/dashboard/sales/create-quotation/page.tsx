@@ -57,7 +57,7 @@ import { cn } from '@/lib/utils';
 import { useRole } from '@/app/dashboard/_components/role-provider';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useFirestore, useCollection, useUser, useDoc } from '@/firebase';
-import { collection, doc, addDoc, getDoc, updateDoc, query, where } from 'firebase/firestore';
+import { collection, doc, addDoc, getDoc, updateDoc, query, where, serverTimestamp } from 'firebase/firestore';
 import { estimateDispatchDate, type EstimateDispatchDateOutput } from '@/ai/flows/estimate-dispatch-date-flow';
 
 interface QuotationItem {
@@ -80,6 +80,7 @@ const formatIndianCurrency = (num: number) => {
     style: 'currency',
     currency: 'INR',
     minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   }).format(num);
 };
 
@@ -89,7 +90,7 @@ interface PartnerStockItem {
 }
 
 export default function CreateQuotationPage() {
-  const { toast } = useToast();
+  const { toast } } from useToast();
   const router = useRouter();
   const searchParams = useSearchParams();
   const editId = searchParams.get('id');
@@ -185,17 +186,19 @@ export default function CreateQuotationPage() {
   }, [items, overallDiscount, isInterstate]);
   
   React.useEffect(() => {
-    const rawData = localStorage.getItem('quotationToConvert');
+    const rawData = localStorage.getItem('quotationLead');
     if (rawData) {
         const data = JSON.parse(rawData);
-        setSelectedPartyId(data.customerId);
-        setItems(data.items.map((item: any, i: number) => ({...item, id: `item-${Date.now()}-${i}`})));
-        setOverallDiscount(data.discount || 0);
-        setTerms(data.terms || '50% advance payment required.');
-        localStorage.removeItem('quotationToConvert');
-        toast({ title: "Pre-filled from Quotation" });
+        const customer = parties?.find(p => p.phone === data.phone);
+        if (customer) {
+            setSelectedPartyId(customer.id);
+        } else {
+            // Here you might want to auto-create a party or show a different UI
+            toast({ title: "New Customer", description: "This lead is not yet a customer. A new party record could be created." });
+        }
+        localStorage.removeItem('quotationLead');
     }
-  }, [toast]);
+  }, [toast, parties]);
 
   React.useEffect(() => {
     const fetchEstimate = async () => {

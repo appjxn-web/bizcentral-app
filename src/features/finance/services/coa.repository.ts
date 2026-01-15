@@ -23,32 +23,31 @@ type ListOpts = { take?: number };
 
 const { firestore: db } = initializeFirebase();
 
-async function getLedger(companyId: string, ledgerId: string) {
+async function getLedger(ledgerId: string) {
     const ref = doc(db, `coa_ledgers/${ledgerId}`);
     const snap = await getDoc(ref);
     return snap.exists() ? { id: snap.id, ...snap.data() } : null;
 }
 
-async function listGroups(companyId: string, opts: ListOpts = {}) {
+async function listGroups(opts: ListOpts = {}) {
     const ref = collection(db, `coa_groups`);
     const q = query(ref, orderBy("path", "asc"), limit(opts.take ?? 500));
     const snap = await getDocs(q);
     return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 }
 
-async function listLedgers(companyId: string, opts: ListOpts = {}) {
+async function listLedgers(opts: ListOpts = {}) {
     const ref = collection(db, `coa_ledgers`);
     const q = query(ref, orderBy("name", "asc"), limit(opts.take ?? 2000));
     const snap = await getDocs(q);
     return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 }
 
-async function createGroup(companyId: string, input: CoaGroupInput, actorUid: string) {
+async function createGroup(input: CoaGroupInput, actorUid: string) {
     const data = coaGroupSchema.parse(input);
     const ref = collection(db, `coa_groups`);
     const res = await addDoc(ref, {
       ...data,
-      companyId,
       createdBy: actorUid,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
@@ -56,7 +55,7 @@ async function createGroup(companyId: string, input: CoaGroupInput, actorUid: st
     return res.id;
 }
 
-async function updateGroup(companyId: string, groupId: string, patch: Partial<CoaGroupInput>, actorUid: string) {
+async function updateGroup(groupId: string, patch: Partial<CoaGroupInput>, actorUid: string) {
     const ref = doc(db, `coa_groups`, groupId);
     await updateDoc(ref, {
       ...patch,
@@ -65,13 +64,12 @@ async function updateGroup(companyId: string, groupId: string, patch: Partial<Co
     });
 }
 
-async function createLedger(companyId: string, input: any, actorUid: string) {
+async function createLedger(input: any, actorUid: string) {
     const data = input;
     const ref = collection(db, `coa_ledgers`);
     const res = await addDoc(ref, {
       ...data,
       id: '',
-      companyId,
       createdBy: actorUid,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
@@ -80,7 +78,7 @@ async function createLedger(companyId: string, input: any, actorUid: string) {
     return res.id;
 }
 
-async function deleteGroupSafe(companyId: string, groupId: string) {
+async function deleteGroupSafe(groupId: string) {
     const ledRef = collection(db, `coa_ledgers`);
     const q = query(ledRef, where("groupId", "==", groupId), limit(1));
     const snap = await getDocs(q);

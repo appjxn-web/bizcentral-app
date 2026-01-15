@@ -1,3 +1,5 @@
+
+
 'use server';
 
 import {
@@ -55,7 +57,7 @@ export async function createUser(uid: string, data: Omit<UserProfile, 'id'>): Pr
  * Updates an existing user profile document.
  * @param uid - The UID of the user to update.
  * @param data - An object containing the fields to update.
- * @returns A promise that resolves when the update is complete.
+ * @returns a promise that resolves when the update is complete.
  */
 export async function updateUser(uid: string, data: Partial<Omit<UserProfile, 'id'>>): Promise<void> {
     const userRef = doc(usersCollectionRef, uid);
