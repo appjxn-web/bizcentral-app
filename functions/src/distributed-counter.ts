@@ -29,7 +29,7 @@ export async function getNextDistributedCounter(db: Firestore, counterId: string
 
     // To get the total, we need to read all shards.
     // For sequential IDs, an accurate count is required.
-    const shardsSnapshot = await shardsRef.get();
+    const shardsSnapshot = await transaction.get(shardsRef);
     let totalCount = 0;
     shardsSnapshot.forEach((doc) => {
       totalCount += doc.data().count;
