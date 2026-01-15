@@ -25,6 +25,7 @@ import type {
   SalesOrder,
 } from "./types";
 import { getNextDocNumber } from "./number-series";
+import { getNextDistributedCounter } from "./distributed-counter";
 
 
 if (admin.apps.length === 0) {
@@ -110,17 +111,26 @@ export const handleOrderCreation = onDocumentCreated({ document: "orders/{orderI
   const snap = event.data;
   if (!snap) return;
 
+  const orderNumber = await getNextDistributedCounter(db, 'sales_orders');
+
   const prefixesSnap = await db.doc('company/settings').get();
   const prefixes = prefixesSnap.data()?.prefixes;
-  
-  // To prevent race conditions, we get all documents in a transaction-like manner
-  const allOrdersQuery = db.collection('orders');
-  const allOrdersSnap = await allOrdersQuery.get();
-  const allOrdersData = allOrdersSnap.docs.map(d => d.data());
 
-  const orderNumber = getNextDocNumber('Sales Order', prefixes, allOrdersData as any[]);
+  const config = prefixes?.find((c: any) => c.type === 'Sales Order') || {
+      prefix: 'SO',
+      useDate: true,
+      digits: 4,
+  };
   
-  await snap.ref.update({ orderNumber });
+  const now = new Date();
+  const yearShort = String(now.getFullYear()).slice(-2);
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const dateStr = config.useDate ? `${yearShort}${month}` : '';
+  const paddedNum = String(orderNumber).padStart(config.digits || 4, '0');
+  
+  const formattedOrderNumber = dateStr ? `${config.prefix}-${dateStr}-${paddedNum}` : `${config.prefix}-${paddedNum}`;
+
+  await snap.ref.update({ orderNumber: formattedOrderNumber });
 });
 
 /**
@@ -667,6 +677,3 @@ export const helloWorld = onCall({ region: "asia-south1" }, (request) => {
     console.log("Hello from Firebase!");
     return { message: "Hello from Firebase!" };
   });
-
-
-    

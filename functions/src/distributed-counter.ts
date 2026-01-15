@@ -24,19 +24,29 @@ export async function getNextDistributedCounter(db: Firestore, counterId: string
 
   // Atomically increment the shard's count and get the total.
   return db.runTransaction(async (transaction) => {
-    // We increment the selected shard.
-    transaction.update(shardRef, { count: FieldValue.increment(1) });
+    
+    // We must ensure the shard exists before trying to update it.
+    const shardDoc = await transaction.get(shardRef);
+    if (!shardDoc.exists) {
+        transaction.set(shardRef, { count: 1 });
+        // Since this is the first increment for this shard, we read all others
+        // to get the total.
+    } else {
+        transaction.update(shardRef, { count: FieldValue.increment(1) });
+    }
 
     // To get the total, we need to read all shards.
     // For sequential IDs, an accurate count is required.
     const shardsSnapshot = await transaction.get(shardsRef);
     let totalCount = 0;
     shardsSnapshot.forEach((doc) => {
-      totalCount += doc.data().count;
+      // a document might not exist yet, so we guard against that
+      totalCount += doc.data()?.count || 0;
     });
 
-    // The current transaction's increment isn't reflected in the snapshot yet,
-    // so we add 1 to get the new total.
-    return totalCount + 1;
+    // The current transaction's increment isn't reflected in the snapshot for an existing doc,
+    // so we add 1 to get the new total. If the doc was new, its value is 1, and the snapshot
+    // won't include it, so adding it to the sum of others is also correct.
+    return totalCount + (shardDoc.exists ? 1 : 0);
   });
 }

@@ -1,6 +1,5 @@
 
-
-import type {Timestamp} from "firebase/firestore";
+import type {Timestamp} from "firebase-admin/firestore";
 
 export type DocPrefixConfig = {
     id: string;
@@ -246,7 +245,7 @@ export interface PaymentSubmission {
   proofUrl?: string;
   status: 'Pending' | 'Approved' | 'Rejected';
   submittedAt: Timestamp;
+  recordedByUid?: string;
+  receivingAccountId?: string | null;
+  assignedToUid?: string | null;
 }
-    
-
-    
