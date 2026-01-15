@@ -72,6 +72,7 @@ interface OrderItem {
   unit: string;
   discount: number;
   rate: number;
+  price: number;
   gstRate: number;
   amount: number;
   category?: string;
@@ -329,6 +330,7 @@ export default function CreateSalesOrderPage() {
       unit: 'pcs',
       discount: 0,
       rate: 0,
+      price: 0,
       gstRate: 18,
       amount: 0,
     };
@@ -348,6 +350,7 @@ export default function CreateSalesOrderPage() {
                         updatedItem.name = product.name;
                         updatedItem.hsn = product.hsn || product.id.slice(0,4).toUpperCase();
                         updatedItem.rate = product.price;
+                        updatedItem.price = product.price;
                         updatedItem.gstRate = 18; 
                         updatedItem.category = product.category;
                     }
@@ -372,63 +375,59 @@ export default function CreateSalesOrderPage() {
       toast({ variant: 'destructive', title: 'Missing Information', description: 'Please select a customer and add items.' });
       return;
     }
-    if (!firestore || !authUser || !allSalesOrders || !settingsData) return;
-
+    if (!firestore || !authUser) return;
+  
     const customerUserQuery = query(collection(firestore, 'users'), where('email', '==', selectedParty?.email), limit(1));
     const customerUserSnap = await getDocs(customerUserQuery);
-
+  
     let customerDisplayName = selectedParty?.name || '';
     let customerUserId = selectedPartyId;
-
+  
     if (!customerUserSnap.empty) {
-        const customerUserData = customerUserSnap.docs[0].data() as UserProfile;
-        customerDisplayName = customerUserData.displayName || customerUserData.name;
-        customerUserId = customerUserSnap.docs[0].id;
+      const customerUserData = customerUserSnap.docs[0].data() as UserProfile;
+      customerDisplayName = customerUserData.displayName || customerUserData.name;
+      customerUserId = customerUserSnap.docs[0].id;
     }
-
-
+  
     try {
-        const orderData = {
-            userId: customerUserId, 
-            customerName: customerDisplayName,
-            customerEmail: selectedParty?.email || '',
-            date: orderDate,
-            expectedDeliveryDate: expectedDeliveryDate || null,
-            items: items.map(({id, category, ...rest}) => ({...rest, discount: overallDiscount})),
-            subtotal: calculations.subtotal,
-            discount: calculations.totalDiscountAmount,
-            cgst: calculations.cgst,
-            sgst: calculations.sgst,
-            grandTotal: calculations.grandTotal,
-            total: calculations.grandTotal,
-            paymentReceived: bookingAmount,
-            balance: calculations.grandTotal - bookingAmount,
-            pickupPointId: 'company-main',
-            assignedToUid: authUser.uid, 
-            createdBy: authUser.displayName || 'System',
-            paymentDetails: paymentDetails,
-            ...(quotationId && { quotationId: quotationId }),
-        };
-
-        if (isEditMode && orderIdToEdit) {
-            const orderRef = doc(firestore, 'orders', orderIdToEdit);
-            await updateDoc(orderRef, orderData);
-            toast({ title: 'Sales Order Updated' });
-        } else {
-            const newOrderNumber = getNextDocNumber('Sales Order', settingsData.prefixes, allSalesOrders);
-            const newOrderData: Partial<SalesOrder> = {
-                ...orderData,
-                orderNumber: newOrderNumber,
-                status: 'Ordered',
-                createdAt: serverTimestamp(),
-            };
-            await addDoc(collection(firestore, 'orders'), newOrderData);
-            toast({ title: 'Sales Order Saved' });
-        }
-        router.push('/dashboard/sales/orders');
+      const newOrderRef = doc(collection(firestore, 'orders'));
+      
+      const orderData: Omit<SalesOrder, 'id' | 'orderNumber' | 'createdAt'> = {
+        userId: customerUserId,
+        customerName: customerDisplayName,
+        customerEmail: selectedParty?.email || '',
+        date: orderDate,
+        expectedDeliveryDate: expectedDeliveryDate || null,
+        items: items.map(({id, category, ...rest}) => ({...rest, discount: overallDiscount})),
+        subtotal: calculations.subtotal,
+        discount: calculations.totalDiscountAmount,
+        cgst: calculations.cgst,
+        sgst: calculations.sgst,
+        igst: calculations.igst,
+        grandTotal: calculations.grandTotal,
+        total: calculations.grandTotal,
+        paymentReceived: bookingAmount,
+        balance: calculations.grandTotal - bookingAmount,
+        pickupPointId: 'company-main',
+        assignedToUid: authUser.uid,
+        createdBy: authUser.displayName || 'System',
+        paymentDetails: paymentDetails,
+        ...(quotationId && { quotationId: quotationId }),
+        status: 'Ordered',
+      };
+  
+      if (isEditMode && orderIdToEdit) {
+        const orderRef = doc(firestore, 'orders', orderIdToEdit);
+        await updateDoc(orderRef, orderData);
+        toast({ title: 'Sales Order Updated' });
+      } else {
+        await setDoc(newOrderRef, { ...orderData, id: newOrderRef.id, createdAt: serverTimestamp() });
+        toast({ title: 'Sales Order Saved' });
+      }
+      router.push('/dashboard/sales/orders');
     } catch (e) {
-        console.error(e);
-        toast({ variant: 'destructive', title: 'Save failed' });
+      console.error(e);
+      toast({ variant: 'destructive', title: 'Save failed' });
     }
   };
 
@@ -443,7 +442,7 @@ export default function CreateSalesOrderPage() {
     if (!bankLedger) return;
   
     try {
-      const newVoucherId = getNextDocNumber('Receipt Voucher', settingsData.prefixes, allJournalVouchers);
+      const newVoucherId = getNextDocNumber('Receipt Voucher', settingsData.prefixes, allJournalVouchers || []);
       const jvData = {
         id: newVoucherId,
         voucherNumber: newVoucherId,
@@ -455,8 +454,9 @@ export default function CreateSalesOrderPage() {
           { accountId: 'L-2.1.3-4', debit: 0, credit: amount } // Customer Advances
         ],
         createdAt: serverTimestamp(),
+        createdByUid: authUser?.uid
       };
-  
+      
       await setDoc(doc(firestore, 'journalVouchers', newVoucherId), jvData);
   
       setBookingAmount(prev => prev + amount);
@@ -764,8 +764,6 @@ export default function CreateSalesOrderPage() {
   );
 }
 
-  
+    
 
-
-
-
+    

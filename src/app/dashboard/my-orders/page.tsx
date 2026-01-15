@@ -299,7 +299,7 @@ function PayBalanceDialog({ order, companyInfo, balance }: { order: Order; compa
                         </div>
                     </div>
                     <DialogFooter>
-                        <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
+                        <DialogClose asChild><Button type="button" variant="outline">Close</Button></DialogClose>
                         <Button type="button" onClick={() => handleSubmit('manual')} disabled={isSubmitting || !amountToPay || !receivingAccountId}>
                             {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                             Record Payment
@@ -439,14 +439,7 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
     const [isCancelDialogOpen, setIsCancelDialogOpen] = React.useState(false);
     const { toast } = useToast();
     
-    const userProfileRef = user ? doc(firestore, 'users', user.uid) : null;
-    const { data: userProfile } = useDoc<UserProfile>(userProfileRef);
-
-    const customerPartyRef = React.useMemo(() => {
-        if(!order.userId || !firestore) return null;
-        return doc(firestore, 'parties', order.userId);
-    }, [order.userId, firestore]);
-    const { data: customerParty } = useDoc<Party>(customerPartyRef);
+    const { data: userProfile, loading: userProfileLoading } = useDoc<UserProfile>(user ? doc(firestore, 'users', user.uid) : null);
     
     const paymentSubmissionsQuery = React.useMemo(() => {
       if (!order.id || !user?.uid || !firestore) return null;
@@ -465,49 +458,25 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
       );
     }, [order.id, user?.uid, currentRole, firestore]);
 
-    const allJvsQuery = React.useMemo(() => {
-      if (!customerParty?.coaLedgerId) return null;
-      return query(collection(firestore, 'journalVouchers'));
-    }, [customerParty]);
-
     const { data: paymentSubmissions } = useCollection<PaymentSubmission>(paymentSubmissionsQuery);
-    const { data: allJournalVouchers } = useCollection<JournalVoucher>(allJvsQuery);
     
-    const { totalPaid, balanceDue, paymentHistory } = React.useMemo(() => {
-        // Source 1: Approved Journal Vouchers related to this order
-        const jvHistory = (allJournalVouchers || [])
-            .filter(jv => jv.narration?.includes(order.orderNumber || order.id) && jv.entries.some(e => e.accountId === customerParty?.coaLedgerId && e.credit && e.credit > 0))
-            .map(jv => {
-                 const creditEntry = jv.entries.find(e => e.accountId === customerParty?.coaLedgerId)!;
-                 return {
-                    amount: creditEntry.credit || 0,
-                    date: jv.createdAt.toDate(),
-                    details: jv.narration,
-                    status: 'Approved',
-                    type: 'jv'
-                 }
-            });
-
-        // Source 2: Pending submissions not yet converted to JVs
-        const pendingSubmissions = (paymentSubmissions || [])
-            .filter(p => p.status === 'Pending')
-            .map(p => ({
-                amount: p.amount,
-                date: p.submittedAt.toDate(),
-                details: `Ref: ${p.transactionDetails || 'N/A'} (${p.paymentMethod})`,
-                status: p.status,
-                type: 'submission'
-            }));
-
-        const combinedHistory = [...jvHistory, ...pendingSubmissions].sort((a,b) => a.date.getTime() - b.date.getTime());
-        const totalFromCombined = jvHistory.reduce((sum, p) => sum + p.amount, 0);
+    const { totalPaid, balanceDue, paymentHistory, hasInitialPayment } = React.useMemo(() => {
+        const approvedPayments = (paymentSubmissions || []).filter(p => p.status === 'Approved');
+        const totalPaidAmount = approvedPayments.reduce((sum, p) => sum + p.amount, 0);
+        
+        const history = (paymentSubmissions || []).map(p => ({
+            amount: p.amount,
+            date: p.submittedAt.toDate(),
+            details: `Ref: ${p.transactionDetails || 'N/A'} (${p.paymentMethod}) - ${p.status}`,
+        })).sort((a,b) => a.date.getTime() - b.date.getTime());
 
         return {
-            totalPaid: totalFromCombined,
-            balanceDue: order.grandTotal - totalFromCombined,
-            paymentHistory: combinedHistory,
+            totalPaid: totalPaidAmount,
+            balanceDue: order.grandTotal - totalPaidAmount,
+            paymentHistory: history,
+            hasInitialPayment: totalPaidAmount > 0
         }
-    }, [order, paymentSubmissions, allJournalVouchers, customerParty]);
+    }, [order.grandTotal, paymentSubmissions]);
 
 
     const refundQuery = order.status === 'Canceled' && user
@@ -516,7 +485,7 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
     const { data: refundRequests } = useCollection<RefundRequest>(refundQuery);
     const refundRequest = refundRequests?.[0];
 
-    const existingInvoice = allSalesInvoices?.find(inv => inv.orderNumber === (order as SalesOrder).orderNumber);
+    const existingInvoice = allSalesInvoices?.find(inv => inv.orderId === order.id);
 
     const canCancel = order.status === 'Ordered' || order.status === 'Manufacturing';
     
@@ -563,22 +532,37 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
         }
     };
     
-    const canChangeStatus = ['Admin', 'Partner', 'Sales Manager', 'CEO'].includes(currentRole);
+    const canChangeStatus = ['Admin', 'Partner', 'Sales Manager', 'CEO'].includes(currentRole) && hasInitialPayment;
     
     const nextStatusOptions: Record<OrderStatus, OrderStatus[]> = {
       'Awaiting Payment': ['Ordered', 'Canceled'],
       'Awaiting Payment Confirmation': ['Ordered', 'Canceled'],
-      'Ordered': ['Manufacturing', 'Ready for Dispatch', 'Shipped'],
-      'Ready for Dispatch': balanceDue <= 0 ? ['Invoice Sent', 'Shipped'] : [],
-      'Invoice Sent': balanceDue <= 0 ? ['Shipped', 'Delivered'] : [],
-      'Shipped': balanceDue <= 0 ? ['Delivered'] : [],
+      'Ordered': ['Manufacturing', 'Ready for Dispatch'],
       'Manufacturing': ['Ready for Dispatch'],
+      'Ready for Dispatch': balanceDue <= 0 ? ['Shipped'] : ['Awaiting Payment'],
+      'Invoice Sent': ['Shipped'],
+      'Shipped': ['Delivered'],
       'Delivered': [],
       'Canceled': [],
       'Cancellation Requested': ['Ordered', 'Canceled'],
     };
     
     const availableStatuses = nextStatusOptions[order.status] || [];
+    
+    const handleGenerateInvoice = async () => {
+      // Fetch the full customer/party details before navigating
+      if (order.userId && firestore) {
+        const partyRef = doc(firestore, 'parties', order.userId);
+        const partySnap = await getDoc(partyRef);
+        if (partySnap.exists()) {
+          const partyData = partySnap.data() as Party;
+          localStorage.setItem('invoiceDataToCreate', JSON.stringify({ ...order, customerParty: partyData, userProfile }));
+          router.push('/dashboard/sales/create-invoice');
+        } else {
+          toast({ variant: 'destructive', title: 'Customer details not found.' });
+        }
+      }
+    };
     
     return (
       <>
@@ -647,7 +631,7 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
                             {paymentHistory && paymentHistory.length > 0 && !refundRequest && (
                                 <div>
                                     <p className="text-xs font-semibold">Payment History:</p>
-                                    {paymentHistory.map((p, i) => (
+                                    {(paymentHistory as any[]).map((p, i) => (
                                         <p key={i} className="text-xs text-muted-foreground font-mono whitespace-pre-wrap">
                                             {format(p.date, 'dd/MM/yy')}: {formatIndianCurrency(p.amount)} - {p.details}
                                         </p>
@@ -703,11 +687,8 @@ function OrderCard({ order, allSalesInvoices, onStatusChange }: { order: Order, 
                                         </Link>
                                     </Button>
                                   </>
-                                ) : (order.status === 'Ready for Dispatch' || order.status === 'Shipped') && ['Admin', 'Accounts Manager', 'Sales Manager'].includes(currentRole) && (
-                                     <Button size="sm" onClick={() => {
-                                         localStorage.setItem('invoiceDataToCreate', JSON.stringify(order));
-                                         router.push('/dashboard/sales/create-invoice');
-                                     }}>
+                                ) : order.status === 'Ready for Dispatch' && balanceDue <= 0 && ['Admin', 'Accounts Manager', 'Sales Manager', 'Partner', 'CEO'].includes(currentRole) && (
+                                     <Button size="sm" onClick={handleGenerateInvoice}>
                                         <PlusCircle className="mr-2 h-4 w-4" />
                                         Generate Invoice
                                     </Button>
@@ -742,15 +723,15 @@ function OrdersPageContent() {
       const ordersRef = collection(firestore, 'orders');
 
       if (['Admin', 'CEO', 'Sales Manager', 'Accounts Manager'].includes(currentRole)) {
-          return query(ordersRef, orderBy('date', 'desc'));
+          return query(ordersRef, orderBy('createdAt', 'desc'));
       }
 
       if (currentRole === 'Partner') {
-          return query(ordersRef, where('assignedToUid', '==', user.uid), orderBy('date', 'desc'));
+          return query(ordersRef, where('assignedToUid', '==', user.uid), orderBy('createdAt', 'desc'));
       }
       
       // Default to customer view
-      return query(ordersRef, where('userId', '==', user.uid), orderBy('date', 'desc'));
+      return query(ordersRef, where('userId', '==', user.uid), orderBy('createdAt', 'desc'));
   }, [user?.uid, currentRole, firestore]);
   
   const invoicesQuery = React.useMemo(() => {
@@ -765,7 +746,6 @@ function OrdersPageContent() {
           return query(invoicesRef, where('assignedToUid', '==', user.uid), orderBy('date', 'desc'));
       }
   
-      // Default to customer view
       return query(invoicesRef, where('customerId', '==', user.uid), orderBy('date', 'desc'));
   }, [user?.uid, currentRole, firestore]);
 
@@ -785,30 +765,38 @@ function OrdersPageContent() {
   }, [orders]);
   
   const handleStatusChange = async (order: Order, newStatus: OrderStatus) => {
+      if (!user) return;
       try {
           const batch = writeBatch(firestore);
           const orderRef = doc(firestore, 'orders', order.id);
-          batch.update(orderRef, { status: newStatus });
+          
+          const updateData: any = { status: newStatus };
+
+          if (currentRole === 'Partner' && !order.assignedToUid) {
+              updateData.assignedToUid = user.uid;
+          }
+
+          batch.update(orderRef, updateData);
           
           const notificationRef = doc(collection(firestore, 'users', order.userId, 'notifications'));
           const orderNumber = (order as SalesOrder).orderNumber || order.id;
 
-          const notificationData = {
+          batch.set(notificationRef, {
               type: 'info',
               title: 'Order Status Updated',
               description: `Your order #${orderNumber} has been updated to "${newStatus}".`,
               timestamp: serverTimestamp(),
               read: false,
-          };
-          batch.set(notificationRef, notificationData);
+          });
 
           await batch.commit();
 
           toast({
               title: 'Status Updated',
-              description: `Order status changed to "${newStatus}" and customer notified.`,
+              description: `Order status changed to "${newStatus}" successfully.`,
           });
       } catch (error) {
+          console.error("Status Update Error:", error);
           toast({
               variant: 'destructive',
               title: 'Update Failed',
@@ -900,5 +888,7 @@ export default function OrdersPage() {
 
     return <OrdersPageContent />;
 }
+
+    
 
     

@@ -1,5 +1,5 @@
 
-'use server';
+
 import {
   onDocumentCreated,
   onDocumentUpdated,
@@ -7,7 +7,7 @@ import {
 import * as admin from "firebase-admin";
 import {getFirestore} from "firebase-admin/firestore";
 import type {Order, SalesInvoice, Party, PaymentSubmission} from "./types";
-import { getNextDocNumber } from "./number-series";
+import { getNextDistributedCounter } from "./distributed-counter";
 
 if (admin.apps.length === 0) { admin.initializeApp(); }
 const db = getFirestore();
@@ -83,15 +83,16 @@ export const handleOrderCreation = onDocumentCreated("orders/{orderId}", async (
     const snap = event.data;
     if (!snap) return;
 
-    const prefixesSnap = await db.doc('company/settings').get();
-    const prefixes = prefixesSnap.data()?.prefixes;
-    const allOrders = await db.collection('orders').get();
-    const allOrdersData = allOrders.docs.map(d => d.data());
-
-    const orderNumber = getNextDocNumber('Sales Order', prefixes, allOrdersData as any[]);
+    // Use distributed counter for robust numbering
+    const orderNumber = await getNextDistributedCounter(db, 'sales_orders');
+    const year = String(new Date().getFullYear()).slice(-2);
+    const month = String(new Date().getMonth() + 1).padStart(2, '0');
+    const num = String(orderNumber).padStart(4, '0');
+    const formattedOrderNumber = `SO-${year}${month}-${num}`;
     
-    await snap.ref.update({ orderNumber });
+    await snap.ref.update({ orderNumber: formattedOrderNumber });
 });
+
 
 export const handleInvoiceCreation = onDocumentCreated("salesInvoices/{id}", async (event) => {
     const snap = event.data;
