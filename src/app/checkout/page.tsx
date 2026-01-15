@@ -263,6 +263,7 @@ export default function CheckoutPage() {
         discount,
         cgst,
         sgst,
+        igst,
         grandTotal,
         pickupPointId: selectedPickupPointId,
         assignedToUid: pickupPoints?.find(p => p.id === selectedPickupPointId)?.ownerUid || null,
@@ -492,3 +493,5 @@ export default function CheckoutPage() {
   );
 }
 
+
+    
