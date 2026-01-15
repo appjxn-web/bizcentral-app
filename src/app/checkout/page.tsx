@@ -290,11 +290,10 @@ export default function CheckoutPage() {
 
     } catch (e: any) {
         console.error("Error creating order:", e);
-        // Display more specific error details from the callable function
         toast({ 
             variant: 'destructive', 
-            title: `Order Failed: ${e.code}`, 
-            description: e.details || e.message || 'Could not place your order.' 
+            title: `Order Failed: ${e.code || 'Internal Error'}`, 
+            description: e.details?.message || e.message || 'Could not place your order. Please try again.'
         });
     } finally {
         setIsPlacingOrder(false);
@@ -492,3 +491,4 @@ export default function CheckoutPage() {
     </div>
   );
 }
+
