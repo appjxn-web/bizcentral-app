@@ -1,4 +1,3 @@
-
 'use server';
 /**
  * @fileOverview A Genkit flow for generating social media post ideas.
@@ -43,9 +42,13 @@ const generatePostIdeaFlow = ai.defineFlow(
       model: googleAI.model('gemini-1.5-flash-latest'),
       prompt: `You are a creative marketing assistant. A user wants to create a promotional post for their business community.
       
+      {{#if topic}}
       The topic is: "${input.topic}".
-      
-      Based on this topic, generate a short, engaging, and friendly post content (around 2-4 sentences). The tone should be positive and encouraging.`,
+      Based on this topic, generate a short, engaging, and friendly post content (around 2-4 sentences). The tone should be positive and encouraging.
+      {{else}}
+      The user has not provided a topic. Please generate a generic but inspiring post about community and collaboration for a business audience.
+      {{/if}}
+      `,
     });
 
     return { postContent: text };
