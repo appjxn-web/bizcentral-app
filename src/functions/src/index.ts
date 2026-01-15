@@ -1,11 +1,12 @@
 
+
 import {
   onDocumentCreated,
   onDocumentUpdated,
   onDocumentWritten,
   Change,
   DocumentSnapshot,
-  FirestoreEvent
+  FirestoreEvent,
 } from "firebase-functions/v2/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import * as admin from "firebase-admin";
@@ -107,31 +108,70 @@ const findOrCreateSpecificCustomerLedger = async (
   return newLedgerRef.id;
 };
 
-export const handleOrderCreation = onDocumentCreated({ document: "orders/{orderId}", region: "asia-south1" }, async (event) => {
-  const snap = event.data;
-  if (!snap) return;
+export const createOrder = onCall({ region: 'asia-south1' }, async (request) => {
+    const { order, payment } = request.data;
+    const uid = request.auth?.uid;
 
-  const orderNumber = await getNextDistributedCounter(db, 'sales_orders');
+    if (!uid) {
+        throw new HttpsError('unauthenticated', 'You must be logged in to create an order.');
+    }
 
-  const prefixesSnap = await db.doc('company/settings').get();
-  const prefixes = prefixesSnap.data()?.prefixes;
+    try {
+        const orderNumber = await getNextDistributedCounter(db, 'sales_orders');
+        const prefixesSnap = await db.doc('company/settings').get();
+        const prefixes = prefixesSnap.data()?.prefixes;
 
-  const config = prefixes?.find((c: any) => c.type === 'Sales Order') || {
-      prefix: 'SO',
-      useDate: true,
-      digits: 4,
-  };
-  
-  const now = new Date();
-  const yearShort = String(now.getFullYear()).slice(-2);
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const dateStr = config.useDate ? `${yearShort}${month}` : '';
-  const paddedNum = String(orderNumber).padStart(config.digits || 4, '0');
-  
-  const formattedOrderNumber = dateStr ? `${config.prefix}-${dateStr}-${paddedNum}` : `${config.prefix}-${paddedNum}`;
+        const config = prefixes?.find((c: any) => c.type === 'Sales Order') || {
+            prefix: 'SO',
+            useDate: true,
+            digits: 4,
+        };
+        
+        const now = new Date();
+        const yearShort = String(now.getFullYear()).slice(-2);
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const dateStr = config.useDate ? `${yearShort}${month}` : '';
+        const paddedNum = String(orderNumber).padStart(config.digits || 4, '0');
+        
+        const formattedOrderNumber = dateStr ? `${config.prefix}-${dateStr}-${paddedNum}` : `${config.prefix}-${paddedNum}`;
 
-  await snap.ref.update({ orderNumber: formattedOrderNumber });
+        const newOrderRef = db.collection('orders').doc();
+        const newPaymentRef = db.collection('paymentSubmissions').doc();
+
+        await db.runTransaction(async (transaction) => {
+            const finalOrderData = {
+                ...order,
+                id: newOrderRef.id,
+                orderNumber: formattedOrderNumber,
+                paymentReceived: payment.amount || 0,
+                balance: order.grandTotal - (payment.amount || 0),
+                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            };
+            transaction.set(newOrderRef, finalOrderData);
+
+            if (payment && payment.amount > 0) {
+                const paymentSubmissionData = {
+                    userId: order.userId,
+                    orderId: newOrderRef.id,
+                    amount: payment.amount,
+                    paymentMethod: payment.method,
+                    transactionDetails: payment.ref,
+                    status: "Pending",
+                    submittedAt: admin.firestore.FieldValue.serverTimestamp(),
+                    customerName: order.customerName,
+                    assignedToUid: order.assignedToUid
+                };
+                transaction.set(newPaymentRef, paymentSubmissionData);
+            }
+        });
+
+        return { success: true, orderId: newOrderRef.id, orderNumber: formattedOrderNumber };
+    } catch (error: any) {
+        console.error("Error creating order:", error);
+        throw new HttpsError('internal', 'Failed to create order.', error.message);
+    }
 });
+
 
 /**
  * ✅ UNIFIED INVOICE TRIGGER
@@ -677,5 +717,3 @@ export const helloWorld = onCall({ region: "asia-south1" }, (request) => {
     console.log("Hello from Firebase!");
     return { message: "Hello from Firebase!" };
   });
-
-    

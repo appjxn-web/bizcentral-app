@@ -62,6 +62,7 @@ import { collection, doc, addDoc, serverTimestamp, setDoc, query, where, orderBy
 import { getNextDocNumber } from '@/lib/number-series';
 import { estimateDispatchDate, type EstimateDispatchDateOutput } from '@/ai/flows/estimate-dispatch-date-flow';
 import { QRCodeSVG } from 'qrcode.react';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 
 interface OrderItem {
   id: string;
@@ -375,7 +376,7 @@ export default function CreateSalesOrderPage() {
       toast({ variant: 'destructive', title: 'Missing Information', description: 'Please select a customer and add items.' });
       return;
     }
-    if (!firestore || !authUser) return;
+    if (!firestore || !authUser || !allSalesOrders) return;
   
     const customerUserQuery = query(collection(firestore, 'users'), where('email', '==', selectedParty?.email), limit(1));
     const customerUserSnap = await getDocs(customerUserQuery);
@@ -390,44 +391,43 @@ export default function CreateSalesOrderPage() {
     }
   
     try {
-      const newOrderRef = doc(collection(firestore, 'orders'));
-      
-      const orderData: Omit<SalesOrder, 'id' | 'orderNumber' | 'createdAt'> = {
-        userId: customerUserId,
-        customerName: customerDisplayName,
-        customerEmail: selectedParty?.email || '',
-        date: orderDate,
-        expectedDeliveryDate: expectedDeliveryDate || null,
-        items: items.map(({id, category, ...rest}) => ({...rest, discount: overallDiscount})),
-        subtotal: calculations.subtotal,
-        discount: calculations.totalDiscountAmount,
-        cgst: calculations.cgst,
-        sgst: calculations.sgst,
-        igst: calculations.igst,
-        grandTotal: calculations.grandTotal,
-        total: calculations.grandTotal,
-        paymentReceived: bookingAmount,
-        balance: calculations.grandTotal - bookingAmount,
-        pickupPointId: 'company-main',
-        assignedToUid: authUser.uid,
-        createdBy: authUser.displayName || 'System',
-        paymentDetails: paymentDetails,
-        ...(quotationId && { quotationId: quotationId }),
-        status: 'Ordered',
-      };
-  
-      if (isEditMode && orderIdToEdit) {
-        const orderRef = doc(firestore, 'orders', orderIdToEdit);
-        await updateDoc(orderRef, orderData);
-        toast({ title: 'Sales Order Updated' });
-      } else {
-        await setDoc(newOrderRef, { ...orderData, id: newOrderRef.id, createdAt: serverTimestamp() });
-        toast({ title: 'Sales Order Saved' });
-      }
-      router.push('/dashboard/sales/orders');
-    } catch (e) {
+        const orderPayload = {
+            userId: customerUserId,
+            customerName: customerDisplayName,
+            customerEmail: selectedParty?.email || '',
+            date: orderDate,
+            expectedDeliveryDate: expectedDeliveryDate || null,
+            items: items.map(({id, category, ...rest}) => ({...rest, discount: overallDiscount})),
+            subtotal: calculations.subtotal,
+            discount: calculations.totalDiscountAmount,
+            cgst: calculations.cgst,
+            sgst: calculations.sgst,
+            igst: calculations.igst,
+            grandTotal: calculations.grandTotal,
+            pickupPointId: 'company-main',
+            assignedToUid: authUser.uid,
+            createdBy: authUser.displayName || 'System',
+            paymentDetails: paymentDetails,
+            ...(quotationId && { quotationId: quotationId }),
+            status: 'Ordered',
+        };
+        const paymentPayload = {
+            amount: bookingAmount,
+            method: paymentMode,
+            ref: paymentRef,
+        };
+
+        const functions = getFunctions(firestore.app, 'asia-south1');
+        const createOrder = httpsCallable(functions, 'createOrder');
+        
+        await createOrder({ order: orderPayload, payment: paymentPayload });
+
+        toast({ title: 'Sales Order Saved', description: 'Order has been successfully created.' });
+        router.push('/dashboard/sales/orders');
+
+    } catch (e: any) {
       console.error(e);
-      toast({ variant: 'destructive', title: 'Save failed' });
+      toast({ variant: 'destructive', title: 'Save failed', description: e.message || 'An unknown error occurred.' });
     }
   };
 
@@ -763,7 +763,3 @@ export default function CreateSalesOrderPage() {
     </>
   );
 }
-
-    
-
-    

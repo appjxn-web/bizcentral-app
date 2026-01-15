@@ -253,47 +253,34 @@ export default function CheckoutPage() {
         category: item.category,
     }));
     
-    try {
-        const batch = writeBatch(firestore);
-        
-        const newOrderRef = doc(collection(firestore, 'orders'));
-        const newPaymentRef = doc(collection(firestore, 'paymentSubmissions'));
+    const orderPayload = {
+        userId: user.uid,
+        customerName: userProfile.name || user.displayName || 'Guest',
+        customerEmail: user.email || 'N/A',
+        date: new Date().toISOString(),
+        items: orderItems,
+        subtotal,
+        discount,
+        cgst,
+        sgst,
+        grandTotal,
+        pickupPointId: selectedPickupPointId,
+        assignedToUid: pickupPoints?.find(p => p.id === selectedPickupPointId)?.ownerUid || null,
+        status: 'Awaiting Payment Confirmation',
+        paymentDetails: `Advance via UPI Ref: ${upiTransactionId}`
+    };
 
-        const newOrderPayload: Omit<Order, 'id'> = {
-            userId: user.uid,
-            customerName: userProfile.name || user.displayName || 'Guest',
-            customerEmail: user.email || 'N/A',
-            date: new Date().toISOString(),
-            items: orderItems,
-            subtotal,
-            discount,
-            cgst,
-            sgst,
-            grandTotal,
-            paymentReceived: advanceAmount,
-            balance: grandTotal - advanceAmount,
-            commission: 0,
-            pickupPointId: selectedPickupPointId,
-            assignedToUid: pickupPoints?.find(p => p.id === selectedPickupPointId)?.ownerUid || null,
-            createdAt: serverTimestamp(),
-            status: 'Awaiting Payment Confirmation',
-        };
-        batch.set(newOrderRef, newOrderPayload);
+    const paymentPayload = {
+      amount: advanceAmount,
+      method: "UPI / Online",
+      ref: upiTransactionId
+    };
+
+    try {
+        const functions = getFunctions(firestore.app, 'asia-south1');
+        const createOrder = httpsCallable(functions, 'createOrder');
         
-        const newPaymentPayload = {
-            userId: user.uid,
-            orderId: newOrderRef.id,
-            amount: advanceAmount,
-            paymentMethod: "UPI / Online",
-            transactionDetails: upiTransactionId,
-            status: "Pending",
-            submittedAt: serverTimestamp(),
-            assignedToUid: pickupPoints?.find(p => p.id === selectedPickupPointId)?.ownerUid || null,
-            customerName: userProfile.name || user.displayName || 'Guest',
-        };
-        batch.set(newPaymentRef, newPaymentPayload);
-        
-        await batch.commit();
+        await createOrder({ order: orderPayload, payment: paymentPayload });
 
         toast({ title: 'Order Placed!', description: `Your order is awaiting payment confirmation.` });
         localStorage.removeItem('cart');
@@ -500,4 +487,3 @@ export default function CheckoutPage() {
     </div>
   );
 }
-
