@@ -30,9 +30,9 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { PlusCircle, Save, Trash2, Check, ChevronsUpDown, CalendarClock, Loader2 } from 'lucide-react';
+import { PlusCircle, Save, Trash2, Check, ChevronsUpDown, CalendarClock, Loader2, DollarSign } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import type { Party, Product, UserRole, SalesOrder, Quotation } from '@/lib/types';
+import type { Party, Product, UserRole, SalesOrder, Quotation, CoaLedger, UserProfile, Offer, JournalVoucher } from '@/lib/types';
 import { format, startOfMonth } from 'date-fns';
 import { Separator } from '@/components/ui/separator';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -52,25 +52,30 @@ import {
   DialogTrigger,
   DialogFooter,
   DialogClose,
+  DialogDescription,
 } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import { useRole } from '@/app/dashboard/_components/role-provider';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useFirestore, useCollection, useUser, useDoc } from '@/firebase';
-import { collection, doc, addDoc, getDoc, updateDoc, query, where, serverTimestamp } from 'firebase/firestore';
+import { collection, doc, addDoc, serverTimestamp, setDoc, query, where, orderBy, limit, getDocs, updateDoc, writeBatch } from 'firebase/firestore';
+import { getNextDocNumber } from '@/lib/number-series';
 import { estimateDispatchDate, type EstimateDispatchDateOutput } from '@/ai/flows/estimate-dispatch-date-flow';
+import { QRCodeSVG } from 'qrcode.react';
 
-interface QuotationItem {
-    id: string;
-    productId: string;
-    name: string;
-    hsn: string;
-    qty: number;
-    unit: string;
-    rate: number;
-    gstRate: number;
-    amount: number;
-    category?: string;
+interface OrderItem {
+  id: string;
+  productId: string;
+  name: string;
+  hsn: string;
+  quantity: number;
+  unit: string;
+  discount: number;
+  rate: number;
+  price: number;
+  gstRate: number;
+  amount: number;
+  category?: string;
 }
 
 const companyGstin = '08AAFCJ5369P1ZR'; // Mock company GSTIN
@@ -84,10 +89,34 @@ const formatIndianCurrency = (num: number) => {
   }).format(num);
 };
 
+const getMaxDiscount = (role: UserRole, category: string): number => {
+    if (role === 'Admin' || role === 'CEO') {
+        return 100;
+    }
+    if (role === 'Sales Manager') {
+        return 20;
+    }
+    if (role === 'Partner') {
+        return 15;
+    }
+    if (role === 'Manager') { 
+        if (category === 'Electronics') return 12;
+        if (category === 'Furniture') return 15;
+        return 10;
+    }
+    if (role === 'Employee') { 
+        if (category === 'Electronics') return 10;
+        if (category === 'Furniture') return 13;
+        return 8;
+    }
+    return 5;
+};
+
 interface PartnerStockItem {
   id: string;
   quantity: number;
 }
+
 
 export default function CreateQuotationPage() {
   const { toast } = useToast();
@@ -519,4 +548,3 @@ export default function CreateQuotationPage() {
     </>
   );
 }
-
