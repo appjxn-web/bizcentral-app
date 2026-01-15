@@ -4,7 +4,7 @@
 
 import type { Timestamp } from 'firebase/firestore';
 
-export type UserRole = 'Admin' | 'Manager' | 'Employee' | 'Customer' | 'CEO' | 'Sales Manager' | 'Production Manager' | 'Purchase Manager' | 'Service Manager' | 'Accounts Manager' | 'HR Manager' | 'Gate Keeper' | 'Inventory Manager' | 'Partner' | 'Dealer' | 'Franchisee' | 'Sales Agent' | 'Accountant' | 'Staff';
+export type UserRole = 'Admin' | 'Manager' | 'Employee' | 'Customer' | 'CEO' | 'Sales Manager' | 'Production Manager' | 'Purchase Manager' | 'Service Manager' | 'Accounts Manager' | 'HR Manager' | 'Gate Keeper' | 'Inventory Manager' | 'Partner' | 'Accountant' | 'Staff';
 
 export interface CommissionRule {
     category: string;
@@ -182,8 +182,10 @@ export interface Product {
   warranty?: {
     months: number;
     childParts?: {
+      id: string;
       name: string;
-      months: number;
+      installDate: string;
+      warrantyMonths: number;
     }[];
   };
   coaAccountId?: string;
@@ -221,6 +223,7 @@ export interface RegisteredProduct {
   childParts?: ChildPart[];
   customerId: string;
   customerName: string;
+  ownerId?: string;
 }
 
 export interface SparesRequestItem {
@@ -283,10 +286,11 @@ export interface ServiceRequest {
   description: string;
   status: ServiceRequestStatus;
   assignedTo?: string;
+  assignedToUid?: string;
   imageUrl?: string;
   videoUrl?: string;
   quotation?: {
-    items: QuotationItem[];
+    items: ServiceQuotationItem[];
   }
 }
 
@@ -1063,7 +1067,35 @@ export interface SupportCallbackRequest {
   createdAt: Timestamp;
   createdByUid: string;
 }
+
+export interface PayrollConfig {
+    monthly: {
+        basicPercent: number;
+        hraPercent: number;
+        pfContributionPercent: number;
+        professionalTax: number;
+    };
+    hourly: {
+        defaultRate: number;
+    };
+    overtime: {
+        slot1Multiplier: number;
+        slot2Multiplier: number;
+        slot3Multiplier: number;
+    };
+}
+
+export interface AttendanceConfig {
+    autoPunchOutForLunch: boolean;
+    lunchOutTime: string;
+    lunchInTime: string;
+    punchInGracePeriod: number; // in minutes
+}
       
     
 
     
+
+
+
+

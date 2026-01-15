@@ -43,7 +43,7 @@ import { useAuth } from '@/firebase';
 
 
 const allRoles: UserRole[] = [
-  'Admin', 'Manager', 'Employee', 'Customer', 'CEO', 'Sales Manager', 'Production Manager', 'Purchase Manager', 'Service Manager', 'Accounts Manager', 'HR Manager', 'Gate Keeper', 'Inventory Manager', 'Partner',
+  'Admin', 'Manager', 'Employee', 'Customer', 'CEO', 'Sales Manager', 'Production Manager', 'Purchase Manager', 'Service Manager', 'Accounts Manager', 'HR Manager', 'Gate Keeper', 'Inventory Manager', 'Partner', 'Franchisee', 'Accountant', 'Staff'
 ];
 
 const formSchema = z.object({

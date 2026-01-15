@@ -181,7 +181,7 @@ export default function CeoDashboardPage() {
     
     const partnerSales: Record<string, { user: User, sales: number }> = {};
 
-    usersData.filter(u => u.role === 'Partner' || u.role === 'Dealer' || u.role === 'Franchisee').forEach(p => {
+    usersData.filter(u => u.role === 'Partner').forEach(p => {
         partnerSales[p.id] = { user: p, sales: 0 };
     });
 
